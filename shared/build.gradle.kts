@@ -17,6 +17,8 @@ sqldelight {
             dialect(libs.sqldelight.sqliteDialect)
             // Read-only bundled database: schema is regenerated wholesale, never migrated.
             verifyMigrations.set(false)
+            // The androidx driver bridge requires the async generated schema.
+            generateAsync.set(true)
         }
     }
 }
@@ -77,6 +79,9 @@ kotlin {
             implementation(libs.aboutlibraries.core)
             implementation(libs.aboutlibraries.compose.m3)
             implementation(libs.sqldelight.runtime)
+            implementation(libs.androidx.sqlite)
+            implementation(libs.androidx.sqlite.bundled)
+            implementation(libs.sqldelight.androidx.driver)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
@@ -85,6 +90,10 @@ kotlin {
         getByName("androidHostTest").dependencies {
             // Real org.json so the Android AboutLibraries parser works on the JVM.
             implementation(libs.org.json)
+            // JDBC driver for the dictionary read-path test: sqlite-bundled's
+            // Android AAR only carries device ABIs, so host tests exercise the
+            // async-codegen queries over the synchronous JDBC driver instead.
+            implementation(libs.sqldelight.sqliteDriver)
         }
         all {
             languageSettings {

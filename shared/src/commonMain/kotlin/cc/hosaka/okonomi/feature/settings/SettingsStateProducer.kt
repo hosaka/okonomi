@@ -3,15 +3,20 @@ package cc.hosaka.okonomi.feature.settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import cc.hosaka.okonomi.common.model.Loadable
+import cc.hosaka.okonomi.db.DictionaryInfo
+import cc.hosaka.okonomi.db.loadDictionaryInfo
 import cc.hosaka.okonomi.feature.navigation.state.ScreenStateScope
 import cc.hosaka.okonomi.feature.navigation.state.produceScreenState
 import com.mikepenz.aboutlibraries.Libs
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okonomi.shared.generated.resources.Res
 import org.jetbrains.compose.resources.ExperimentalResourceApi
@@ -28,29 +33,64 @@ fun produceSettingsScreenState(): State<SettingsState> = produceScreenState(
 
 suspend fun ScreenStateScope.settingsScreenStateProducer(
     loadLibraries: suspend () -> Libs = ::loadBundledLibraries,
+    loadDictionary: suspend () -> DictionaryInfo = ::loadDictionaryInfo,
 ): Flow<SettingsState> {
     // Only a successful load is kept between runs of the producer, so
-    // coming back to the tab shows the list right away while a failed
+    // coming back to the tab shows the content right away while a failed
     // run is retried the next time the screen is shown.
     val librariesSink = mutablePersistedFlow<Loadable<Libs>>(
         key = "libraries",
         initial = Loadable.Loading,
     )
+    val dictionarySink = mutablePersistedFlow<Loadable<DictionaryInfo?>>(
+        key = "dictionary",
+        initial = Loadable.Loading,
+    )
     return flow {
-        if (librariesSink.value is Loadable.Loading) {
-            val libraries = loadLibrariesOrNull(loadLibraries)
-            if (libraries != null) {
-                librariesSink.value = Loadable.Ok(libraries)
-            } else {
-                emit(SettingsState(libraries = Loadable.Ok(emptyLibs())))
+        coroutineScope {
+            // The loads run concurrently and states emit progressively:
+            // the libraries list must never wait behind the dictionary
+            // load, whose first run copies the whole bundled database.
+            // A failure only surfaces a per-run fallback; the sink stays
+            // Loading so the next run retries the load.
+            val librariesFallback = MutableStateFlow<Loadable<Libs>?>(null)
+            val dictionaryFallback = MutableStateFlow<Loadable<DictionaryInfo?>?>(null)
+            if (librariesSink.value is Loadable.Loading) {
+                launch {
+                    val libraries = loadOrNull(loadLibraries)
+                    if (libraries != null) {
+                        librariesSink.value = Loadable.Ok(libraries)
+                    } else {
+                        librariesFallback.value = Loadable.Ok(emptyLibs())
+                    }
+                }
             }
-        }
-        emitAll(
-            librariesSink
-                .map { libraries ->
-                    SettingsState(libraries = libraries)
+            if (dictionarySink.value is Loadable.Loading) {
+                launch {
+                    val dictionary = loadOrNull(loadDictionary)
+                    if (dictionary != null) {
+                        dictionarySink.value = Loadable.Ok(dictionary)
+                    } else {
+                        dictionaryFallback.value = Loadable.Ok(null)
+                    }
+                }
+            }
+            emitAll(
+                combine(
+                    librariesSink,
+                    librariesFallback,
+                    dictionarySink,
+                    dictionaryFallback,
+                ) { libraries, libFallback, dictionary, dictFallback ->
+                    // The sink wins as soon as it holds a value so a late
+                    // successful load always replaces a fallback.
+                    SettingsState(
+                        libraries = if (libraries is Loadable.Ok) libraries else libFallback ?: libraries,
+                        dictionary = if (dictionary is Loadable.Ok) dictionary else dictFallback ?: dictionary,
+                    )
                 },
-        )
+            )
+        }
     }
 }
 
@@ -67,10 +107,10 @@ suspend fun loadBundledLibraries(): Libs = withContext(Dispatchers.Default) {
         .build()
 }
 
-private suspend fun loadLibrariesOrNull(
-    loadLibraries: suspend () -> Libs,
-): Libs? = try {
-    loadLibraries()
+private suspend fun <T : Any> loadOrNull(
+    load: suspend () -> T,
+): T? = try {
+    load()
 } catch (e: CancellationException) {
     throw e
 } catch (e: Exception) {

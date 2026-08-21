@@ -7,4 +7,6 @@
     <string name="search_clear">Clear</string>
     <string name="settings_title">Settings</string>
     <string name="settings_libraries_empty">No libraries found</string>
+    <string name="settings_dictionary_label">Dictionary</string>
+    <string name="settings_dictionary_value">JMdict %1$s · %2$s entries</string>
 </resources>

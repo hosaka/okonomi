@@ -1,6 +1,7 @@
 package cc.hosaka.okonomi.feature.settings
 
 import cc.hosaka.okonomi.common.model.Loadable
+import cc.hosaka.okonomi.db.DictionaryInfo
 import cc.hosaka.okonomi.feature.navigation.state.FakeScreenStateScope
 import cc.hosaka.okonomi.feature.navigation.state.ScreenStateViewModel
 import com.mikepenz.aboutlibraries.Libs
@@ -9,6 +10,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -24,6 +26,13 @@ import kotlin.test.assertEquals
 @OptIn(ExperimentalCoroutinesApi::class)
 class SettingsStateProducerTest {
     private val dispatcher = StandardTestDispatcher()
+
+    private val dictionaryInfo = DictionaryInfo(jmdictDate = "2026-08-21", entryCount = 42L)
+
+    private suspend fun FakeScreenStateScope.producer(
+        loadLibraries: suspend () -> Libs = { libsOf("org.example:library") },
+        loadDictionary: suspend () -> DictionaryInfo = { dictionaryInfo },
+    ): Flow<SettingsState> = settingsScreenStateProducer(loadLibraries, loadDictionary)
 
     @BeforeTest
     fun setUp() {
@@ -42,7 +51,10 @@ class SettingsStateProducerTest {
         val viewModel = ScreenStateViewModel(
             initial = SettingsState(),
         ) {
-            settingsScreenStateProducer(loadLibraries = { load.await() })
+            settingsScreenStateProducer(
+                loadLibraries = { load.await() },
+                loadDictionary = { dictionaryInfo },
+            )
         }
 
         val collector = launch { viewModel.state.collect {} }
@@ -52,7 +64,20 @@ class SettingsStateProducerTest {
         load.complete(libs)
         runCurrent()
         assertEquals(Loadable.Ok(libs), viewModel.state.value.libraries)
+        assertEquals(Loadable.Ok(dictionaryInfo), viewModel.state.value.dictionary)
         collector.cancel()
+    }
+
+    @Test
+    fun `the libraries render without waiting for the dictionary load`() = runTest {
+        val scope = FakeScreenStateScope()
+        val dictionaryGate = CompletableDeferred<DictionaryInfo>()
+
+        val state = scope.producer(
+            loadDictionary = { dictionaryGate.await() },
+        ).first { it.libraries is Loadable.Ok }
+
+        assertEquals(Loadable.Loading, state.dictionary)
     }
 
     @Test
@@ -64,11 +89,12 @@ class SettingsStateProducerTest {
             error("no resource")
         }
 
-        val state = scope.settingsScreenStateProducer(loadLibraries).first()
+        val state = scope.producer(loadLibraries = loadLibraries)
+            .first { it.libraries !is Loadable.Loading }
         assertEquals(Loadable.Ok(emptyLibs()), state.libraries)
         assertEquals(Loadable.Loading, scope.librariesSink().value)
 
-        scope.settingsScreenStateProducer(loadLibraries).first()
+        scope.producer(loadLibraries = loadLibraries).first { it.libraries !is Loadable.Loading }
         assertEquals(2, loads)
     }
 
@@ -82,8 +108,14 @@ class SettingsStateProducerTest {
             libs
         }
 
-        assertEquals(Loadable.Ok(libs), scope.settingsScreenStateProducer(loadLibraries).first().libraries)
-        assertEquals(Loadable.Ok(libs), scope.settingsScreenStateProducer(loadLibraries).first().libraries)
+        assertEquals(
+            Loadable.Ok(libs),
+            scope.producer(loadLibraries = loadLibraries).first { it.libraries is Loadable.Ok }.libraries,
+        )
+        assertEquals(
+            Loadable.Ok(libs),
+            scope.producer(loadLibraries = loadLibraries).first { it.libraries is Loadable.Ok }.libraries,
+        )
         assertEquals(1, loads)
     }
 
@@ -94,12 +126,12 @@ class SettingsStateProducerTest {
         var loads = 0
 
         val collector = launch {
-            scope.settingsScreenStateProducer(
+            scope.producer(
                 loadLibraries = {
                     loads++
                     awaitCancellation()
                 },
-            ).first()
+            ).first { it.libraries is Loadable.Ok }
         }
         runCurrent()
         collector.cancel()
@@ -107,19 +139,62 @@ class SettingsStateProducerTest {
         assertEquals(Loadable.Loading, scope.librariesSink().value)
         assertEquals(1, loads)
 
-        val state = scope.settingsScreenStateProducer(
+        val state = scope.producer(
             loadLibraries = {
                 loads++
                 libs
             },
-        ).first()
+        ).first { it.libraries is Loadable.Ok }
         assertEquals(Loadable.Ok(libs), state.libraries)
+        assertEquals(2, loads)
+    }
+
+    @Test
+    fun `the dictionary info is loaded and kept between runs of the producer`() = runTest {
+        val scope = FakeScreenStateScope()
+        var loads = 0
+        val loadDictionary: suspend () -> DictionaryInfo = {
+            loads++
+            dictionaryInfo
+        }
+
+        assertEquals(
+            Loadable.Ok(dictionaryInfo),
+            scope.producer(loadDictionary = loadDictionary)
+                .first { it.dictionary !is Loadable.Loading }.dictionary,
+        )
+        assertEquals(
+            Loadable.Ok(dictionaryInfo),
+            scope.producer(loadDictionary = loadDictionary)
+                .first { it.dictionary !is Loadable.Loading }.dictionary,
+        )
+        assertEquals(1, loads)
+    }
+
+    @Test
+    fun `a failing dictionary load shows nothing and is retried on the next run`() = runTest {
+        val scope = FakeScreenStateScope()
+        var loads = 0
+        val loadDictionary: suspend () -> DictionaryInfo = {
+            loads++
+            error("no dictionary")
+        }
+
+        val state = scope.producer(loadDictionary = loadDictionary)
+            .first { it.dictionary !is Loadable.Loading }
+        assertEquals(Loadable.Ok(null), state.dictionary)
+        assertEquals(Loadable.Loading, scope.dictionarySink().value)
+
+        scope.producer(loadDictionary = loadDictionary).first { it.dictionary !is Loadable.Loading }
         assertEquals(2, loads)
     }
 }
 
 private fun FakeScreenStateScope.librariesSink() =
     mutablePersistedFlow<Loadable<Libs>>("libraries", Loadable.Loading)
+
+private fun FakeScreenStateScope.dictionarySink() =
+    mutablePersistedFlow<Loadable<DictionaryInfo?>>("dictionary", Loadable.Loading)
 
 private fun emptyLibs(): Libs = Libs(
     libraries = emptyList(),

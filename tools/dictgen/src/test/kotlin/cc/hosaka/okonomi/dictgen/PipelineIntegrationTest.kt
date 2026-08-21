@@ -4,6 +4,7 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import cc.hosaka.okonomi.db.OkonomiDb
 import java.io.File
 import java.nio.file.Files
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -11,7 +12,14 @@ import kotlin.test.assertTrue
 
 class PipelineIntegrationTest {
 
-    private fun tempDir(): File = Files.createTempDirectory("dictgen").toFile().apply { deleteOnExit() }
+    private val tempDirs = mutableListOf<File>()
+
+    @AfterTest
+    fun cleanUp() {
+        tempDirs.forEach { it.deleteRecursively() }
+    }
+
+    private fun tempDir(): File = Files.createTempDirectory("dictgen").toFile().also { tempDirs += it }
 
     private fun generate(): File {
         val dataDir = tempDir()
@@ -46,7 +54,7 @@ class PipelineIntegrationTest {
             val words = db.entryQueries.wordsContainingKanji("食", 10).executeAsList()
             assertTrue("食べる" in words, "entry_kanji join should surface 食べる, got $words")
 
-            assertEquals("2026-08-21", db.metadataQueries.metadataValue("jmdict_date").executeAsOne())
+            assertEquals(Fixtures.JMDICT_DATE, db.metadataQueries.metadataValue("jmdict_date").executeAsOne())
         }
     }
 
@@ -96,6 +104,46 @@ class PipelineIntegrationTest {
             assertEquals("fem", name.name_type)
             assertEquals("Shimee", name.translation)
         }
+    }
+
+    @Test
+    fun bakesUserVersionAndWritesSidecar() {
+        val out = generate()
+        // PRAGMA goes through the raw driver: it is not part of the schema queries.
+        val driver = JdbcSqliteDriver("jdbc:sqlite:${out.absolutePath}")
+        try {
+            val userVersion = driver.executeQuery(
+                null,
+                "PRAGMA user_version",
+                { cursor ->
+                    cursor.next()
+                    app.cash.sqldelight.db.QueryResult.Value(cursor.getLong(0))
+                },
+                0,
+            ).value
+            assertEquals(OkonomiDb.Schema.version, userVersion)
+        } finally {
+            driver.close()
+        }
+
+        val sidecar = File(out.parentFile, out.name + ".version")
+        assertTrue(sidecar.isFile, "sidecar should be written next to the database")
+        assertEquals("${Fixtures.JMDICT_DATE}:${OkonomiDb.Schema.version}", sidecar.readText())
+        assertTrue(!File(sidecar.parentFile, sidecar.name + ".tmp").exists(), "sidecar tmp file should be moved away")
+    }
+
+    @Test
+    fun missingJmdictCreationDateFailsGeneration() {
+        val dataDir = tempDir()
+        Fixtures.writeDataDir(dataDir)
+        val jmdict = File(dataDir, "JMdict_e_examp.xml")
+        jmdict.writeText(jmdict.readText().replace(Regex("<!-- JMdict created: .* -->"), ""))
+        val out = File(tempDir(), "okonomi.db")
+
+        val e = assertFailsWith<PipelineException> { Pipeline(dataDir, out).run() }
+        assertTrue("JMdict created" in (e.message ?: ""), "message should name the missing comment: ${e.message}")
+        assertTrue(!out.exists(), "no database should be left behind")
+        assertTrue(!File(out.parentFile, out.name + ".version").exists(), "no sidecar should be left behind")
     }
 
     @Test

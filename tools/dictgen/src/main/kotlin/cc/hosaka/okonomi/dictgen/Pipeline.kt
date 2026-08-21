@@ -33,6 +33,13 @@ class Pipeline(private val dataDir: File, private val out: File) {
     }
 
     private fun generate(jmdict: File, jmnedict: File, kanjidic: File, radk: File, tmp: File): Summary {
+        // The date stamps the sidecar that the app uses to detect updates;
+        // without it, successive JMdict releases would look identical.
+        val jmdictDate = extractCreationDate(jmdict)
+            ?: throw PipelineException(
+                "No 'JMdict created: <date>' comment found in ${jmdict.name}; " +
+                    "the version sidecar needs it to detect dictionary updates.",
+            )
         val counts: Map<String, Long>
         DbWriter(tmp).use { writer ->
             writer.writeJmdict(JmdictParser(jmdict))
@@ -41,7 +48,7 @@ class Pipeline(private val dataDir: File, private val out: File) {
             writer.writeNames(JmnedictParser(jmnedict))
             writer.finish(
                 mapOf(
-                    "jmdict_date" to (extractCreationDate(jmdict) ?: "unknown"),
+                    "jmdict_date" to jmdictDate,
                     "schema_version" to OkonomiDb.Schema.version.toString(),
                     "generated_at" to Instant.now().toString(),
                 ),
@@ -49,6 +56,13 @@ class Pipeline(private val dataDir: File, private val out: File) {
             counts = writer.counts()
         }
         atomicReplace(tmp, out)
+        // The sidecar is the app's staleness check for its copied database; it is
+        // written after the database move so it never describes a partial file,
+        // and moved atomically itself so it is never observable half-written.
+        val sidecar = File(out.absoluteFile.parentFile, out.name + ".version")
+        val sidecarTmp = File(sidecar.parentFile, sidecar.name + ".tmp")
+        sidecarTmp.writeText("$jmdictDate:${OkonomiDb.Schema.version}")
+        atomicReplace(sidecarTmp, sidecar)
         return Summary(counts, out.length(), out)
     }
 

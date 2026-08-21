@@ -106,6 +106,9 @@ class DbWriter(target: File) : AutoCloseable {
         driver.execute(null, "VACUUM", 0)
         driver.execute(null, "INSERT INTO gloss_fts(gloss_fts) VALUES('rebuild')", 0)
         driver.execute(null, "ANALYZE", 0)
+        // Baking the schema version into the file lets the app-side driver skip
+        // Schema.create/migrate: it only creates when user_version is 0.
+        driver.execute(null, "PRAGMA user_version = ${OkonomiDb.Schema.version}", 0)
     }
 
     fun counts(): Map<String, Long> = mapOf(

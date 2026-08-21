@@ -4,6 +4,8 @@ import java.io.File
 
 object Fixtures {
 
+    const val JMDICT_DATE = "2026-08-21"
+
     val jmdict = """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE JMdict [
@@ -13,7 +15,7 @@ object Fixtures {
         <!ENTITY food "food, cooking">
         ]>
         <JMdict>
-        <!-- JMdict created: 2026-08-21 -->
+        <!-- JMdict created: $JMDICT_DATE -->
         <entry>
         <ent_seq>1358280</ent_seq>
         <k_ele>
