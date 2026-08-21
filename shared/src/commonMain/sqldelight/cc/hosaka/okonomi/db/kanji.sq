@@ -1,0 +1,72 @@
+CREATE TABLE kanji (
+    literal TEXT PRIMARY KEY,
+    grade INTEGER,
+    stroke_count INTEGER NOT NULL,
+    freq INTEGER,
+    jlpt INTEGER
+);
+
+CREATE TABLE kanji_reading (
+    kanji TEXT NOT NULL REFERENCES kanji(literal),
+    type TEXT NOT NULL,
+    text TEXT NOT NULL
+);
+
+CREATE INDEX kanji_reading_kanji_idx ON kanji_reading(kanji);
+
+CREATE TABLE kanji_meaning (
+    kanji TEXT NOT NULL REFERENCES kanji(literal),
+    ord INTEGER NOT NULL,
+    text TEXT NOT NULL
+);
+
+CREATE INDEX kanji_meaning_kanji_idx ON kanji_meaning(kanji);
+
+CREATE TABLE radical (
+    literal TEXT PRIMARY KEY,
+    stroke_count INTEGER NOT NULL
+);
+
+CREATE TABLE kanji_radical (
+    kanji TEXT NOT NULL,
+    radical TEXT NOT NULL REFERENCES radical(literal)
+);
+
+CREATE INDEX kanji_radical_kanji_idx ON kanji_radical(kanji);
+CREATE INDEX kanji_radical_radical_idx ON kanji_radical(radical);
+
+insertKanji:
+INSERT INTO kanji(literal, grade, stroke_count, freq, jlpt) VALUES (?, ?, ?, ?, ?);
+
+insertKanjiReading:
+INSERT INTO kanji_reading(kanji, type, text) VALUES (?, ?, ?);
+
+insertKanjiMeaning:
+INSERT INTO kanji_meaning(kanji, ord, text) VALUES (?, ?, ?);
+
+insertRadical:
+INSERT INTO radical(literal, stroke_count) VALUES (?, ?);
+
+insertKanjiRadical:
+INSERT INTO kanji_radical(kanji, radical) VALUES (?, ?);
+
+kanjiCount:
+SELECT COUNT(*) FROM kanji;
+
+radicalCount:
+SELECT COUNT(*) FROM radical;
+
+kanjiReadings:
+SELECT type, text FROM kanji_reading WHERE kanji = :kanji;
+
+kanjiMeanings:
+SELECT text FROM kanji_meaning WHERE kanji = :kanji ORDER BY ord;
+
+kanjiByLiteral:
+SELECT literal, grade, stroke_count, freq, jlpt FROM kanji WHERE literal = :literal;
+
+kanjiByRadical:
+SELECT k.literal, k.stroke_count, k.freq
+FROM kanji_radical kr
+JOIN kanji k ON k.literal = kr.kanji
+WHERE kr.radical = :radical;

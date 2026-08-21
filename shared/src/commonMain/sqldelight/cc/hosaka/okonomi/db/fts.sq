@@ -1,0 +1,10 @@
+CREATE VIRTUAL TABLE gloss_fts USING fts5(
+    text,
+    content=gloss
+);
+
+searchGlossFts:
+SELECT g.sense_id, g.ord, g.text
+FROM gloss g
+WHERE g.rowid IN (SELECT rowid FROM gloss_fts WHERE gloss_fts MATCH :query)
+LIMIT :limit;

@@ -130,3 +130,7 @@ fastlane/test_output
 .claude/
 _bmad/
 _bmad-output/
+
+# dictionary sources and generated database
+/data/
+*.db

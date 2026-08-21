@@ -7,6 +7,18 @@ plugins {
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.kotlinSerialization)
     alias(libs.plugins.aboutLibraries)
+    alias(libs.plugins.sqldelight)
+}
+
+sqldelight {
+    databases {
+        create("OkonomiDb") {
+            packageName.set("cc.hosaka.okonomi.db")
+            dialect(libs.sqldelight.sqliteDialect)
+            // Read-only bundled database: schema is regenerated wholesale, never migrated.
+            verifyMigrations.set(false)
+        }
+    }
 }
 
 kotlin {
@@ -64,6 +76,7 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.aboutlibraries.core)
             implementation(libs.aboutlibraries.compose.m3)
+            implementation(libs.sqldelight.runtime)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

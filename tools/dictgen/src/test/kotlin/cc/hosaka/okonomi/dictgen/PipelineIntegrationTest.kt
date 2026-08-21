@@ -1,0 +1,121 @@
+package cc.hosaka.okonomi.dictgen
+
+import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import cc.hosaka.okonomi.db.OkonomiDb
+import java.io.File
+import java.nio.file.Files
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
+
+class PipelineIntegrationTest {
+
+    private fun tempDir(): File = Files.createTempDirectory("dictgen").toFile().apply { deleteOnExit() }
+
+    private fun generate(): File {
+        val dataDir = tempDir()
+        Fixtures.writeDataDir(dataDir)
+        val out = File(tempDir(), "okonomi.db")
+        val summary = Pipeline(dataDir, out).run()
+        assertEquals(1L, summary.counts["entries"])
+        assertEquals(2L, summary.counts["glosses"])
+        assertEquals(1L, summary.counts["kanji"])
+        assertEquals(2L, summary.counts["radicals"])
+        assertEquals(1L, summary.counts["names"])
+        assertTrue(summary.sizeBytes > 0)
+        return out
+    }
+
+    private fun <T> withDb(file: File, block: (OkonomiDb) -> T): T {
+        val driver = JdbcSqliteDriver("jdbc:sqlite:${file.absolutePath}")
+        try {
+            return block(OkonomiDb(driver))
+        } finally {
+            driver.close()
+        }
+    }
+
+    @Test
+    fun generatesSearchableDatabase() {
+        val out = generate()
+        withDb(out) { db ->
+            val ftsHits = db.ftsQueries.searchGlossFts("eat", 10).executeAsList()
+            assertTrue(ftsHits.any { it.text == "to eat" }, "FTS should find 'to eat', got $ftsHits")
+
+            val words = db.entryQueries.wordsContainingKanji("食", 10).executeAsList()
+            assertTrue("食べる" in words, "entry_kanji join should surface 食べる, got $words")
+
+            assertEquals("2026-08-21", db.metadataQueries.metadataValue("jmdict_date").executeAsOne())
+        }
+    }
+
+    @Test
+    fun persistsReadingDetailsAndRanks() {
+        withDb(generate()) { db ->
+            val readings = db.entryQueries.readingsForEntry(1358280L).executeAsList()
+            assertEquals(2, readings.size)
+            assertEquals(0L, readings[0].no_kanji)
+            assertEquals(1L, readings[0].common_rank)
+            val second = readings[1]
+            assertEquals("タベル", second.text)
+            assertEquals(1L, second.no_kanji)
+            assertEquals("食べる", second.restrictions)
+            assertEquals(999L, second.common_rank)
+        }
+    }
+
+    @Test
+    fun persistsKanjiDetailsWithFiltersApplied() {
+        withDb(generate()) { db ->
+            val kanji = db.kanjiQueries.kanjiByLiteral("食").executeAsOne()
+            assertEquals(2L, kanji.grade)
+            assertEquals(9L, kanji.stroke_count)
+            assertEquals(328L, kanji.freq)
+            assertEquals(3L, kanji.jlpt)
+
+            val readings = db.kanjiQueries.kanjiReadings("食").executeAsList().map { it.type to it.text }.toSet()
+            assertEquals(setOf("on" to "ショク", "kun" to "た.べる", "nanori" to "ぐい"), readings)
+
+            assertEquals(listOf("eat"), db.kanjiQueries.kanjiMeanings("食").executeAsList())
+
+            // Fixture 倉 is in radkfile but not kanjidic; kanjiByRadical inner-joins kanji,
+            // so only characters with kanjidic data come back (in real data the sets match).
+            val byRadical = db.kanjiQueries.kanjiByRadical("一").executeAsList().map { it.literal }.toSet()
+            assertEquals(setOf("食"), byRadical)
+        }
+    }
+
+    @Test
+    fun persistsNameRows() {
+        withDb(generate()) { db ->
+            val name = db.nameQueries.searchNamePrefix("しめえ", 10).executeAsList().single()
+            assertEquals(5000002L, name.id)
+            assertEquals("〆ヱ", name.kanji)
+            assertEquals("しめえ", name.reading)
+            assertEquals("fem", name.name_type)
+            assertEquals("Shimee", name.translation)
+        }
+    }
+
+    @Test
+    fun rerunReplacesPreviousDatabase() {
+        val dataDir = tempDir()
+        Fixtures.writeDataDir(dataDir)
+        val out = File(tempDir(), "okonomi.db")
+        Pipeline(dataDir, out).run()
+        Pipeline(dataDir, out).run()
+        assertTrue(out.isFile)
+        assertTrue(out.length() > 0)
+        assertTrue(!File(out.parentFile, out.name + ".tmp").exists(), "tmp file should be moved away")
+    }
+
+    @Test
+    fun missingSourceFailsFastWithFileName() {
+        val emptyDir = tempDir()
+        val out = File(tempDir(), "okonomi.db")
+        val e = assertFailsWith<PipelineException> { Pipeline(emptyDir, out).run() }
+        assertTrue("JMdict_e_examp.xml" in (e.message ?: ""), "message should name the file: ${e.message}")
+        assertTrue(!out.exists(), "no partial DB should be left behind")
+    }
+}

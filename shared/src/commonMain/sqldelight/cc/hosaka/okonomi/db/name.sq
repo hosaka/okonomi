@@ -1,0 +1,22 @@
+CREATE TABLE name_entry (
+    id INTEGER NOT NULL,
+    kanji TEXT,
+    reading TEXT NOT NULL,
+    name_type TEXT NOT NULL,
+    translation TEXT NOT NULL
+);
+
+CREATE INDEX name_entry_reading_idx ON name_entry(reading);
+CREATE INDEX name_entry_kanji_idx ON name_entry(kanji);
+
+insertNameEntry:
+INSERT INTO name_entry(id, kanji, reading, name_type, translation) VALUES (?, ?, ?, ?, ?);
+
+nameCount:
+SELECT COUNT(*) FROM name_entry;
+
+searchNamePrefix:
+SELECT id, kanji, reading, name_type, translation
+FROM name_entry
+WHERE reading LIKE :prefix || '%' OR kanji LIKE :prefix || '%'
+LIMIT :limit;
