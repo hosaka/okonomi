@@ -11,6 +11,7 @@
 ## Environment Baseline
 
 - Use JDK `21` (provisioned via `gradle/gradle-daemon-jvm.properties`).
+- Android SDK Platform 37 (`compileSdk` 37), AGP 9.1.1, Gradle 9.3.1 (bumped for AboutLibraries 15.0.4).
 - Assume Kotlin Multiplatform + Compose Multiplatform project conventions.
 - Do not assume Android emulator/device availability unless explicitly requested by the user.
 
@@ -23,12 +24,6 @@
 - `shared/src/commonMain/kotlin/cc/hosaka/okonomi/App.kt` wires `OkonomiTheme { Surface { HomeScreen() } }`.
 - Theme (`ui/theme/`): `OkonomiTheme` wraps `MaterialExpressiveTheme` and follows the system light/dark mode. `appDynamicLightColorScheme()/appDynamicDarkColorScheme()` are `expect` functions: Android 12+ uses dynamic color, older Android and iOS use the default Material schemes. `Dimen`/`Dimens` hold shared spacing values.
 - Shared chrome (`ui/`): `ScaffoldColumn`/`ScaffoldLazyColumn` (Material `Scaffold` wrappers that forward inner padding to the content), `toolbar/LargeToolbar` (`LargeFlexibleTopAppBar`) with `toolbar/util/ToolbarBehavior`/`ToolbarColors`, and `SearchTextField` (pill shaped search box with clear action).
-- Navigation (`feature/navigation/`) is built on Navigation 3 (`org.jetbrains.androidx.navigation3:navigation3-ui`):
-  - `Route : NavKey` is a `@Serializable` object with a `@Composable fun Content()`; every destination renders itself.
-  - `NavigationGraph.kt` holds `navigationSavedStateConfiguration` (polymorphic `NavKey` serializers module; register new routes there) and `routeEntryProvider`, the single generic entry provider that calls `route.Content()`.
-  - `NavigationController` (`navigate(route)`, `pop(): Boolean`) is provided via `LocalNavigationController` and backed by the section's `NavBackStack` (`BackStackNavigationController`).
-  - There is no hand-rolled router and no `androidx.navigation` `NavHost`.
-- Home shell (`feature/home/`): `HomeScreen` renders the top-level sections listed in `navigation/HomeNavigationItem.kt` (`homeNavigationItems`: Search, Settings). Each section owns a `rememberNavBackStack` rooted at its route and its decorated entries; the selected section's entries go to a `NavDisplay`. `ResponsiveLayout`/`LocalHomeLayout` pick `ShortNavigationBar` (portrait) or `WideNavigationRail` (landscape). System back pops within a section or returns to the default section (Search); on the Search root it is left to the platform.
 - Screen state (`feature/navigation/state/ProduceScreenState.kt`): `produceScreenState(key, initial) { ... }` runs a producer inside a `ScreenStateScope` (`navigation: NavigationController`, `mutablePersistedFlow(key, initial)`) and shares the resulting flow through a `ViewModel` scoped to the back stack entry (in-memory only, no disk persistence).
 - Features live in `shared/src/commonMain/kotlin/cc/hosaka/okonomi/feature/*`; user-visible strings live in `shared/src/commonMain/composeResources/values/strings.xml` and are read via `Res.string.*`.
 

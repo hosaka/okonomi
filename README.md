@@ -20,6 +20,7 @@ Use the run configurations provided by the run widget in your IDE's toolbar. You
 
 - Android app: `./gradlew :androidApp:assembleDebug`
 - iOS app: open the [/iosApp](./iosApp) directory in Xcode and run it from there.
+- After changing dependencies: `./gradlew :shared:exportLibraryDefinitions` regenerates the library list shown in Settings (`shared/src/commonMain/composeResources/files/aboutlibraries.json`); commit the result.
 
 ### Running tests
 

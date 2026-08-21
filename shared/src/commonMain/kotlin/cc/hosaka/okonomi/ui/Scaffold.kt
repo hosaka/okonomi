@@ -127,8 +127,13 @@ fun ScaffoldColumn(
     }
 }
 
+/**
+ * Adds the shared vertical screen padding on top of a scaffold's inner
+ * padding, so that content using its own scrollable container gets the
+ * same spacing as [ScaffoldColumn] and [ScaffoldLazyColumn].
+ */
 @Composable
-private fun PaddingValues.plusScreenPadding(): PaddingValues {
+internal fun PaddingValues.plusScreenPadding(): PaddingValues {
     val layoutDirection = LocalLayoutDirection.current
     val screenPadding = Dimens.contentPadding
     return PaddingValues(

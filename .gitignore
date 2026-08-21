@@ -126,3 +126,7 @@ fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
 
+# agent
+.claude/
+_bmad/
+_bmad-output/

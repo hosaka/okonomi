@@ -1,9 +1,6 @@
 package cc.hosaka.okonomi.feature.search
 
-import cc.hosaka.okonomi.feature.navigation.NavigationController
-import cc.hosaka.okonomi.feature.navigation.Route
-import cc.hosaka.okonomi.feature.navigation.state.ScreenStateScope
-import kotlinx.coroutines.flow.MutableStateFlow
+import cc.hosaka.okonomi.feature.navigation.state.FakeScreenStateScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -60,25 +57,4 @@ class SearchStateProducerTest {
         assertEquals("辞書", persisted.value)
         assertSame(persisted, scope.mutablePersistedFlow("query", "other"))
     }
-}
-
-private class FakeScreenStateScope : ScreenStateScope {
-    private val persisted = mutableMapOf<String, MutableStateFlow<*>>()
-
-    val navigated = mutableListOf<Route>()
-
-    override val navigation: NavigationController = object : NavigationController {
-        override fun navigate(route: Route) {
-            navigated += route
-        }
-
-        override fun pop(): Boolean = false
-    }
-
-    @Suppress("UNCHECKED_CAST")
-    override fun <T> mutablePersistedFlow(
-        key: String,
-        initial: T,
-    ): MutableStateFlow<T> = persisted
-        .getOrPut(key) { MutableStateFlow(initial) } as MutableStateFlow<T>
 }
