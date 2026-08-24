@@ -56,6 +56,10 @@ SELECT COUNT(*) FROM kanji;
 radicalCount:
 SELECT COUNT(*) FROM radical;
 
+-- Single-character forms. The entry view's Kanji tab uses the IN-list
+-- forms below; these stay as the natural shape for the kanji detail
+-- screen, which reads one literal, and are exercised today by the
+-- dictgen integration test.
 kanjiReadings:
 SELECT type, text FROM kanji_reading WHERE kanji = :kanji;
 
@@ -70,3 +74,49 @@ SELECT k.literal, k.stroke_count, k.freq
 FROM kanji_radical kr
 JOIN kanji k ON k.literal = kr.kanji
 WHERE kr.radical = :radical;
+
+-- The entry view's Kanji tab reads every character of one headword at
+-- once; one query per table over the whole list, never one per
+-- character. A literal the IN-list names but kanjidic does not carry
+-- simply returns no row, which the loader renders as its own state.
+kanjiForLiterals:
+SELECT literal, grade, stroke_count, freq, jlpt
+FROM kanji
+WHERE literal IN :literals;
+
+-- kanji_reading carries no ord column: kanjidic's order IS the row
+-- order, so rowid is the only thing that preserves it, and this ORDER
+-- BY is what pins it.
+--
+-- Left off, the row order is whatever the chosen plan happens to yield,
+-- which is not stable. Measured on SQLite 3.53: the same unordered
+-- query returns per-character rowid order on the shipped index set, but
+-- plain rowid order across the whole table once ANALYZE has run, and
+-- readings ALPHABETISED within each character -- kun before nanori
+-- before on -- as soon as the plan uses an index on (kanji, type,
+-- text). No error, just a silently wrong reading order.
+--
+-- On the shipped index set the plan for this query is a plain index
+-- search with no temp B-tree, so pinning the order costs nothing today.
+-- Adding a (kanji, type, text) index later would introduce one, which
+-- is the trade this ORDER BY makes deliberately.
+kanjiReadingsForLiterals:
+SELECT kanji, type, text
+FROM kanji_reading
+WHERE kanji IN :literals
+ORDER BY kanji, rowid;
+
+kanjiMeaningsForLiterals:
+SELECT kanji, ord, text
+FROM kanji_meaning
+WHERE kanji IN :literals
+ORDER BY kanji, ord;
+
+-- radkfile states no order over a character's radicals, so the display
+-- order is fixed here: simplest radical first, ties broken by literal.
+radicalsForLiterals:
+SELECT kr.kanji, r.literal, r.stroke_count
+FROM kanji_radical kr
+JOIN radical r ON r.literal = kr.radical
+WHERE kr.kanji IN :literals
+ORDER BY kr.kanji, r.stroke_count, r.literal;

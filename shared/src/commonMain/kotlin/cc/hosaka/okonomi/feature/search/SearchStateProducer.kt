@@ -6,6 +6,7 @@ import cc.hosaka.okonomi.db.SearchResults
 import cc.hosaka.okonomi.db.invalidateDictionary
 import cc.hosaka.okonomi.db.searchEntries
 import cc.hosaka.okonomi.feature.navigation.state.ScreenStateScope
+import cc.hosaka.okonomi.feature.navigation.state.healDictionaryAfter
 import cc.hosaka.okonomi.feature.navigation.state.produceScreenState
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.CancellationException
@@ -88,17 +89,9 @@ private suspend fun runSearch(
 } catch (e: CancellationException) {
     throw e
 } catch (e: Exception) {
-    // A failing search must never take the screen down; the next
-    // query change retries. A database failure also drops the shared
-    // handle so that retry reopens it — a cheap heal for a handle
-    // gone bad. Wiping the provisioned file is deliberately left to
-    // Settings' corrupt-copy path.
-    //
-    // Programming errors are not database failures: reopening cannot
-    // fix a bad argument or a broken invariant, and throwing the
-    // handle away would turn one bug into a reprovisioning storm.
-    if (e !is IllegalArgumentException && e !is IllegalStateException) {
-        runCatching { invalidate() }
-    }
+    // A failing search must never take the screen down; the next query
+    // change retries. What the failure does to the shared handle is the
+    // one policy every screen shares.
+    healDictionaryAfter(e, invalidate)
     SearchResultsState.Error(query)
 }

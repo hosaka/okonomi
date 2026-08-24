@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import cc.hosaka.okonomi.db.EntryDetail
+import cc.hosaka.okonomi.feature.kanji.KanjiTab
 import cc.hosaka.okonomi.feature.navigation.LocalNavigationController
 import cc.hosaka.okonomi.ui.CenteredBox
 import cc.hosaka.okonomi.ui.CenteredMessage
@@ -158,6 +159,11 @@ private fun EntryTabs(
         ) { page ->
             when (val tab = tabs[page]) {
                 EntryTab.Word -> WordTab(
+                    entry = entry,
+                    contentPadding = contentPadding,
+                )
+
+                EntryTab.Kanji -> KanjiTab(
                     entry = entry,
                     contentPadding = contentPadding,
                 )

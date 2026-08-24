@@ -21,6 +21,29 @@
     <string name="entry_restriction">only applies to %1$s</string>
     <string name="entry_error">This entry could not be loaded</string>
     <string name="entry_retry">Try again</string>
+    <string name="entry_kanji_section_on">On</string>
+    <string name="entry_kanji_section_kun">Kun</string>
+    <string name="entry_kanji_section_name">Nanori</string>
+    <string name="entry_kanji_section_meanings">Meanings</string>
+    <string name="entry_kanji_section_radical">Radicals</string>
+    <!-- The value is kanjidic2's former four-level scale, where 1 is
+         the most advanced - the inverse of the modern N5-N1 intuition,
+         and not faithfully convertible to it. Alex chose to show it
+         unmapped and unqualified: render the stored number as it
+         stands, and do NOT translate it into an N-level. -->
+    <string name="entry_kanji_jlpt">JLPT %1$d</string>
+    <string name="entry_kanji_grade">Grade %1$d</string>
+    <string name="entry_kanji_frequency">Frequency #%1$d</string>
+    <string name="entry_kanji_stroke_order">Stroke order</string>
+    <string name="entry_kanji_no_data">No character data for this kanji</string>
+    <!-- Reached by any headword with no kanji in it, which is usually
+         kana but also covers JMdict's fullwidth latin headwords. -->
+    <string name="entry_kanji_none">This word has no kanji characters to show.</string>
+    <string name="entry_kanji_error">The kanji for this word could not be loaded</string>
+    <plurals name="entry_kanji_strokes">
+        <item quantity="one">%1$d stroke</item>
+        <item quantity="other">%1$d strokes</item>
+    </plurals>
     <string name="settings_title">Settings</string>
     <string name="settings_dictionary_label">Dictionary</string>
     <string name="settings_dictionary_value">JMdict %1$s · %2$s entries</string>

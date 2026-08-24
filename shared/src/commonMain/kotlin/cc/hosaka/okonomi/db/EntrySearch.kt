@@ -4,6 +4,8 @@ import cc.hosaka.okonomi.deinflect.Deinflection
 import cc.hosaka.okonomi.deinflect.JapaneseDeinflector
 import cc.hosaka.okonomi.deinflect.LanguageTransformer
 import cc.hosaka.okonomi.deinflect.posCodesToConditionFlags
+import cc.hosaka.okonomi.lang.forEachCodePoint
+import cc.hosaka.okonomi.lang.isHanCodePoint
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -129,31 +131,21 @@ suspend fun DictionaryDatabase.searchEntries(
  * accented Latin, fullwidth ABC, Cyrillic — is not Japanese input.
  */
 internal fun containsJapaneseText(text: String): Boolean {
-    var i = 0
-    while (i < text.length) {
-        val char = text[i]
-        val code: Int
-        if (char.isHighSurrogate() && i + 1 < text.length && text[i + 1].isLowSurrogate()) {
-            code = ((char.code - 0xD800) shl 10) + (text[i + 1].code - 0xDC00) + 0x10000
-            i += 2
-        } else {
-            code = char.code
-            i += 1
-        }
-        if (isJapaneseCodePoint(code)) return true
+    var found = false
+    forEachCodePoint(text) { code ->
+        found = isJapaneseCodePoint(code)
+        !found
     }
-    return false
+    return found
 }
 
-private fun isJapaneseCodePoint(code: Int): Boolean = when (code) {
+private fun isJapaneseCodePoint(code: Int): Boolean = isHanCodePoint(code) || isKanaCodePoint(code)
+
+private fun isKanaCodePoint(code: Int): Boolean = when (code) {
     in 0x3040..0x309F, // hiragana
     in 0x30A0..0x30FF, // katakana
     in 0x31F0..0x31FF, // katakana phonetic extensions
     in 0xFF66..0xFF9D, // halfwidth katakana
-    in 0x3400..0x4DBF, // CJK unified ideographs extension A
-    in 0x4E00..0x9FFF, // CJK unified ideographs
-    in 0xF900..0xFAFF, // CJK compatibility ideographs
-    in 0x20000..0x2FA1F, // CJK unified ideographs extensions B+
     -> true
 
     else -> false

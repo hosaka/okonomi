@@ -275,6 +275,26 @@ class EntrySearchTest {
     }
 
     @Test
+    fun `an all-kanji query routes to the japanese path`() = runTest {
+        val database = seededDatabase()
+
+        // Every other Japanese-routing case in this file contains kana,
+        // so the router's han term is otherwise untested: drop it and
+        // 食 would fall through to gloss FTS and find nothing, breaking
+        // one of the most natural ways to use the app.
+        val results = database.searchEntries("食")
+
+        assertEquals(
+            setOf(1L, 2L, 3L, 4L, 6L),
+            results.hits.map { it.entryId }.toSet(),
+            "a han-only query must reach the kanji form range query",
+        )
+        assertFalse(results.isFallback)
+        val tabemono = results.hits.first { it.entryId == 2L }
+        assertEquals(0 until 1, tabemono.titleSegments[0].highlight)
+    }
+
+    @Test
     fun `fallback truncation never cuts a surrogate pair`() = runTest {
         val database = seededDatabase()
 
