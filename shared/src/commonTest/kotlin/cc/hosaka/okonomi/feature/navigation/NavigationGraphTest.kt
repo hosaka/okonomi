@@ -2,6 +2,7 @@ package cc.hosaka.okonomi.feature.navigation
 
 import androidx.navigation3.runtime.NavKey
 import cc.hosaka.okonomi.feature.home.navigation.homeNavigationItems
+import cc.hosaka.okonomi.feature.libraries.LibrariesRoute
 import kotlin.test.Test
 import kotlin.test.assertNotNull
 
@@ -13,6 +14,19 @@ class NavigationGraphTest {
                 navigationSavedStateConfiguration.serializersModule
                     .getPolymorphic(NavKey::class, item.route),
                 "${item.route} is missing from navigationSavedStateConfiguration",
+            )
+        }
+    }
+
+    @Test
+    fun `every pushed detail route is registered for saved state`() {
+        // Hand-maintained: every new pushed detail route MUST be added
+        // to this list when it is registered in the navigation graph.
+        listOf(LibrariesRoute).forEach { route ->
+            assertNotNull(
+                navigationSavedStateConfiguration.serializersModule
+                    .getPolymorphic(NavKey::class, route),
+                "$route is missing from navigationSavedStateConfiguration",
             )
         }
     }

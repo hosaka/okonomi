@@ -1,35 +1,42 @@
 package cc.hosaka.okonomi.feature.settings
 
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.calculateEndPadding
-import androidx.compose.foundation.layout.calculateStartPadding
-import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.UriHandler
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextDecoration
 import cc.hosaka.okonomi.common.model.Loadable
 import cc.hosaka.okonomi.db.DictionaryInfo
+import cc.hosaka.okonomi.feature.libraries.LibrariesRoute
+import cc.hosaka.okonomi.feature.navigation.LocalNavigationController
+import cc.hosaka.okonomi.ui.ScaffoldColumn
 import cc.hosaka.okonomi.ui.theme.Dimens
+import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
 import cc.hosaka.okonomi.ui.toolbar.LargeToolbar
 import cc.hosaka.okonomi.ui.toolbar.util.ToolbarBehavior
-import com.mikepenz.aboutlibraries.Libs
-import com.mikepenz.aboutlibraries.ui.compose.LibraryDefaults
-import com.mikepenz.aboutlibraries.ui.compose.m3.LibrariesContainer
-import com.mikepenz.aboutlibraries.ui.compose.m3.libraryColors
 import okonomi.shared.generated.resources.Res
+import okonomi.shared.generated.resources.libraries_title
+import okonomi.shared.generated.resources.settings_credit_open_project
+import okonomi.shared.generated.resources.settings_credits_edrdg_licence_link
+import okonomi.shared.generated.resources.settings_credits_open_licence
+import okonomi.shared.generated.resources.settings_credits_title
 import okonomi.shared.generated.resources.settings_dictionary_label
 import okonomi.shared.generated.resources.settings_dictionary_value
-import okonomi.shared.generated.resources.settings_libraries_empty
+import okonomi.shared.generated.resources.settings_libraries_open
 import okonomi.shared.generated.resources.settings_title
 import org.jetbrains.compose.resources.stringResource
 
@@ -38,15 +45,9 @@ fun SettingsScreen(
     state: SettingsState,
 ) {
     val scrollBehavior = ToolbarBehavior.behavior()
-    // LibrariesContainer owns its own LazyColumn, so the plain Scaffold
-    // is used here and the inner padding goes to the list as content
-    // padding, letting the rows scroll under the collapsing toolbar. The
-    // dictionary row sits above the list, so the toolbar inset is
-    // consumed by the column and only the remaining padding reaches the
-    // list.
-    Scaffold(
-        modifier = Modifier
-            .nestedScroll(scrollBehavior.nestedScrollConnection),
+    val navigation = LocalNavigationController.current
+    ScaffoldColumn(
+        topAppBarScrollBehavior = scrollBehavior,
         topBar = {
             LargeToolbar(
                 title = {
@@ -57,47 +58,29 @@ fun SettingsScreen(
                 scrollBehavior = scrollBehavior,
             )
         },
-        containerColor = MaterialTheme.colorScheme.surface,
-    ) { innerPadding ->
-        val layoutDirection = LocalLayoutDirection.current
-        // The scaffold insets are applied to the column once, so the row
-        // and the list share the same horizontal base. The dictionary row
-        // then indents by Dimens.horizontalPadding (16.dp), the same inset
-        // the library rows apply internally (LibraryDefaults row padding),
-        // keeping both columns of text aligned.
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .consumeWindowInsets(innerPadding)
-                .padding(
-                    top = innerPadding.calculateTopPadding(),
-                    start = innerPadding.calculateStartPadding(layoutDirection),
-                    end = innerPadding.calculateEndPadding(layoutDirection),
-                ),
-        ) {
-            val dictionary = (state.dictionary as? Loadable.Ok)?.value
-            if (dictionary != null) {
-                DictionaryRow(
-                    dictionary = dictionary,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = Dimens.horizontalPadding)
-                        .padding(top = Dimens.contentPadding),
-                )
-            }
-            when (val libraries = state.libraries) {
-                Loadable.Loading -> Unit
-                is Loadable.Ok -> SettingsLibraries(
-                    libraries = libraries.value,
-                    modifier = Modifier
-                        .fillMaxSize(),
-                    contentPadding = PaddingValues(
-                        top = Dimens.contentPadding,
-                        bottom = innerPadding.calculateBottomPadding() + Dimens.contentPadding,
-                    ),
-                )
-            }
+    ) {
+        val dictionary = (state.dictionary as? Loadable.Ok)?.value
+        if (dictionary != null) {
+            DictionaryRow(
+                dictionary = dictionary,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Dimens.horizontalPadding),
+            )
         }
+        CreditsSection(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = Dimens.verticalPadding),
+        )
+        LibrariesRow(
+            onClick = {
+                navigation.navigate(LibrariesRoute)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = Dimens.verticalPaddingHalf),
+        )
     }
 }
 
@@ -131,30 +114,144 @@ private fun Long.grouped(): String = toString()
     .joinToString(",")
     .reversed()
 
+/**
+ * The attribution section: the EDRDG conformance statement with its
+ * licence link, followed by one row per [CreditEntry]. Rendered from the
+ * credits manifest, never hardcoded prose.
+ */
 @Composable
-private fun SettingsLibraries(
-    libraries: Libs,
+private fun CreditsSection(
     modifier: Modifier = Modifier,
-    contentPadding: PaddingValues,
 ) {
-    if (libraries.libraries.isEmpty()) {
-        Box(
-            modifier = modifier
-                .padding(contentPadding),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = stringResource(Res.string.settings_libraries_empty),
+    val uriHandler = LocalUriHandler.current
+    Column(
+        modifier = modifier,
+    ) {
+        Text(
+            text = stringResource(Res.string.settings_credits_title),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .padding(horizontal = Dimens.horizontalPadding)
+                .semantics {
+                    heading()
+                },
+        )
+        Text(
+            text = stringResource(edrdgStatement),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier
+                .padding(horizontal = Dimens.horizontalPadding)
+                .padding(top = Dimens.topPaddingCaption),
+        )
+        creditEntries.forEach { entry ->
+            CreditRow(
+                entry = entry,
+                onClick = {
+                    uriHandler.openSafely(entry.licenceUrl)
+                },
+                modifier = Modifier
+                    .fillMaxWidth(),
             )
         }
-        return
     }
-    LibrariesContainer(
-        libraries = libraries,
-        modifier = modifier,
-        contentPadding = contentPadding,
-        colors = LibraryDefaults.libraryColors(
-            libraryBackgroundColor = MaterialTheme.colorScheme.surface,
-        ),
-    )
+}
+
+@Composable
+private fun CreditRow(
+    entry: CreditEntry,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .clickable(
+                onClickLabel = stringResource(Res.string.settings_credit_open_project),
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .padding(
+                horizontal = Dimens.horizontalPadding,
+                vertical = Dimens.verticalPaddingHalf,
+            ),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = entry.name,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier
+                    .weight(1f),
+            )
+            Text(
+                text = entry.licence,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Text(
+            text = stringResource(entry.usage),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        val detail = entry.detail
+        if (detail != null) {
+            Text(
+                text = detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun LibrariesRow(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .clickable(
+                onClickLabel = stringResource(Res.string.settings_libraries_open),
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .padding(
+                horizontal = Dimens.horizontalPadding,
+                vertical = Dimens.verticalPaddingHalf,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(Res.string.libraries_title),
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier
+                .weight(1f),
+        )
+        Icon(
+            imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+            contentDescription = null,
+        )
+    }
+}
+
+/**
+ * Opens the URL in the browser. The failure is swallowed deliberately:
+ * a device without a browser must never crash the screen, and the app
+ * has no logging or snackbar infrastructure yet to surface it, so the
+ * tap simply has no effect.
+ */
+private fun UriHandler.openSafely(uri: String) {
+    try {
+        openUri(uri)
+    } catch (e: Exception) {
+        // Deliberately swallowed, see above.
+    }
 }

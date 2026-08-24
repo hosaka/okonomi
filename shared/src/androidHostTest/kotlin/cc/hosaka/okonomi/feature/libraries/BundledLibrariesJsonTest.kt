@@ -1,4 +1,4 @@
-package cc.hosaka.okonomi.feature.settings
+package cc.hosaka.okonomi.feature.libraries
 
 import com.mikepenz.aboutlibraries.Libs
 import java.io.File

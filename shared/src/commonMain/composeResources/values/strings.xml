@@ -6,7 +6,21 @@
     <string name="search_placeholder">Search</string>
     <string name="search_clear">Clear</string>
     <string name="settings_title">Settings</string>
-    <string name="settings_libraries_empty">No libraries found</string>
     <string name="settings_dictionary_label">Dictionary</string>
     <string name="settings_dictionary_value">JMdict %1$s · %2$s entries</string>
+    <string name="settings_credits_title">Credits</string>
+    <string name="settings_credits_edrdg_statement">The JMdict, JMnedict, KANJIDIC2 and RADKFILE files are the property of the Electronic Dictionary Research and Development Group, and are used in conformance with the Group's licence.</string>
+    <string name="settings_credits_edrdg_licence_link">EDRDG licence</string>
+    <string name="settings_credits_open_licence">Open licence page</string>
+    <string name="settings_credit_open_project">Open project page</string>
+    <string name="settings_credit_usage_jmdict">Japanese–English dictionary entries</string>
+    <string name="settings_credit_usage_jmnedict">Japanese proper name entries</string>
+    <string name="settings_credit_usage_kanjidic">Kanji readings and meanings</string>
+    <string name="settings_credit_usage_radkfile">Kanji radical decomposition data</string>
+    <string name="settings_credit_usage_yomitan">Deinflection engine and rule data</string>
+    <string name="settings_libraries_open">Open libraries list</string>
+    <string name="libraries_title">Open source libraries</string>
+    <string name="libraries_back">Back</string>
+    <string name="libraries_empty">No libraries found</string>
+    <string name="libraries_error">The libraries list could not be loaded</string>
 </resources>
