@@ -31,6 +31,7 @@ class DbWriterEntryRankTest {
         pos = "n",
         misc = null,
         field = null,
+        dial = null,
         info = null,
         restrictions = null,
         glosses = glosses.toList(),

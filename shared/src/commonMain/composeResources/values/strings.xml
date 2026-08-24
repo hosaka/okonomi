@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">okonomi</string>
+    <string name="common_word_badge">common</string>
     <string name="home_search_label">Search</string>
     <string name="home_settings_label">Settings</string>
     <string name="search_placeholder">Search</string>
@@ -8,10 +9,18 @@
     <string name="search_no_results">No results</string>
     <string name="search_results_fallback">No exact matches — showing the closest entries</string>
     <string name="search_error">Search is unavailable right now. Keep typing to retry.</string>
-    <string name="search_common_badge">common</string>
-    <string name="entry_title">Entry</string>
     <string name="entry_back">Back</string>
-    <string name="entry_coming_soon">Word details for entry %1$s are coming soon</string>
+    <string name="entry_tab_word">Word</string>
+    <string name="entry_tab_kanji">Kanji</string>
+    <string name="entry_tab_forms">Forms</string>
+    <string name="entry_tab_phrases">Phrases</string>
+    <string name="entry_tab_placeholder">Coming in a later update</string>
+    <string name="entry_section_reading">Reading</string>
+    <string name="entry_section_english">English</string>
+    <string name="entry_alternate_forms">also written %1$s</string>
+    <string name="entry_restriction">only applies to %1$s</string>
+    <string name="entry_error">This entry could not be loaded</string>
+    <string name="entry_retry">Try again</string>
     <string name="settings_title">Settings</string>
     <string name="settings_dictionary_label">Dictionary</string>
     <string name="settings_dictionary_value">JMdict %1$s · %2$s entries</string>

@@ -29,6 +29,7 @@ fun produceSearchScreenState(): State<SearchState> = produceScreenState(
 @OptIn(ExperimentalCoroutinesApi::class)
 suspend fun ScreenStateScope.searchScreenStateProducer(
     search: suspend (String) -> SearchResults = { searchEntries(it) },
+    invalidate: suspend () -> Unit = { invalidateDictionary() },
 ): Flow<SearchState> {
     val querySink = mutablePersistedFlow(
         key = "query",
@@ -45,7 +46,7 @@ suspend fun ScreenStateScope.searchScreenStateProducer(
                 emit(SearchResultsState.Idle)
             } else {
                 delay(searchDebounce)
-                emit(runSearch(search, query))
+                emit(runSearch(search, invalidate, query))
             }
         }
         // combine waits for every source, so without a value up front a
@@ -74,6 +75,7 @@ suspend fun ScreenStateScope.searchScreenStateProducer(
 
 private suspend fun runSearch(
     search: suspend (String) -> SearchResults,
+    invalidate: suspend () -> Unit,
     query: String,
 ): SearchResultsState = try {
     val results = search(query)
@@ -96,7 +98,7 @@ private suspend fun runSearch(
     // fix a bad argument or a broken invariant, and throwing the
     // handle away would turn one bug into a reprovisioning storm.
     if (e !is IllegalArgumentException && e !is IllegalStateException) {
-        runCatching { invalidateDictionary() }
+        runCatching { invalidate() }
     }
     SearchResultsState.Error(query)
 }

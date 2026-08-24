@@ -35,10 +35,38 @@ internal class XmlSource(file: File) : AutoCloseable {
     }
 }
 
-internal fun XMLStreamReader.declaredEntityNames(): Set<String> {
+/**
+ * What a source's DTD declared. [names] is every entity name, which is
+ * what entity references are validated against; [labels] maps the
+ * subset that carries usable replacement text to it. The two are
+ * deliberately separate: an entity without replacement text is still a
+ * declared entity, and treating it as undeclared would fail generation
+ * over a missing label.
+ *
+ * The names are the short codes the schema stores (`v1`, `fem`, ...)
+ * and the expansions their human-readable meanings, which the app shows
+ * as chip labels. A name declared twice keeps its first declaration,
+ * which is the one XML considers effective.
+ */
+internal class DeclaredEntities(
+    val names: Set<String>,
+    val labels: Map<String, String>,
+)
+
+internal fun XMLStreamReader.declaredEntities(): DeclaredEntities {
     @Suppress("UNCHECKED_CAST")
     val entities = getProperty("javax.xml.stream.entities") as? List<EntityDeclaration>
-    return entities.orEmpty().mapNotNull { it.name }.toSet()
+    val names = LinkedHashSet<String>()
+    val labels = LinkedHashMap<String, String>()
+    entities.orEmpty().forEach { entity ->
+        val name = entity.name ?: return@forEach
+        names += name
+        val text = entity.replacementText?.trim().orEmpty()
+        if (text.isNotEmpty() && name !in labels) {
+            labels[name] = text
+        }
+    }
+    return DeclaredEntities(names, labels)
 }
 
 internal class ElementContent(val text: String, val codes: List<String>)

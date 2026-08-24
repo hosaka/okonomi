@@ -296,7 +296,10 @@ class SearchStateProducerTest {
     fun `a programming error does not drop the shared handle`() = runTest {
         val scope = FakeScreenStateScope()
         val states = collectStates(
-            scope.searchScreenStateProducer(search = { throw IllegalArgumentException("limit must be positive") }),
+            scope.searchScreenStateProducer(
+                search = { throw IllegalArgumentException("limit must be positive") },
+                invalidate = { throw AssertionError("the handle must survive a programming error") },
+            ),
         )
 
         states.last().onQueryChange!!.invoke("たべ")
@@ -305,6 +308,24 @@ class SearchStateProducerTest {
         // Still a non-crashing error state; reopening the database
         // cannot fix a bad argument, so the handle must survive.
         assertEquals(SearchResultsState.Error(query = "たべ"), states.last().results)
+    }
+
+    @Test
+    fun `a database failure drops the shared handle so the next query reopens it`() = runTest {
+        val scope = FakeScreenStateScope()
+        var invalidations = 0
+        val states = collectStates(
+            scope.searchScreenStateProducer(
+                search = { throw RuntimeException("database gone") },
+                invalidate = { invalidations++ },
+            ),
+        )
+
+        states.last().onQueryChange!!.invoke("たべ")
+        settle()
+
+        assertEquals(SearchResultsState.Error(query = "たべ"), states.last().results)
+        assertEquals(1, invalidations)
     }
 
     @Test

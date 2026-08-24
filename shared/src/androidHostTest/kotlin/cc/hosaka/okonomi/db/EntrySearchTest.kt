@@ -48,28 +48,28 @@ class EntrySearchTest {
         db.entryQueries.insertEntry(1, 125, 1)
         db.entryQueries.insertKanjiForm(1, 0, "食べる", 125, 1)
         db.entryQueries.insertReading(1, 0, "たべる", 0, 125, null, 1)
-        db.entryQueries.insertSense(10, 1, 0, "v1,vt", null, null, null, null)
+        db.entryQueries.insertSense(10, 1, 0, "v1,vt", null, null, null, null, null)
         db.entryQueries.insertGloss(10, 0, "to eat")
-        db.entryQueries.insertSense(11, 1, 1, "v1,vt", null, null, null, null)
+        db.entryQueries.insertSense(11, 1, 1, "v1,vt", null, null, null, null, null)
         db.entryQueries.insertGloss(11, 0, "to live on")
 
         db.entryQueries.insertEntry(2, 145, 1)
         db.entryQueries.insertKanjiForm(2, 0, "食べ物", 145, 1)
         db.entryQueries.insertReading(2, 0, "たべもの", 0, 145, null, 1)
-        db.entryQueries.insertSense(20, 2, 0, "n", null, null, null, null)
+        db.entryQueries.insertSense(20, 2, 0, "n", null, null, null, null, null)
         db.entryQueries.insertGloss(20, 0, "food")
         db.entryQueries.insertGloss(20, 1, "foodstuff")
 
         db.entryQueries.insertEntry(3, 950, 0)
         db.entryQueries.insertKanjiForm(3, 0, "食べ歩き", 950, 0)
         db.entryQueries.insertReading(3, 0, "たべあるき", 0, 950, null, 0)
-        db.entryQueries.insertSense(30, 3, 0, "n", null, null, null, null)
+        db.entryQueries.insertSense(30, 3, 0, "n", null, null, null, null, null)
         db.entryQueries.insertGloss(30, 0, "trying the food at various restaurants")
-        db.entryQueries.insertSense(31, 3, 1, "n", null, null, null, null)
+        db.entryQueries.insertSense(31, 3, 1, "n", null, null, null, null, null)
         db.entryQueries.insertGloss(31, 0, "gourmet food tour")
-        db.entryQueries.insertSense(32, 3, 2, "n", null, null, null, null)
+        db.entryQueries.insertSense(32, 3, 2, "n", null, null, null, null, null)
         db.entryQueries.insertGloss(32, 0, "eating while walking")
-        db.entryQueries.insertSense(33, 3, 3, "n", null, null, null, null)
+        db.entryQueries.insertSense(33, 3, 3, "n", null, null, null, null, null)
         db.entryQueries.insertGloss(33, 0, "restaurant hopping")
 
         // Homograph of 食べる that is not a verb: a deinflection
@@ -77,7 +77,7 @@ class EntrySearchTest {
         db.entryQueries.insertEntry(4, 950, 0)
         db.entryQueries.insertKanjiForm(4, 0, "食べる", 950, 0)
         db.entryQueries.insertReading(4, 0, "はむ", 0, 950, null, 0)
-        db.entryQueries.insertSense(40, 4, 0, "n", null, null, null, null)
+        db.entryQueries.insertSense(40, 4, 0, "n", null, null, null, null, null)
         db.entryQueries.insertGloss(40, 0, "fictional noun homograph")
 
         // More common than 食べる, prefix-matches 食べた: the
@@ -85,7 +85,7 @@ class EntrySearchTest {
         db.entryQueries.insertEntry(6, 105, 1)
         db.entryQueries.insertKanjiForm(6, 0, "食べた口", 105, 1)
         db.entryQueries.insertReading(6, 0, "たべたくち", 0, 105, null, 1)
-        db.entryQueries.insertSense(60, 6, 0, "n", null, null, null, null)
+        db.entryQueries.insertSense(60, 6, 0, "n", null, null, null, null, null)
         db.entryQueries.insertGloss(60, 0, "fictional test noun")
         db.entryQueries.insertGloss(60, 1, "café drink")
 
@@ -412,15 +412,15 @@ class EntrySearchTest {
         // Same commonness; only the position of the café gloss differs.
         db.entryQueries.insertEntry(400, 125, 1)
         db.entryQueries.insertReading(400, 0, "カフェいち", 1, 125, null, 1)
-        db.entryQueries.insertSense(4000, 400, 0, "n", null, null, null, null)
+        db.entryQueries.insertSense(4000, 400, 0, "n", null, null, null, null, null)
         db.entryQueries.insertGloss(4000, 0, "café one")
 
         db.entryQueries.insertEntry(401, 125, 1)
         db.entryQueries.insertReading(401, 0, "カフェに", 1, 125, null, 1)
-        db.entryQueries.insertSense(4010, 401, 0, "n", null, null, null, null)
+        db.entryQueries.insertSense(4010, 401, 0, "n", null, null, null, null, null)
         db.entryQueries.insertGloss(4010, 0, "unrelated gloss")
         db.entryQueries.insertGloss(4010, 1, "unrelated gloss two")
-        db.entryQueries.insertSense(4011, 401, 1, "n", null, null, null, null)
+        db.entryQueries.insertSense(4011, 401, 1, "n", null, null, null, null, null)
         db.entryQueries.insertGloss(4011, 0, "café two")
 
         driver.execute(null, "INSERT INTO gloss_fts(gloss_fts) VALUES('rebuild')", 0).await()
@@ -473,12 +473,12 @@ class EntrySearchTest {
         (1000L until 1500L).forEach { id ->
             db.entryQueries.insertEntry(id, 125, 1)
             db.entryQueries.insertReading(id, 0, "だみー$id", 1, 125, null, 1)
-            db.entryQueries.insertSense(id * 10, id, 2, "n", null, null, null, null)
+            db.entryQueries.insertSense(id * 10, id, 2, "n", null, null, null, null, null)
             db.entryQueries.insertGloss(id * 10, 5, "filler $id, something to eat")
         }
         db.entryQueries.insertEntry(2000, 950, 0)
         db.entryQueries.insertReading(2000, 0, "たべる", 1, 950, null, 0)
-        db.entryQueries.insertSense(20000, 2000, 0, "v1", null, null, null, null)
+        db.entryQueries.insertSense(20000, 2000, 0, "v1", null, null, null, null, null)
         db.entryQueries.insertGloss(20000, 0, "to eat")
         driver.execute(null, "INSERT INTO gloss_fts(gloss_fts) VALUES('rebuild')", 0).await()
         val database = DictionaryDatabase(db, driver).also { openedDatabases += it }
@@ -519,17 +519,17 @@ class EntrySearchTest {
         db.entryQueries.insertEntry(300, 125, 1)
         db.entryQueries.insertKanjiForm(300, 0, "食べる", 125, 1)
         db.entryQueries.insertReading(300, 0, "たべる", 0, 125, null, 1)
-        db.entryQueries.insertSense(3000, 300, 0, "v1", null, null, null, null)
+        db.entryQueries.insertSense(3000, 300, 0, "v1", null, null, null, null, null)
         db.entryQueries.insertGloss(3000, 0, "to eat")
 
         db.entryQueries.insertEntry(301, 125, 1)
         db.entryQueries.insertKanjiForm(301, 0, "遣る", 125, 1)
         db.entryQueries.insertReading(301, 0, "やる", 0, 125, null, 1)
         (0L until 5L).forEach { ord ->
-            db.entryQueries.insertSense(3010 + ord, 301, ord, "v5r", null, null, null, null)
+            db.entryQueries.insertSense(3010 + ord, 301, ord, "v5r", null, null, null, null, null)
             db.entryQueries.insertGloss(3010 + ord, 0, "to do sense $ord")
         }
-        db.entryQueries.insertSense(3015, 301, 5, "v5r", null, null, null, null)
+        db.entryQueries.insertSense(3015, 301, 5, "v5r", null, null, null, null, null)
         db.entryQueries.insertGloss(3015, 0, "to smoke")
         db.entryQueries.insertGloss(3015, 1, "to drink")
         db.entryQueries.insertGloss(3015, 2, "to eat")
@@ -537,13 +537,13 @@ class EntrySearchTest {
         db.entryQueries.insertEntry(302, 218, 1)
         db.entryQueries.insertKanjiForm(302, 0, "喫する", 218, 1)
         db.entryQueries.insertReading(302, 0, "きっする", 0, 218, null, 1)
-        db.entryQueries.insertSense(3020, 302, 0, "vs-s", null, null, null, null)
+        db.entryQueries.insertSense(3020, 302, 0, "vs-s", null, null, null, null, null)
         db.entryQueries.insertGloss(3020, 0, "to eat")
 
         db.entryQueries.insertEntry(303, 125, 1)
         db.entryQueries.insertKanjiForm(303, 0, "一口食う", 125, 1)
         db.entryQueries.insertReading(303, 0, "ひとくちくう", 0, 125, null, 1)
-        db.entryQueries.insertSense(3030, 303, 0, "v5u", null, null, null, null)
+        db.entryQueries.insertSense(3030, 303, 0, "v5u", null, null, null, null, null)
         db.entryQueries.insertGloss(3030, 0, "to have a bite to eat")
 
         // The obscurities that outranked 食べる on the device: their
@@ -552,12 +552,12 @@ class EntrySearchTest {
         db.entryQueries.insertEntry(304, 950, 0)
         db.entryQueries.insertKanjiForm(304, 0, "食言", 950, 0)
         db.entryQueries.insertReading(304, 0, "しょくげん", 0, 950, null, 0)
-        db.entryQueries.insertSense(3040, 304, 0, "n", null, null, null, null)
+        db.entryQueries.insertSense(3040, 304, 0, "n", null, null, null, null, null)
         db.entryQueries.insertGloss(3040, 0, "eat one's words")
 
         db.entryQueries.insertEntry(305, 950, 0)
         db.entryQueries.insertReading(305, 0, "ディーケー", 1, 950, null, 0)
-        db.entryQueries.insertSense(3050, 305, 0, "n", null, null, null, null)
+        db.entryQueries.insertSense(3050, 305, 0, "n", null, null, null, null, null)
         db.entryQueries.insertGloss(3050, 0, "eat-in kitchen")
 
         driver.execute(null, "INSERT INTO gloss_fts(gloss_fts) VALUES('rebuild')", 0).await()

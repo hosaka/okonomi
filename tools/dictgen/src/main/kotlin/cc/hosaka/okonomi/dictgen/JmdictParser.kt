@@ -19,10 +19,27 @@ data class JmdictSense(
     val pos: String?,
     val misc: String?,
     val field: String?,
+    val dial: String?,
     val info: String?,
     val restrictions: String?,
     val glosses: List<String>,
 )
+
+/**
+ * How repeated values are folded into the single columns the schema
+ * stores. The app splits on exactly these, so the two ends are named
+ * here rather than spelled out at each join.
+ */
+internal object StoredFormat {
+    /** Short codes: pos, misc, field, dial, name_type. */
+    const val CODES = ","
+
+    /** Restrictions: re_restr, stagk and stagr. */
+    const val RESTRICTIONS = ";"
+
+    /** Free text that is concatenated rather than listed: s_inf, trans_det. */
+    const val TEXT = "; "
+}
 
 data class JmdictEntry(
     val id: Long,
@@ -33,6 +50,14 @@ data class JmdictEntry(
 
 class JmdictParser(private val file: File) {
 
+    /**
+     * The DTD's entity expansions (code to label), filled while [parse]
+     * runs and empty before it. They are the source of the `tag_label`
+     * rows the app reads its chip labels from.
+     */
+    var entityLabels: Map<String, String> = emptyMap()
+        private set
+
     fun parse(onEntry: (JmdictEntry) -> Unit) {
         XmlSource(file).use { source ->
             val reader = source.reader
@@ -40,7 +65,11 @@ class JmdictParser(private val file: File) {
             try {
                 while (reader.hasNext()) {
                     when (reader.next()) {
-                        XMLStreamConstants.DTD -> declared = reader.declaredEntityNames()
+                        XMLStreamConstants.DTD -> {
+                            val entities = reader.declaredEntities()
+                            entityLabels = entities.labels
+                            declared = entities.names
+                        }
                         XMLStreamConstants.START_ELEMENT ->
                             if (reader.localName == "entry") onEntry(readEntry(reader, declared))
                     }
@@ -132,7 +161,7 @@ class JmdictParser(private val file: File) {
                         noKanji = noKanji,
                         commonRank = PriorityRank.rank(priorities),
                         isCommon = PriorityRank.isCommon(priorities),
-                        restrictions = restrictions.joinToString(";").ifEmpty { null },
+                        restrictions = restrictions.joinToString(StoredFormat.RESTRICTIONS).ifEmpty { null },
                     )
                 }
             }
@@ -143,6 +172,7 @@ class JmdictParser(private val file: File) {
         val pos = mutableListOf<String>()
         val misc = mutableListOf<String>()
         val field = mutableListOf<String>()
+        val dialects = mutableListOf<String>()
         val infos = mutableListOf<String>()
         val restrictions = mutableListOf<String>()
         val glosses = mutableListOf<String>()
@@ -152,6 +182,7 @@ class JmdictParser(private val file: File) {
                     "pos" -> pos += r.readElementContent(declared, file.name).codes
                     "misc" -> misc += r.readElementContent(declared, file.name).codes
                     "field" -> field += r.readElementContent(declared, file.name).codes
+                    "dial" -> dialects += r.readElementContent(declared, file.name).codes
                     "s_inf" -> infos += r.readElementContent(declared, file.name).text
                     "stagk", "stagr" -> restrictions += r.readElementContent(declared, file.name).text
                     "gloss" -> {
@@ -164,11 +195,12 @@ class JmdictParser(private val file: File) {
                 }
                 XMLStreamConstants.END_ELEMENT -> if (r.localName == "sense") {
                     return JmdictSense(
-                        pos = pos.joinToString(",").ifEmpty { null },
-                        misc = misc.joinToString(",").ifEmpty { null },
-                        field = field.joinToString(",").ifEmpty { null },
-                        info = infos.joinToString("; ").ifEmpty { null },
-                        restrictions = restrictions.joinToString(";").ifEmpty { null },
+                        pos = pos.joinToString(StoredFormat.CODES).ifEmpty { null },
+                        misc = misc.joinToString(StoredFormat.CODES).ifEmpty { null },
+                        field = field.joinToString(StoredFormat.CODES).ifEmpty { null },
+                        dial = dialects.joinToString(StoredFormat.CODES).ifEmpty { null },
+                        info = infos.joinToString(StoredFormat.TEXT).ifEmpty { null },
+                        restrictions = restrictions.joinToString(StoredFormat.RESTRICTIONS).ifEmpty { null },
                         glosses = glosses,
                     )
                 }

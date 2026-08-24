@@ -15,6 +15,10 @@ data class NameRow(
 
 class JmnedictParser(private val file: File) {
 
+    /** See [JmdictParser.entityLabels]: JMnedict's name_type codes. */
+    var entityLabels: Map<String, String> = emptyMap()
+        private set
+
     fun parse(onRow: (NameRow) -> Unit) {
         XmlSource(file).use { source ->
             val reader = source.reader
@@ -22,7 +26,11 @@ class JmnedictParser(private val file: File) {
             try {
                 while (reader.hasNext()) {
                     when (reader.next()) {
-                        XMLStreamConstants.DTD -> declared = reader.declaredEntityNames()
+                        XMLStreamConstants.DTD -> {
+                            val entities = reader.declaredEntities()
+                            entityLabels = entities.labels
+                            declared = entities.names
+                        }
                         XMLStreamConstants.START_ELEMENT ->
                             if (reader.localName == "entry") readEntry(reader, declared, onRow)
                     }
@@ -81,7 +89,7 @@ class JmnedictParser(private val file: File) {
                 }
                 XMLStreamConstants.END_ELEMENT -> if (r.localName == "trans") {
                     if (details.isEmpty()) return null
-                    return types.joinToString(",") to details.joinToString("; ")
+                    return types.joinToString(StoredFormat.CODES) to details.joinToString(StoredFormat.TEXT)
                 }
             }
         }

@@ -32,6 +32,9 @@ CREATE TABLE reading (
 CREATE INDEX reading_text_idx ON reading(text);
 CREATE INDEX reading_entry_idx ON reading(entry_id);
 
+-- pos, misc, field and dial hold comma-joined short codes that resolve
+-- through tag_label; restrictions holds semicolon-joined stagk/stagr
+-- values. See StoredValues.kt for the split rules.
 CREATE TABLE sense (
     id INTEGER PRIMARY KEY,
     entry_id INTEGER NOT NULL REFERENCES entry(id),
@@ -39,6 +42,7 @@ CREATE TABLE sense (
     pos TEXT,
     misc TEXT,
     field TEXT,
+    dial TEXT,
     info TEXT,
     restrictions TEXT
 );
@@ -70,7 +74,7 @@ insertReading:
 INSERT INTO reading(entry_id, ord, text, no_kanji, common_rank, restrictions, is_common) VALUES (?, ?, ?, ?, ?, ?, ?);
 
 insertSense:
-INSERT INTO sense(id, entry_id, ord, pos, misc, field, info, restrictions) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO sense(id, entry_id, ord, pos, misc, field, dial, info, restrictions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 insertGloss:
 INSERT INTO gloss(sense_id, ord, text) VALUES (?, ?, ?);
@@ -83,6 +87,11 @@ SELECT id, common_rank, is_common
 FROM entry
 WHERE id IN :ids;
 
+entryById:
+SELECT id, common_rank, is_common
+FROM entry
+WHERE id = :id;
+
 entryCount:
 SELECT COUNT(*) FROM entry;
 
@@ -90,7 +99,7 @@ glossCount:
 SELECT COUNT(*) FROM gloss;
 
 readingsForEntry:
-SELECT ord, text, no_kanji, common_rank, restrictions FROM reading WHERE entry_id = :entryId ORDER BY ord;
+SELECT ord, text, no_kanji, common_rank, restrictions, is_common FROM reading WHERE entry_id = :entryId ORDER BY ord;
 
 -- The range form is BINARY-collated: unlike the removed LIKE queries,
 -- ASCII letters in stored text match case-sensitively (accepted, rare).
@@ -139,6 +148,14 @@ SELECT id, entry_id, ord, pos
 FROM sense
 WHERE entry_id IN :ids
 ORDER BY entry_id, ord;
+
+-- The entry view needs every code and note a sense carries, which the
+-- search's pool-sized sensesForEntries deliberately does not select.
+sensesForEntry:
+SELECT id, ord, pos, misc, field, dial, info, restrictions
+FROM sense
+WHERE entry_id = :entryId
+ORDER BY ord;
 
 glossesForEntries:
 SELECT s.entry_id, g.sense_id, g.ord, g.text

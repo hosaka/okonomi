@@ -1,10 +1,21 @@
 package cc.hosaka.okonomi.feature.home
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -22,12 +33,14 @@ import androidx.compose.material3.WideNavigationRail
 import androidx.compose.material3.WideNavigationRailItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.NavBackStack
@@ -46,6 +59,7 @@ import cc.hosaka.okonomi.feature.home.navigation.HomeSelectAction
 import cc.hosaka.okonomi.feature.home.navigation.LocalHomeReselect
 import cc.hosaka.okonomi.feature.home.navigation.homeNavigationItems
 import cc.hosaka.okonomi.feature.home.navigation.homeSelectAction
+import cc.hosaka.okonomi.feature.home.navigation.isAtRoot
 import cc.hosaka.okonomi.feature.home.navigation.popToRootCount
 import cc.hosaka.okonomi.feature.home.navigation.rememberHomeSelectionState
 import cc.hosaka.okonomi.feature.navigation.BackStackNavigationController
@@ -54,6 +68,13 @@ import cc.hosaka.okonomi.feature.navigation.NavigationController
 import cc.hosaka.okonomi.feature.navigation.navigationSavedStateConfiguration
 import cc.hosaka.okonomi.feature.navigation.routeEntryProvider
 import org.jetbrains.compose.resources.stringResource
+
+/**
+ * How long the navigation affordance takes to get out of a pushed
+ * screen's way. The consumed bottom inset animates on the same tween,
+ * so the content never jumps by the inset height mid-transition.
+ */
+private const val NAVIGATION_ANIMATION_MILLIS = 220
 
 /**
  * The shell of the app: a navigation bar (portrait) or a navigation
@@ -115,6 +136,11 @@ fun HomeScreen(
         },
     )
 
+    // A pushed screen owns the whole window: the shell's own navigation
+    // affordance animates away while the active section is deeper than
+    // its root and comes back when the stack pops to it.
+    val showNavigation = isAtRoot(selectedSection.depth)
+
     ResponsiveLayout {
         val horizontalInsets = WindowInsets.systemBars
             .union(WindowInsets.displayCutout)
@@ -125,42 +151,66 @@ fun HomeScreen(
         ) {
             val layout = LocalHomeLayout.current
             if (layout is HomeLayout.Horizontal) {
-                HomeNavigationRail(
-                    items = items,
-                    selectedItem = selectedItem,
-                    onSelect = onSelect,
-                )
+                AnimatedVisibility(
+                    visible = showNavigation,
+                    enter = expandHorizontally(tween(NAVIGATION_ANIMATION_MILLIS)) +
+                        fadeIn(tween(NAVIGATION_ANIMATION_MILLIS)),
+                    exit = shrinkHorizontally(tween(NAVIGATION_ANIMATION_MILLIS)) +
+                        fadeOut(tween(NAVIGATION_ANIMATION_MILLIS)),
+                ) {
+                    HomeNavigationRail(
+                        items = items,
+                        selectedItem = selectedItem,
+                        onSelect = onSelect,
+                        enabled = showNavigation,
+                    )
+                }
             }
             Column(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight(),
             ) {
-                val bottomInsets = WindowInsets.systemBars
+                val bottomInset = WindowInsets.systemBars
                     .union(WindowInsets.displayCutout)
                     .only(WindowInsetsSides.Bottom)
+                    .asPaddingValues()
+                    .calculateBottomPadding()
+                // The bar below handles the bottom insets while it is
+                // there; with it gone the pushed screen owns that edge and
+                // needs them back. Handing them over in the same tween the
+                // bar animates in keeps the content from jumping by the
+                // inset height at either end of the transition.
+                val consumedBottom by animateDpAsState(
+                    targetValue = if (layout is HomeLayout.Vertical && showNavigation) bottomInset else 0.dp,
+                    animationSpec = tween(NAVIGATION_ANIMATION_MILLIS),
+                    label = "consumed bottom inset",
+                )
                 HomeNavigationContent(
                     section = selectedSection,
                     reselectCount = selection.reselectionsOf(selectedItem.key),
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .then(
-                            if (layout is HomeLayout.Vertical) {
-                                // The bottom navigation bar sits below the
-                                // content and handles these insets itself.
-                                Modifier.consumeWindowInsets(bottomInsets)
-                            } else {
-                                Modifier
-                            },
-                        ),
+                        .consumeWindowInsets(PaddingValues(bottom = consumedBottom)),
                 )
                 if (layout is HomeLayout.Vertical) {
-                    HomeNavigationBar(
-                        items = items,
-                        selectedItem = selectedItem,
-                        onSelect = onSelect,
-                    )
+                    AnimatedVisibility(
+                        visible = showNavigation,
+                        enter = expandVertically(tween(NAVIGATION_ANIMATION_MILLIS)) +
+                            fadeIn(tween(NAVIGATION_ANIMATION_MILLIS)),
+                        exit = shrinkVertically(tween(NAVIGATION_ANIMATION_MILLIS)) +
+                            fadeOut(tween(NAVIGATION_ANIMATION_MILLIS)),
+                    ) {
+                        HomeNavigationBar(
+                            items = items,
+                            selectedItem = selectedItem,
+                            onSelect = onSelect,
+                            // A bar on its way out must not switch section
+                            // under the screen that just pushed over it.
+                            enabled = showNavigation,
+                        )
+                    }
                 }
             }
         }
@@ -242,6 +292,7 @@ private fun HomeNavigationRail(
     items: List<HomeNavigationItem>,
     selectedItem: HomeNavigationItem,
     onSelect: (HomeNavigationItem) -> Unit,
+    enabled: Boolean = true,
 ) {
     val verticalInsets = WindowInsets.systemBars
         .union(WindowInsets.displayCutout)
@@ -271,6 +322,7 @@ private fun HomeNavigationRail(
                     },
                     selected = selected,
                     railExpanded = false,
+                    enabled = enabled,
                     onClick = {
                         onSelect(item)
                     },
@@ -285,6 +337,7 @@ private fun HomeNavigationBar(
     items: List<HomeNavigationItem>,
     selectedItem: HomeNavigationItem,
     onSelect: (HomeNavigationItem) -> Unit,
+    enabled: Boolean = true,
 ) {
     ShortNavigationBar {
         items.forEach { item ->
@@ -310,6 +363,7 @@ private fun HomeNavigationBar(
                         )
                     },
                     selected = selected,
+                    enabled = enabled,
                     onClick = {
                         onSelect(item)
                     },

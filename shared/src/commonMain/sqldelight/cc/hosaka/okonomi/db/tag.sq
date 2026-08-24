@@ -1,0 +1,21 @@
+-- Display labels for the short codes the dictionary stores on senses
+-- and name entries (JMdict pos/misc/field/dial, JMnedict name_type).
+-- dictgen fills the table straight from the source DTDs' entity
+-- declarations, in the source's own casing, so a release that adds a
+-- code needs no app change; a code the table does not know is shown
+-- verbatim, and the entry view lowercases what it renders.
+CREATE TABLE tag_label (
+    code TEXT NOT NULL PRIMARY KEY,
+    label TEXT NOT NULL
+);
+
+-- Belt and braces: the first-wins union across the two DTDs is settled
+-- in dictgen's mergedEntities, so this insert never actually collides.
+insertTagLabel:
+INSERT OR IGNORE INTO tag_label(code, label) VALUES (?, ?);
+
+labelsForCodes:
+SELECT code, label FROM tag_label WHERE code IN :codes;
+
+tagLabelCount:
+SELECT COUNT(*) FROM tag_label;

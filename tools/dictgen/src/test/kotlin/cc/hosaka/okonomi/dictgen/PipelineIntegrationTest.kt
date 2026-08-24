@@ -31,6 +31,8 @@ class PipelineIntegrationTest {
         assertEquals(1L, summary.counts["kanji"])
         assertEquals(2L, summary.counts["radicals"])
         assertEquals(1L, summary.counts["names"])
+        // Five JMdict entities plus JMnedict's one.
+        assertEquals(6L, summary.counts["tags"])
         assertTrue(summary.sizeBytes > 0)
         return out
     }
@@ -118,13 +120,63 @@ class PipelineIntegrationTest {
     }
 
     @Test
+    fun populatesTagLabelsFromBothDtdsInTheSourceCasing() {
+        withDb(generate()) { db ->
+            val labels = db.tagQueries
+                .labelsForCodes(listOf("v1", "vt", "uk", "food", "ksb", "fem", "nonsense"))
+                .executeAsList()
+                .associate { it.code to it.label }
+            assertEquals(
+                mapOf(
+                    // Casing is the source's: lowercasing is the entry
+                    // view's presentation choice, not the file's.
+                    "v1" to "Ichidan verb",
+                    "vt" to "transitive verb",
+                    "uk" to "word usually written using kana alone",
+                    "food" to "food, cooking",
+                    "ksb" to "Kansai-ben",
+                    // JMnedict's DTD is unioned in, so name types resolve too.
+                    "fem" to "female given name or forename",
+                ),
+                labels,
+                "entity expansions should be stored verbatim, unknown codes absent",
+            )
+            assertEquals(6L, db.tagQueries.tagLabelCount().executeAsOne())
+        }
+    }
+
+    @Test
+    fun persistsSenseCodesAndRestrictions() {
+        withDb(generate()) { db ->
+            val senses = db.entryQueries.sensesForEntry(1358280L).executeAsList()
+            assertEquals("v1,vt", senses[0].pos)
+            assertEquals("food", senses[0].field_)
+            assertEquals("ksb", senses[0].dial)
+            assertEquals("食べる", senses[0].restrictions)
+            assertEquals("たべる;タベル", senses[1].restrictions)
+            assertEquals("colloquial", senses[1].info)
+        }
+    }
+
+    @Test
+    fun mergedEntitiesKeepsTheFirstSourcesWording() {
+        val merged = mergedEntities(
+            mapOf("m-sl" to "manga slang"),
+            mapOf("m-sl" to "manga slang (names)", "fem" to "female given name"),
+        )
+        assertEquals(mapOf("m-sl" to "manga slang", "fem" to "female given name"), merged)
+    }
+
+    @Test
     fun schemaAndFormatVersionsArePinned() {
         // Literals on purpose: every other assertion here compares a
         // version to itself and would pass at any value. Both counters
-        // start at 1 pre-release; the first shipped release freezes
-        // them, and every later data change must move one of them.
+        // started at 1 pre-release; the schema version only moves with
+        // the DDL (the read-only database is regenerated, never
+        // migrated), so the tag_label increment moved the format
+        // version alone.
         assertEquals(1L, OkonomiDb.Schema.version)
-        assertEquals(1, DICTIONARY_FORMAT_VERSION)
+        assertEquals(2, DICTIONARY_FORMAT_VERSION)
     }
 
     @Test
@@ -152,7 +204,7 @@ class PipelineIntegrationTest {
         assertTrue(sidecar.isFile, "sidecar should be written next to the database")
         // Literals on purpose: the sidecar is the only thing that makes
         // a device re-copy, so a silent version regression must fail here.
-        assertEquals("${Fixtures.JMDICT_DATE}:1:1", sidecar.readText())
+        assertEquals("${Fixtures.JMDICT_DATE}:1:2", sidecar.readText())
         assertEquals(
             "${Fixtures.JMDICT_DATE}:${OkonomiDb.Schema.version}:$DICTIONARY_FORMAT_VERSION",
             sidecar.readText(),

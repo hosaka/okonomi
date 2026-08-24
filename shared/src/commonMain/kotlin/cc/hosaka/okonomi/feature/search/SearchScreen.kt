@@ -43,11 +43,12 @@ import cc.hosaka.okonomi.feature.home.navigation.LocalHomeReselect
 import cc.hosaka.okonomi.feature.home.navigation.resolveHomeReselect
 import cc.hosaka.okonomi.feature.navigation.LocalNavigationController
 import cc.hosaka.okonomi.feature.word.EntryRoute
+import cc.hosaka.okonomi.ui.CenteredBox
+import cc.hosaka.okonomi.ui.CommonWordChip
 import cc.hosaka.okonomi.ui.SearchTextField
 import cc.hosaka.okonomi.ui.theme.Dimens
 import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
 import okonomi.shared.generated.resources.Res
-import okonomi.shared.generated.resources.search_common_badge
 import okonomi.shared.generated.resources.search_error
 import okonomi.shared.generated.resources.search_no_results
 import okonomi.shared.generated.resources.search_placeholder
@@ -241,7 +242,7 @@ private fun SearchResultRow(
                     modifier = Modifier
                         .width(8.dp),
                 )
-                CommonBadge()
+                CommonWordChip()
             }
         }
         hit.senseLines.forEach { line ->
@@ -320,38 +321,5 @@ private fun senseLineText(line: String, glossTokens: List<String>): AnnotatedStr
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun CommonBadge() {
-    Surface(
-        shape = MaterialTheme.shapes.small,
-        color = MaterialTheme.colorScheme.secondaryContainer,
-    ) {
-        Text(
-            text = stringResource(Res.string.search_common_badge),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSecondaryContainer,
-            modifier = Modifier
-                .padding(
-                    horizontal = 6.dp,
-                    vertical = 2.dp,
-                ),
-        )
-    }
-}
-
-@Composable
-private fun CenteredBox(
-    content: @Composable () -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(Dimens.contentPadding),
-        contentAlignment = Alignment.Center,
-    ) {
-        content()
     }
 }

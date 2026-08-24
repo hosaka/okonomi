@@ -13,6 +13,7 @@ object Fixtures {
         <!ENTITY vt "transitive verb">
         <!ENTITY uk "word usually written using kana alone">
         <!ENTITY food "food, cooking">
+        <!ENTITY ksb "Kansai-ben">
         ]>
         <JMdict>
         <!-- JMdict created: $JMDICT_DATE -->
@@ -39,6 +40,8 @@ object Fixtures {
         <pos>&v1;</pos>
         <pos>&vt;</pos>
         <field>&food;</field>
+        <dial>&ksb;</dial>
+        <stagk>食べる</stagk>
         <gloss>to eat</gloss>
         <gloss xml:lang="ger">essen</gloss>
         <example>
@@ -51,6 +54,8 @@ object Fixtures {
         <sense>
         <misc>&uk;</misc>
         <s_inf>colloquial</s_inf>
+        <stagr>たべる</stagr>
+        <stagr>タベル</stagr>
         <gloss>to live on</gloss>
         </sense>
         </entry>

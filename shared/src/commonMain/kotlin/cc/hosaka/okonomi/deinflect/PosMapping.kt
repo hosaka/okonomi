@@ -16,6 +16,8 @@
  */
 package cc.hosaka.okonomi.deinflect
 
+import cc.hosaka.okonomi.db.StoredValues
+
 /**
  * Bridge from JMdict's fine-grained part-of-speech codes (the CSV `sense.pos`
  * format, e.g. "v5r,vt") to the coarse Yomitan condition flags used by the
@@ -37,10 +39,9 @@ package cc.hosaka.okonomi.deinflect
  * flags would never match a derivation.
  */
 fun posCodesToConditionFlags(pos: String?): Long {
-    if (pos.isNullOrBlank()) return 0L
     var flags = 0L
-    for (code in pos.split(',')) {
-        flags = flags or conditionFlagsForPosCode(code.trim())
+    for (code in StoredValues.codes(pos)) {
+        flags = flags or conditionFlagsForPosCode(code)
     }
     return flags
 }

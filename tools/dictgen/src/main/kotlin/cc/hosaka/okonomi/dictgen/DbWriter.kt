@@ -73,7 +73,7 @@ class DbWriter(target: File) : AutoCloseable {
             val id = ++senseId
             db.entryQueries.insertSense(
                 id, entry.id, ord.toLong(),
-                sense.pos, sense.misc, sense.field, sense.info, sense.restrictions,
+                sense.pos, sense.misc, sense.field, sense.dial, sense.info, sense.restrictions,
             )
             if (sense.glosses.size >= GLOSS_POSITION_FACTOR) {
                 // The search packs (sense ord, gloss ord) into
@@ -132,6 +132,29 @@ class DbWriter(target: File) : AutoCloseable {
         }
     }
 
+    /**
+     * Writes the labels the app shows for the short codes stored on
+     * senses and name entries. [entities] is the union of the source
+     * DTDs' entity declarations, written in the source's own casing:
+     * showing them lowercase is a presentation choice the entry view
+     * makes, and baking it into the file would cost a format bump and a
+     * full re-copy on every device to undo.
+     *
+     * Empty input is a programming error, not a quiet degradation: it
+     * means the parsers had not read their DTDs yet, and every chip in
+     * the app would silently fall back to a raw code.
+     */
+    fun writeTagLabels(entities: Map<String, String>) {
+        check(entities.isNotEmpty()) {
+            "No DTD entities to write: writeTagLabels must run after the parsers have read their sources."
+        }
+        db.transaction {
+            entities.forEach { (code, expansion) ->
+                db.tagQueries.insertTagLabel(code, expansion)
+            }
+        }
+    }
+
     fun finish(metadata: Map<String, String>) {
         db.transaction {
             metadata.forEach { (key, value) -> db.metadataQueries.insertMetadata(key, value) }
@@ -152,6 +175,7 @@ class DbWriter(target: File) : AutoCloseable {
         "kanji" to db.kanjiQueries.kanjiCount().executeAsOne(),
         "radicals" to db.kanjiQueries.radicalCount().executeAsOne(),
         "names" to db.nameQueries.nameCount().executeAsOne(),
+        "tags" to db.tagQueries.tagLabelCount().executeAsOne(),
     )
 
     override fun close() {

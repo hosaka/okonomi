@@ -18,12 +18,34 @@ import java.time.Instant
  * formula change would otherwise leave every provisioned device on the
  * old rankings forever.
  *
- * Starts at 1 alongside the schema version, deliberately: nothing has
+ * Started at 1 alongside the schema version, deliberately: nothing has
  * shipped and there is no installed base to migrate, so the pre-release
  * shape is simply "version 1". The first shipped release freezes both
  * counters — from then on every data change bumps this one.
+ *
+ * 2: the entry view's `tag_label` rows and the `sense.dial` column. The
+ * database is regenerated wholesale rather than migrated (pre-release),
+ * so the schema version does not move with it and this counter is the
+ * only thing that makes a provisioned device re-copy.
  */
-const val DICTIONARY_FORMAT_VERSION = 1
+const val DICTIONARY_FORMAT_VERSION = 2
+
+/**
+ * Union of several DTDs' entity declarations, earlier sources winning:
+ * JMdict and JMnedict share code names (`m-sl`, for instance) and the
+ * JMdict wording is the one the entry view is written around.
+ */
+internal fun mergedEntities(vararg sources: Map<String, String>): Map<String, String> {
+    val merged = LinkedHashMap<String, String>()
+    sources.forEach { source ->
+        source.forEach { (code, expansion) ->
+            if (code !in merged) {
+                merged[code] = expansion
+            }
+        }
+    }
+    return merged
+}
 
 class Pipeline(private val dataDir: File, private val out: File) {
 
@@ -59,11 +81,18 @@ class Pipeline(private val dataDir: File, private val out: File) {
                     "the version sidecar needs it to detect dictionary updates.",
             )
         val counts: Map<String, Long>
+        val jmdictParser = JmdictParser(jmdict)
+        val jmnedictParser = JmnedictParser(jmnedict)
         DbWriter(tmp).use { writer ->
-            writer.writeJmdict(JmdictParser(jmdict))
+            writer.writeJmdict(jmdictParser)
             writer.writeKanjidic(KanjidicParser(kanjidic))
             writer.writeRadk(RadkParser.parse(radk))
-            writer.writeNames(JmnedictParser(jmnedict))
+            writer.writeNames(jmnedictParser)
+            // Both parsers have read their DTD by now, so the label
+            // table can be written from what they declared.
+            writer.writeTagLabels(
+                mergedEntities(jmdictParser.entityLabels, jmnedictParser.entityLabels),
+            )
             writer.finish(
                 mapOf(
                     "jmdict_date" to jmdictDate,

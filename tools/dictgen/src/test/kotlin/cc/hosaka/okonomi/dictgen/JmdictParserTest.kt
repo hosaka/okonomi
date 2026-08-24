@@ -25,6 +25,15 @@ class JmdictParserTest {
         assertEquals(1358280L, entry.id)
         assertEquals("v1,vt", entry.senses[0].pos)
         assertEquals("food", entry.senses[0].field)
+        assertEquals("ksb", entry.senses[0].dial)
+    }
+
+    @Test
+    fun readsSenseRestrictionsIncludingRepeatedOnes() {
+        val entry = parseFixture(Fixtures.jmdict).single()
+        assertEquals("食べる", entry.senses[0].restrictions, "stagk restricts the sense to a kanji form")
+        // Repeated stagr values are joined, which is what the app splits.
+        assertEquals("たべる;タベル", entry.senses[1].restrictions)
     }
 
     @Test
