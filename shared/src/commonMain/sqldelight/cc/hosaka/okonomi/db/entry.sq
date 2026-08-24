@@ -1,12 +1,19 @@
+-- common_rank and is_common are denormalized from the entry's forms and
+-- readings (best rank, any common) so ranking queries can order by
+-- commonness without joining: the FTS pre-ranking has to break its
+-- position ties before it truncates, not after.
 CREATE TABLE entry (
-    id INTEGER PRIMARY KEY
+    id INTEGER PRIMARY KEY,
+    common_rank INTEGER NOT NULL DEFAULT 950,
+    is_common INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE kanji_form (
     entry_id INTEGER NOT NULL REFERENCES entry(id),
     ord INTEGER NOT NULL,
     text TEXT NOT NULL,
-    common_rank INTEGER NOT NULL
+    common_rank INTEGER NOT NULL,
+    is_common INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX kanji_form_text_idx ON kanji_form(text);
@@ -18,7 +25,8 @@ CREATE TABLE reading (
     text TEXT NOT NULL,
     no_kanji INTEGER NOT NULL DEFAULT 0,
     common_rank INTEGER NOT NULL,
-    restrictions TEXT
+    restrictions TEXT,
+    is_common INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX reading_text_idx ON reading(text);
@@ -53,13 +61,13 @@ CREATE TABLE entry_kanji (
 CREATE INDEX entry_kanji_kanji_idx ON entry_kanji(kanji);
 
 insertEntry:
-INSERT INTO entry(id) VALUES (?);
+INSERT INTO entry(id, common_rank, is_common) VALUES (?, ?, ?);
 
 insertKanjiForm:
-INSERT INTO kanji_form(entry_id, ord, text, common_rank) VALUES (?, ?, ?, ?);
+INSERT INTO kanji_form(entry_id, ord, text, common_rank, is_common) VALUES (?, ?, ?, ?, ?);
 
 insertReading:
-INSERT INTO reading(entry_id, ord, text, no_kanji, common_rank, restrictions) VALUES (?, ?, ?, ?, ?, ?);
+INSERT INTO reading(entry_id, ord, text, no_kanji, common_rank, restrictions, is_common) VALUES (?, ?, ?, ?, ?, ?, ?);
 
 insertSense:
 INSERT INTO sense(id, entry_id, ord, pos, misc, field, info, restrictions) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
@@ -70,6 +78,11 @@ INSERT INTO gloss(sense_id, ord, text) VALUES (?, ?, ?);
 insertEntryKanji:
 INSERT INTO entry_kanji(kanji, entry_id) VALUES (?, ?);
 
+entriesForIds:
+SELECT id, common_rank, is_common
+FROM entry
+WHERE id IN :ids;
+
 entryCount:
 SELECT COUNT(*) FROM entry;
 
@@ -79,11 +92,60 @@ SELECT COUNT(*) FROM gloss;
 readingsForEntry:
 SELECT ord, text, no_kanji, common_rank, restrictions FROM reading WHERE entry_id = :entryId ORDER BY ord;
 
-searchReadingPrefix:
-SELECT entry_id, text, common_rank FROM reading WHERE text LIKE :prefix || '%' ORDER BY common_rank LIMIT :limit;
+-- The range form is BINARY-collated: unlike the removed LIKE queries,
+-- ASCII letters in stored text match case-sensitively (accepted, rare).
+searchReadingRangePrefix:
+SELECT entry_id, text, common_rank
+FROM reading
+WHERE text >= :prefix AND text < :prefixEnd
+ORDER BY common_rank
+LIMIT :limit;
 
-searchKanjiFormPrefix:
-SELECT entry_id, text, common_rank FROM kanji_form WHERE text LIKE :prefix || '%' ORDER BY common_rank LIMIT :limit;
+searchKanjiFormRangePrefix:
+SELECT entry_id, text, common_rank
+FROM kanji_form
+WHERE text >= :prefix AND text < :prefixEnd
+ORDER BY common_rank
+LIMIT :limit;
+
+readingsExact:
+SELECT entry_id, text, common_rank
+FROM reading
+WHERE text IN :texts
+ORDER BY common_rank
+LIMIT :limit;
+
+kanjiFormsExact:
+SELECT entry_id, text, common_rank
+FROM kanji_form
+WHERE text IN :texts
+ORDER BY common_rank
+LIMIT :limit;
+
+kanjiFormsForEntries:
+SELECT entry_id, ord, text, common_rank, is_common
+FROM kanji_form
+WHERE entry_id IN :ids
+ORDER BY entry_id, ord;
+
+readingsForEntries:
+SELECT entry_id, ord, text, common_rank, is_common
+FROM reading
+WHERE entry_id IN :ids
+ORDER BY entry_id, ord;
+
+sensesForEntries:
+SELECT id, entry_id, ord, pos
+FROM sense
+WHERE entry_id IN :ids
+ORDER BY entry_id, ord;
+
+glossesForEntries:
+SELECT s.entry_id, g.sense_id, g.ord, g.text
+FROM gloss g
+JOIN sense s ON s.id = g.sense_id
+WHERE s.entry_id IN :ids
+ORDER BY g.sense_id, g.ord;
 
 wordsContainingKanji:
 SELECT DISTINCT kf.text

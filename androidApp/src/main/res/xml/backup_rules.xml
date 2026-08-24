@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Auto Backup rules for Android 11 and below.
+
+  The dictionary is a ~160 MB copy of a file that ships inside the APK:
+  it is regenerated on first launch from the bundled asset whenever the
+  version sidecar does not match, so backing it up would blow the 25 MB
+  Auto Backup quota to restore something the app rebuilds for free.
+  iOS excludes the same file from iCloud backup for the same reason.
+-->
+<full-backup-content>
+    <exclude domain="file" path="okonomi.db" />
+    <exclude domain="file" path="okonomi.db.version" />
+</full-backup-content>

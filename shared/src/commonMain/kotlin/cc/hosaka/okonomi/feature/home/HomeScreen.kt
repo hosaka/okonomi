@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
+import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.NavEntryDecorator
 import androidx.navigation3.runtime.NavKey
@@ -41,7 +42,11 @@ import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import cc.hosaka.okonomi.feature.home.navigation.HomeNavigationItem
+import cc.hosaka.okonomi.feature.home.navigation.HomeSelectAction
+import cc.hosaka.okonomi.feature.home.navigation.LocalHomeReselect
 import cc.hosaka.okonomi.feature.home.navigation.homeNavigationItems
+import cc.hosaka.okonomi.feature.home.navigation.homeSelectAction
+import cc.hosaka.okonomi.feature.home.navigation.popToRootCount
 import cc.hosaka.okonomi.feature.home.navigation.rememberHomeSelectionState
 import cc.hosaka.okonomi.feature.navigation.BackStackNavigationController
 import cc.hosaka.okonomi.feature.navigation.LocalNavigationController
@@ -80,8 +85,22 @@ fun HomeScreen(
     val selection = rememberHomeSelectionState(items)
     val selectedItem = selection.selected
     val selectedSection = sections.first { it.item.key == selectedItem.key }
+    // The shell owns both the selection and the per-section back
+    // stacks, so it is the only place that can tell a "go back to the
+    // top of this section" tap from a "focus the section" tap.
     val onSelect = { item: HomeNavigationItem ->
-        selection.select(item)
+        val section = sections.first { it.item.key == item.key }
+        when (
+            homeSelectAction(
+                tappedKey = item.key,
+                selectedKey = selection.selectedKey,
+                depth = section.depth,
+            )
+        ) {
+            HomeSelectAction.Switch -> selection.switchTo(item)
+            HomeSelectAction.SignalReselect -> selection.signalReselect(item)
+            HomeSelectAction.PopToRoot -> section.popToRoot()
+        }
     }
 
     // System back on a section root returns to the default section.
@@ -122,6 +141,7 @@ fun HomeScreen(
                     .only(WindowInsetsSides.Bottom)
                 HomeNavigationContent(
                     section = selectedSection,
+                    reselectCount = selection.reselectionsOf(selectedItem.key),
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
@@ -153,9 +173,20 @@ fun HomeScreen(
  */
 private class HomeSection(
     val item: HomeNavigationItem,
+    val backStack: NavBackStack<NavKey>,
     val controller: NavigationController,
     val entries: List<NavEntry<NavKey>>,
-)
+) {
+    val depth: Int
+        get() = backStack.size
+
+    /** Drops every pushed screen, leaving the section's root route. */
+    fun popToRoot() {
+        repeat(popToRootCount(depth)) {
+            backStack.removeAt(backStack.lastIndex)
+        }
+    }
+}
 
 @Composable
 private fun rememberHomeSection(
@@ -171,9 +202,10 @@ private fun rememberHomeSection(
         entryDecorators = entryDecorators,
         entryProvider = routeEntryProvider,
     )
-    return remember(item, controller, entries) {
+    return remember(item, backStack, controller, entries) {
         HomeSection(
             item = item,
+            backStack = backStack,
             controller = controller,
             entries = entries,
         )
@@ -183,6 +215,7 @@ private fun rememberHomeSection(
 @Composable
 private fun HomeNavigationContent(
     section: HomeSection,
+    reselectCount: Int,
     modifier: Modifier = Modifier,
 ) {
     // Each section gets its own display, so switching tabs is a
@@ -190,6 +223,7 @@ private fun HomeNavigationContent(
     key(section.item.key) {
         CompositionLocalProvider(
             LocalNavigationController provides section.controller,
+            LocalHomeReselect provides reselectCount,
         ) {
             NavDisplay(
                 entries = section.entries,

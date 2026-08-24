@@ -9,6 +9,8 @@ import com.eygraber.sqldelight.androidx.driver.AndroidxSqliteDatabaseType
 import com.eygraber.sqldelight.androidx.driver.AndroidxSqliteDriver
 import com.eygraber.sqldelight.androidx.driver.SqliteJournalMode
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -22,8 +24,11 @@ const val DICTIONARY_DB_NAME = "okonomi.db"
 
 /**
  * Sidecar bundled next to [DICTIONARY_DB_NAME], content
- * `<jmdict_date>:<schema_version>`. Provisioning compares the bundled
- * sidecar with the persisted one to detect a stale copied database.
+ * `<jmdict_date>:<schema_version>:<data_format_version>`. Provisioning
+ * compares the bundled sidecar with the persisted one verbatim, so any
+ * component that moves forces a re-copy — the data format version is
+ * what catches a change the schema cannot see, such as a reworked
+ * ranking formula over unchanged columns.
  */
 const val DICTIONARY_SIDECAR_NAME = "$DICTIONARY_DB_NAME.version"
 
@@ -100,36 +105,44 @@ data class DictionaryInfo(
 )
 
 /**
- * Provisions the bundled dictionary database (copy on first launch or
- * after an app update) and reads the version metadata off it. When the
- * provisioned file cannot be opened or queried, the persisted copy is
- * wiped before rethrowing so the next run re-copies a fresh one.
+ * Reads the version metadata off the shared dictionary handle,
+ * provisioning and opening it on first use. When the provisioned file
+ * cannot be opened or queried, the memoized handle is dropped and the
+ * persisted copy wiped before rethrowing, so the next run re-copies a
+ * fresh one.
  */
 suspend fun loadDictionaryInfo(): DictionaryInfo = loadDictionaryInfo(
-    provision = ::provisionDictionary,
-    open = ::openOkonomiDb,
-    reset = ::resetDictionaryProvisioning,
+    dictionary = ::dictionary,
+    reset = {
+        // A throwing invalidate must never mask the original failure
+        // or skip the file reset.
+        runCatching { invalidateDictionary() }
+        resetDictionaryProvisioning()
+    },
 )
 
 internal suspend fun loadDictionaryInfo(
-    provision: suspend () -> String,
-    open: (String) -> DictionaryDatabase,
-    reset: () -> Unit,
-): DictionaryInfo {
-    val path = provision()
-    return try {
-        open(path).use { database ->
-            DictionaryInfo(
-                jmdictDate = database.db.metadataQueries.metadataValue("jmdict_date").awaitOneOrNull() ?: "unknown",
-                entryCount = database.db.entryQueries.entryCount().awaitOne(),
-            )
-        }
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
+    dictionary: suspend () -> DictionaryDatabase,
+    reset: suspend () -> Unit,
+): DictionaryInfo = try {
+    val database = dictionary()
+    DictionaryInfo(
+        jmdictDate = database.db.metadataQueries.metadataValue("jmdict_date").awaitOneOrNull() ?: "unknown",
+        entryCount = database.db.entryQueries.entryCount().awaitOne(),
+    )
+} catch (e: CancellationException) {
+    throw e
+} catch (e: Exception) {
+    // The reset is a best-effort self-heal; if it fails too, the
+    // caller still needs to see what actually went wrong.
+    try {
         reset()
-        throw e
+    } catch (resetFailure: CancellationException) {
+        throw resetFailure
+    } catch (resetFailure: Exception) {
+        e.addSuppressed(resetFailure)
     }
+    throw e
 }
 
 /**
@@ -139,6 +152,40 @@ internal suspend fun loadDictionaryInfo(
  */
 internal suspend fun <T : Any> ExecutableQuery<T>.awaitOne(): T =
     checkNotNull(awaitOneOrNull()) { "Query returned no rows: $this" }
+
+/**
+ * Awaits every row of an async-codegen query into a list, following the
+ * same synchronous/asynchronous cursor split as [awaitOneOrNull].
+ */
+internal suspend fun <T : Any> ExecutableQuery<T>.awaitList(): List<T> = execute { cursor ->
+    when (val first = cursor.next()) {
+        is QueryResult.AsyncValue -> QueryResult.AsyncValue {
+            buildList {
+                var hasNext = first.await()
+                while (hasNext) {
+                    // A large result set is a long loop: a superseded
+                    // keystroke must be able to stop it.
+                    currentCoroutineContext().ensureActive()
+                    add(mapper(cursor))
+                    hasNext = cursor.next().await()
+                }
+            }
+        }
+
+        // The synchronous branch runs inside a non-suspending mapper,
+        // so there is no coroutine context to check here; only test
+        // drivers take it, and callers check around the call instead.
+        is QueryResult.Value -> {
+            val rows = mutableListOf<T>()
+            var hasNext = first.value
+            while (hasNext) {
+                rows.add(mapper(cursor))
+                hasNext = cursor.next().value
+            }
+            QueryResult.Value<List<T>>(rows)
+        }
+    }
+}.await()
 
 internal suspend fun <T : Any> ExecutableQuery<T>.awaitOneOrNull(): T? = execute { cursor ->
     // A synchronous driver closes the cursor as soon as the mapper

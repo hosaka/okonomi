@@ -3,8 +3,24 @@ CREATE VIRTUAL TABLE gloss_fts USING fts5(
     content=gloss
 );
 
-searchGlossFts:
-SELECT g.sense_id, g.ord, g.text
+-- Pre-ranks the FULL match set before it is truncated: an entry is
+-- placed by the earliest sense/gloss position it matched at, so the
+-- entry whose very first gloss matches survives selection however many
+-- hundreds of entries match the token in a deeply buried sense.
+-- The 1000 factor packs (sense ord, gloss ord) into one sortable
+-- number; DbWriter asserts no sense reaches 1000 glosses.
+--
+-- Position alone is not enough to truncate on. A token like "to" sits
+-- at position 0 in thousands of verb glosses, and picking 400 of those
+-- by SQLite's row order would drop common entries before the caller
+-- ever ranks them, so entry-level commonness breaks the tie here and
+-- the entry id makes the cut deterministic.
+searchGlossFtsRankedEntryIds:
+SELECT s.entry_id, MIN(s.ord * 1000 + g.ord) AS pos, e.common_rank
 FROM gloss g
+JOIN sense s ON s.id = g.sense_id
+JOIN entry e ON e.id = s.entry_id
 WHERE g.rowid IN (SELECT rowid FROM gloss_fts WHERE gloss_fts MATCH :query)
+GROUP BY s.entry_id
+ORDER BY pos, e.common_rank, s.entry_id
 LIMIT :limit;

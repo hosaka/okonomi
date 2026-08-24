@@ -48,8 +48,10 @@ class PipelineIntegrationTest {
     fun generatesSearchableDatabase() {
         val out = generate()
         withDb(out) { db ->
-            val ftsHits = db.ftsQueries.searchGlossFts("eat", 10).executeAsList()
-            assertTrue(ftsHits.any { it.text == "to eat" }, "FTS should find 'to eat', got $ftsHits")
+            val ftsHits = db.ftsQueries.searchGlossFtsRankedEntryIds("\"eat\"", 10).executeAsList()
+            assertEquals(listOf(1358280L), ftsHits.map { it.entry_id }, "FTS should find 食べる")
+            // Sense 0, gloss 0: the packed position the ranking sorts on.
+            assertEquals(0L, ftsHits.single().pos)
 
             val words = db.entryQueries.wordsContainingKanji("食", 10).executeAsList()
             assertTrue("食べる" in words, "entry_kanji join should surface 食べる, got $words")
@@ -61,15 +63,24 @@ class PipelineIntegrationTest {
     @Test
     fun persistsReadingDetailsAndRanks() {
         withDb(generate()) { db ->
-            val readings = db.entryQueries.readingsForEntry(1358280L).executeAsList()
+            val readings = db.entryQueries.readingsForEntries(listOf(1358280L)).executeAsList()
             assertEquals(2, readings.size)
-            assertEquals(0L, readings[0].no_kanji)
-            assertEquals(1L, readings[0].common_rank)
+            assertEquals(125L, readings[0].common_rank)
+            assertEquals(1L, readings[0].is_common)
             val second = readings[1]
             assertEquals("タベル", second.text)
-            assertEquals(1L, second.no_kanji)
-            assertEquals("食べる", second.restrictions)
-            assertEquals(999L, second.common_rank)
+            assertEquals(950L, second.common_rank)
+            assertEquals(0L, second.is_common, "a reading with no priority tags is not common")
+
+            val forms = db.entryQueries.kanjiFormsForEntries(listOf(1358280L)).executeAsList()
+            assertEquals(125L, forms.single().common_rank)
+            assertEquals(1L, forms.single().is_common)
+
+            // no_kanji and restrictions live on the single-entry query.
+            val detailed = db.entryQueries.readingsForEntry(1358280L).executeAsList()
+            assertEquals(0L, detailed[0].no_kanji)
+            assertEquals(1L, detailed[1].no_kanji)
+            assertEquals("食べる", detailed[1].restrictions)
         }
     }
 
@@ -107,6 +118,16 @@ class PipelineIntegrationTest {
     }
 
     @Test
+    fun schemaAndFormatVersionsArePinned() {
+        // Literals on purpose: every other assertion here compares a
+        // version to itself and would pass at any value. Both counters
+        // start at 1 pre-release; the first shipped release freezes
+        // them, and every later data change must move one of them.
+        assertEquals(1L, OkonomiDb.Schema.version)
+        assertEquals(1, DICTIONARY_FORMAT_VERSION)
+    }
+
+    @Test
     fun bakesUserVersionAndWritesSidecar() {
         val out = generate()
         // PRAGMA goes through the raw driver: it is not part of the schema queries.
@@ -121,6 +142,7 @@ class PipelineIntegrationTest {
                 },
                 0,
             ).value
+            assertEquals(1L, userVersion)
             assertEquals(OkonomiDb.Schema.version, userVersion)
         } finally {
             driver.close()
@@ -128,7 +150,13 @@ class PipelineIntegrationTest {
 
         val sidecar = File(out.parentFile, out.name + ".version")
         assertTrue(sidecar.isFile, "sidecar should be written next to the database")
-        assertEquals("${Fixtures.JMDICT_DATE}:${OkonomiDb.Schema.version}", sidecar.readText())
+        // Literals on purpose: the sidecar is the only thing that makes
+        // a device re-copy, so a silent version regression must fail here.
+        assertEquals("${Fixtures.JMDICT_DATE}:1:1", sidecar.readText())
+        assertEquals(
+            "${Fixtures.JMDICT_DATE}:${OkonomiDb.Schema.version}:$DICTIONARY_FORMAT_VERSION",
+            sidecar.readText(),
+        )
         assertTrue(!File(sidecar.parentFile, sidecar.name + ".tmp").exists(), "sidecar tmp file should be moved away")
     }
 

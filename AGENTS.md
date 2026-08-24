@@ -34,7 +34,11 @@ Practical rule: for new screens, follow the same split (see `feature/search/`):
 - `XxxState.kt` for the UI contract (nullable callbacks mean disabled),
 - `XxxStateProducer.kt` with `produceXxxScreenState()` and `suspend fun ScreenStateScope.xxxScreenStateProducer(): Flow<XxxState>` for state composition, persistence, and side effects.
 
-Verification: `./gradlew :androidApp:assembleDebug :shared:compileKotlinIosArm64 :shared:testAndroidHostTest`.
+Verification: `./gradlew :androidApp:assembleDebug :shared:compileKotlinIosArm64 :shared:testAndroidHostTest :tools:dictgen:test`.
+
+`:tools:dictgen` is part of the check, not an optional extra: it owns the dictionary's
+shape and its ranking rules, so a regression there changes search results while every
+`:shared` test stays green.
 
 ## Change-Safety Rules
 

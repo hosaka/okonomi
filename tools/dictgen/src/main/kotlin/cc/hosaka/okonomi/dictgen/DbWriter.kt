@@ -5,6 +5,13 @@ import cc.hosaka.okonomi.db.OkonomiDb
 import java.io.File
 import java.util.Properties
 
+/**
+ * Highest gloss count one sense may carry. The search orders English
+ * results by `sense.ord * GLOSS_POSITION_FACTOR + gloss.ord`, which
+ * only stays sortable while every sense fits below this.
+ */
+const val GLOSS_POSITION_FACTOR = 1000
+
 class DbWriter(target: File) : AutoCloseable {
     private val driver: JdbcSqliteDriver
     private val db: OkonomiDb
@@ -29,10 +36,27 @@ class DbWriter(target: File) : AutoCloseable {
         }
     }
 
+    /** Parser-free entry point, for tests that build entries directly. */
+    fun writeJmdictEntries(entries: List<JmdictEntry>) {
+        db.transaction {
+            entries.forEach { entry -> writeEntry(entry) }
+        }
+    }
+
     private fun writeEntry(entry: JmdictEntry) {
-        db.entryQueries.insertEntry(entry.id)
+        // Entry-level commonness is denormalized from the forms so the
+        // search's FTS pre-ranking can order by it before truncating.
+        val ranks = entry.kanjiForms.map { it.commonRank } + entry.readings.map { it.commonRank }
+        val isCommon = entry.kanjiForms.any { it.isCommon } || entry.readings.any { it.isCommon }
+        db.entryQueries.insertEntry(
+            entry.id,
+            ranks.minOrNull() ?: PriorityRank.rank(emptyList()),
+            if (isCommon) 1L else 0L,
+        )
         entry.kanjiForms.forEachIndexed { ord, form ->
-            db.entryQueries.insertKanjiForm(entry.id, ord.toLong(), form.text, form.commonRank)
+            db.entryQueries.insertKanjiForm(
+                entry.id, ord.toLong(), form.text, form.commonRank, if (form.isCommon) 1L else 0L,
+            )
         }
         entry.readings.forEachIndexed { ord, reading ->
             db.entryQueries.insertReading(
@@ -42,6 +66,7 @@ class DbWriter(target: File) : AutoCloseable {
                 if (reading.noKanji) 1L else 0L,
                 reading.commonRank,
                 reading.restrictions,
+                if (reading.isCommon) 1L else 0L,
             )
         }
         entry.senses.forEachIndexed { ord, sense ->
@@ -50,6 +75,16 @@ class DbWriter(target: File) : AutoCloseable {
                 id, entry.id, ord.toLong(),
                 sense.pos, sense.misc, sense.field, sense.info, sense.restrictions,
             )
+            if (sense.glosses.size >= GLOSS_POSITION_FACTOR) {
+                // The search packs (sense ord, gloss ord) into
+                // sense.ord * GLOSS_POSITION_FACTOR + gloss.ord; a
+                // sense this large would bleed into the next sense's
+                // range and silently corrupt result ordering.
+                throw PipelineException(
+                    "Entry ${entry.id} sense $ord has ${sense.glosses.size} glosses, " +
+                        "at or beyond the $GLOSS_POSITION_FACTOR the search's position packing allows.",
+                )
+            }
             sense.glosses.forEachIndexed { glossOrd, gloss ->
                 db.entryQueries.insertGloss(id, glossOrd.toLong(), gloss)
             }

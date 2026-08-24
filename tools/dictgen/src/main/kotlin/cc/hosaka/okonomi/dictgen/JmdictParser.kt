@@ -5,12 +5,13 @@ import javax.xml.stream.XMLStreamConstants
 import javax.xml.stream.XMLStreamException
 import javax.xml.stream.XMLStreamReader
 
-data class JmdictKanjiForm(val text: String, val commonRank: Long)
+data class JmdictKanjiForm(val text: String, val commonRank: Long, val isCommon: Boolean)
 
 data class JmdictReading(
     val text: String,
     val noKanji: Boolean,
     val commonRank: Long,
+    val isCommon: Boolean,
     val restrictions: String?,
 )
 
@@ -97,7 +98,11 @@ class JmdictParser(private val file: File) {
                 }
                 XMLStreamConstants.END_ELEMENT -> if (r.localName == "k_ele") {
                     if (text.isEmpty()) throw PipelineException("k_ele without keb in ${file.name}")
-                    return JmdictKanjiForm(text, PriorityRank.rank(priorities))
+                    return JmdictKanjiForm(
+                        text = text,
+                        commonRank = PriorityRank.rank(priorities),
+                        isCommon = PriorityRank.isCommon(priorities),
+                    )
                 }
             }
         }
@@ -126,6 +131,7 @@ class JmdictParser(private val file: File) {
                         text = text,
                         noKanji = noKanji,
                         commonRank = PriorityRank.rank(priorities),
+                        isCommon = PriorityRank.isCommon(priorities),
                         restrictions = restrictions.joinToString(";").ifEmpty { null },
                     )
                 }

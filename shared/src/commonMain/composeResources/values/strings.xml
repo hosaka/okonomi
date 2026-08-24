@@ -5,6 +5,13 @@
     <string name="home_settings_label">Settings</string>
     <string name="search_placeholder">Search</string>
     <string name="search_clear">Clear</string>
+    <string name="search_no_results">No results</string>
+    <string name="search_results_fallback">No exact matches — showing the closest entries</string>
+    <string name="search_error">Search is unavailable right now. Keep typing to retry.</string>
+    <string name="search_common_badge">common</string>
+    <string name="entry_title">Entry</string>
+    <string name="entry_back">Back</string>
+    <string name="entry_coming_soon">Word details for entry %1$s are coming soon</string>
     <string name="settings_title">Settings</string>
     <string name="settings_dictionary_label">Dictionary</string>
     <string name="settings_dictionary_value">JMdict %1$s · %2$s entries</string>

@@ -3,6 +3,7 @@ package cc.hosaka.okonomi.dictgen
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
@@ -50,8 +51,11 @@ class JmdictParserTest {
     @Test
     fun collapsesPriorityTags() {
         val entry = parseFixture(Fixtures.jmdict).single()
-        assertEquals(1L, entry.kanjiForms.single().commonRank)
-        assertEquals(1L, entry.readings[0].commonRank)
+        // ichi1 + news2 + nf25: first tier, frequency band 25.
+        assertEquals(125L, entry.kanjiForms.single().commonRank)
+        assertEquals(125L, entry.readings[0].commonRank)
+        assertTrue(entry.kanjiForms.single().isCommon)
+        assertTrue(entry.readings[0].isCommon)
     }
 
     @Test
@@ -61,7 +65,8 @@ class JmdictParserTest {
         assertEquals("タベル", second.text)
         assertTrue(second.noKanji)
         assertEquals("食べる", second.restrictions)
-        assertEquals(999L, second.commonRank)
+        assertEquals(950L, second.commonRank)
+        assertFalse(second.isCommon)
     }
 
     @Test

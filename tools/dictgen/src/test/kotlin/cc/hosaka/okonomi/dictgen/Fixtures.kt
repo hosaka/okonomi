@@ -22,10 +22,13 @@ object Fixtures {
         <keb>食べる</keb>
         <ke_pri>ichi1</ke_pri>
         <ke_pri>news2</ke_pri>
+        <ke_pri>nf25</ke_pri>
         </k_ele>
         <r_ele>
         <reb>たべる</reb>
         <re_pri>ichi1</re_pri>
+        <re_pri>news2</re_pri>
+        <re_pri>nf25</re_pri>
         </r_ele>
         <r_ele>
         <reb>タベル</reb>

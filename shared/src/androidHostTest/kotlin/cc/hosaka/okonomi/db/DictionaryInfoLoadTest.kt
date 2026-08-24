@@ -23,9 +23,11 @@ import kotlin.test.assertTrue
 class DictionaryInfoLoadTest {
 
     private val tempDirs = mutableListOf<File>()
+    private val openedDatabases = mutableListOf<DictionaryDatabase>()
 
     @AfterTest
     fun cleanUp() {
+        openedDatabases.forEach { it.close() }
         tempDirs.forEach { it.deleteRecursively() }
     }
 
@@ -33,7 +35,7 @@ class DictionaryInfoLoadTest {
 
     private fun openWithJdbc(path: String): DictionaryDatabase {
         val driver = JdbcSqliteDriver("jdbc:sqlite:$path")
-        return DictionaryDatabase(OkonomiDb(driver), driver)
+        return DictionaryDatabase(OkonomiDb(driver), driver).also { openedDatabases += it }
     }
 
     @Test
@@ -43,13 +45,12 @@ class DictionaryInfoLoadTest {
         OkonomiDb.Schema.create(seedDriver).await()
         val seed = OkonomiDb(seedDriver)
         seed.metadataQueries.insertMetadata("jmdict_date", "2026-08-21")
-        seed.entryQueries.insertEntry(1)
-        seed.entryQueries.insertEntry(2)
+        seed.entryQueries.insertEntry(1, 950, 0)
+        seed.entryQueries.insertEntry(2, 950, 0)
         seedDriver.close()
 
         val info = loadDictionaryInfo(
-            provision = { path },
-            open = ::openWithJdbc,
+            dictionary = { openWithJdbc(path) },
             reset = { throw AssertionError("a successful load must not reset provisioning") },
         )
 
@@ -60,13 +61,12 @@ class DictionaryInfoLoadTest {
     fun `a failing open wipes the provisioned files and rethrows`() = runTest {
         val dir = tempDir()
         val db = dir.resolve(DICTIONARY_DB_NAME).apply { writeText("pretend database") }
-        val sidecarFile = dir.resolve(DICTIONARY_SIDECAR_NAME).apply { writeText("2026-08-21:1") }
+        val sidecarFile = dir.resolve(DICTIONARY_SIDECAR_NAME).apply { writeText("2026-08-21:1:1") }
         var resets = 0
 
         val e = assertFailsWith<IllegalStateException> {
             loadDictionaryInfo(
-                provision = { db.absolutePath },
-                open = { error("cannot open") },
+                dictionary = { error("cannot open") },
                 reset = {
                     resets++
                     resetDictionaryProvisioningIn(dir)
@@ -84,12 +84,11 @@ class DictionaryInfoLoadTest {
     fun `a corrupt database file fails the query and wipes the provisioned files`() = runTest {
         val dir = tempDir()
         val db = dir.resolve(DICTIONARY_DB_NAME).apply { writeText("this is not a sqlite file") }
-        val sidecarFile = dir.resolve(DICTIONARY_SIDECAR_NAME).apply { writeText("2026-08-21:1") }
+        val sidecarFile = dir.resolve(DICTIONARY_SIDECAR_NAME).apply { writeText("2026-08-21:1:1") }
 
         assertFailsWith<SQLException> {
             loadDictionaryInfo(
-                provision = { db.absolutePath },
-                open = ::openWithJdbc,
+                dictionary = { openWithJdbc(db.absolutePath) },
                 reset = { resetDictionaryProvisioningIn(dir) },
             )
         }

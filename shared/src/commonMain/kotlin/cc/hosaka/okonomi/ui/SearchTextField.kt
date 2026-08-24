@@ -29,6 +29,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.input.ImeAction
@@ -45,6 +47,9 @@ import org.jetbrains.compose.resources.stringResource
  * clear action that is shown while the field has text.
  *
  * A `null` [onTextChange] renders the field disabled.
+ *
+ * A non-null [focusRequester] is attached to the inner text field so
+ * callers can focus it programmatically.
  */
 @Composable
 fun SearchTextField(
@@ -54,6 +59,7 @@ fun SearchTextField(
     onTextChange: ((String) -> Unit)?,
     onClear: (() -> Unit)? = onTextChange?.let { { it("") } },
     onSearch: (() -> Unit)? = null,
+    focusRequester: FocusRequester? = null,
 ) {
     val focusManager = LocalFocusManager.current
     val contentColor = MaterialTheme.colorScheme.onSurface
@@ -93,7 +99,14 @@ fun SearchTextField(
         )
         BasicTextField(
             modifier = Modifier
-                .weight(1f),
+                .weight(1f)
+                .then(
+                    if (focusRequester != null) {
+                        Modifier.focusRequester(focusRequester)
+                    } else {
+                        Modifier
+                    },
+                ),
             value = text,
             onValueChange = { onTextChange?.invoke(it) },
             enabled = onTextChange != null,

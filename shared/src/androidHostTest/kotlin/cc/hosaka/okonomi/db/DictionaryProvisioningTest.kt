@@ -21,7 +21,10 @@ import kotlin.test.assertTrue
 class DictionaryProvisioningTest {
 
     private val dbBytes = "sqlite pretend content".encodeToByteArray()
-    private val sidecar = "2026-08-21:1"
+    // Synthetic on purpose: provisioning only ever compares sidecar
+    // strings verbatim, so these tests must keep working whatever the
+    // real schema and format counters happen to be.
+    private val sidecar = "2026-08-21:4:7"
 
     private val tempDirs = mutableListOf<File>()
 
@@ -76,7 +79,7 @@ class DictionaryProvisioningTest {
     @Test
     fun `a stale sidecar replaces the database with a fresh copy`() {
         val dir = targetDir()
-        val oldAssets = FakeAssets("2025-01-01:1", "old content".encodeToByteArray())
+        val oldAssets = FakeAssets("2025-01-01:4:7", "old content".encodeToByteArray())
         provisionDictionaryInto(dir, oldAssets::readSidecar, oldAssets::openDb)
 
         val assets = FakeAssets(sidecar, dbBytes)
@@ -85,6 +88,55 @@ class DictionaryProvisioningTest {
         assertEquals(1, assets.dbOpens)
         assertTrue(dbBytes.contentEquals(db.readBytes()), "stale database should be replaced")
         assertEquals(sidecar, dir.resolve(DICTIONARY_SIDECAR_NAME).readText())
+    }
+
+    @Test
+    fun `a data format bump alone replaces the database`() {
+        // The case the format version exists for: the JMdict release is
+        // unchanged and so is the schema, but what the columns MEAN
+        // changed (a reworked ranking formula). Comparing only the date
+        // — or only the schema version — would leave every device on
+        // the old data forever.
+        val dir = targetDir()
+        val oldAssets = FakeAssets("2026-08-21:4:7", "old content".encodeToByteArray())
+        provisionDictionaryInto(dir, oldAssets::readSidecar, oldAssets::openDb)
+
+        val assets = FakeAssets("2026-08-21:4:8", dbBytes)
+        val db = provisionDictionaryInto(dir, assets::readSidecar, assets::openDb)
+
+        assertEquals(1, assets.dbOpens)
+        assertTrue(dbBytes.contentEquals(db.readBytes()), "a format bump must replace the database")
+        assertEquals("2026-08-21:4:8", dir.resolve(DICTIONARY_SIDECAR_NAME).readText())
+    }
+
+    @Test
+    fun `a schema version bump alone replaces the database`() {
+        val dir = targetDir()
+        val oldAssets = FakeAssets("2026-08-21:3:7", "old content".encodeToByteArray())
+        provisionDictionaryInto(dir, oldAssets::readSidecar, oldAssets::openDb)
+
+        val assets = FakeAssets("2026-08-21:4:7", dbBytes)
+        val db = provisionDictionaryInto(dir, assets::readSidecar, assets::openDb)
+
+        assertEquals(1, assets.dbOpens)
+        assertTrue(dbBytes.contentEquals(db.readBytes()), "a schema bump must replace the database")
+    }
+
+    @Test
+    fun `a sidecar from before the format version was added replaces the database`() {
+        // A device provisioned by an older build holds a two-component
+        // sidecar. Comparison is verbatim, so the extra component alone
+        // forces the re-copy — no parsing, no component-wise compare.
+        val dir = targetDir()
+        val oldAssets = FakeAssets("2026-08-21:4", "old content".encodeToByteArray())
+        provisionDictionaryInto(dir, oldAssets::readSidecar, oldAssets::openDb)
+
+        val assets = FakeAssets("2026-08-21:4:7", dbBytes)
+        val db = provisionDictionaryInto(dir, assets::readSidecar, assets::openDb)
+
+        assertEquals(1, assets.dbOpens)
+        assertTrue(dbBytes.contentEquals(db.readBytes()), "a legacy sidecar must replace the database")
+        assertEquals("2026-08-21:4:7", dir.resolve(DICTIONARY_SIDECAR_NAME).readText())
     }
 
     @Test

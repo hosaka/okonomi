@@ -6,6 +6,7 @@ import androidx.savedstate.serialization.SavedStateConfiguration
 import cc.hosaka.okonomi.feature.libraries.LibrariesRoute
 import cc.hosaka.okonomi.feature.search.SearchRoute
 import cc.hosaka.okonomi.feature.settings.SettingsRoute
+import cc.hosaka.okonomi.feature.word.EntryRoute
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
 import kotlinx.serialization.modules.subclass
@@ -21,6 +22,7 @@ val navigationSavedStateConfiguration: SavedStateConfiguration = SavedStateConfi
             subclass(SearchRoute::class)
             subclass(SettingsRoute::class)
             subclass(LibrariesRoute::class)
+            subclass(EntryRoute::class)
         }
     }
 }
