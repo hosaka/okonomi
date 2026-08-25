@@ -6,6 +6,8 @@ import okonomi.shared.generated.resources.settings_credit_usage_jmdict
 import okonomi.shared.generated.resources.settings_credit_usage_jmnedict
 import okonomi.shared.generated.resources.settings_credit_usage_kanjidic
 import okonomi.shared.generated.resources.settings_credit_usage_radkfile
+import okonomi.shared.generated.resources.settings_credit_usage_tanaka
+import okonomi.shared.generated.resources.settings_credit_usage_tatoeba
 import okonomi.shared.generated.resources.settings_credit_usage_yomitan
 import okonomi.shared.generated.resources.settings_credits_edrdg_statement
 import org.jetbrains.compose.resources.StringResource
@@ -32,6 +34,19 @@ data class CreditEntry(
 const val EDRDG_LICENCE_URL = "https://www.edrdg.org/edrdg/licence.html"
 
 private const val EDRDG_LICENCE_NAME = "EDRDG licence"
+
+/**
+ * Unqualified on purpose. Tatoeba states that its data is released
+ * "under various Creative Commons licenses" — plural, and deliberately
+ * unspecific about which one covers a given sentence — so naming a
+ * particular variant here would assert a precision the source itself
+ * declines to give. Attribution is the obligation these entries
+ * discharge, and the terms page is where the reader goes for the rest.
+ */
+private const val CREATIVE_COMMONS_LICENCE_NAME = "Creative Commons"
+
+/** Where the terms these sentences reach us under are stated. */
+private const val TATOEBA_TERMS_URL = "https://tatoeba.org/en/terms_of_use"
 
 /**
  * The statement the EDRDG licence requires distributed products to
@@ -70,5 +85,22 @@ val creditEntries: List<CreditEntry> = listOf(
         licence = "GPL-3.0",
         licenceUrl = "https://github.com/yomidevs/yomitan",
         usage = Res.string.settings_credit_usage_yomitan,
+    ),
+    CreditEntry(
+        name = "Tatoeba",
+        licence = CREATIVE_COMMONS_LICENCE_NAME,
+        licenceUrl = TATOEBA_TERMS_URL,
+        usage = Res.string.settings_credit_usage_tatoeba,
+    ),
+    // Tatoeba's Japanese-English pairs began as Yasuhito Tanaka's
+    // corpus, credited in its own right rather than folded into the
+    // Tatoeba entry. Same licence and same link: we receive these
+    // sentences through Tatoeba, under Tatoeba's terms, and the usage
+    // line is what says so.
+    CreditEntry(
+        name = "Tanaka Corpus",
+        licence = CREATIVE_COMMONS_LICENCE_NAME,
+        licenceUrl = TATOEBA_TERMS_URL,
+        usage = Res.string.settings_credit_usage_tanaka,
     ),
 )

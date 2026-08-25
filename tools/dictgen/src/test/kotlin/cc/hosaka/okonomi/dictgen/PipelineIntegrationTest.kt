@@ -33,6 +33,14 @@ class PipelineIntegrationTest {
         assertEquals(1L, summary.counts["names"])
         // Five JMdict entities plus JMnedict's one.
         assertEquals(6L, summary.counts["tags"])
+        // Four of the six index rows resolve to a pair, and the one
+        // whose words are in no entry is pruned again.
+        assertEquals(3L, summary.counts["sentences"])
+        assertEquals(3L, summary.counts["links"])
+        // The two rows that resolved to nothing are reported rather than
+        // dropped in silence; every B-line word here parses.
+        assertEquals(2L, summary.counts["skipped"])
+        assertEquals(0L, summary.counts["rejected"])
         assertTrue(summary.sizeBytes > 0)
         return out
     }
@@ -159,6 +167,50 @@ class PipelineIntegrationTest {
     }
 
     @Test
+    fun persistsSentencesLinkedToTheirEntries() {
+        withDb(generate()) { db ->
+            val sentences = db.sentenceQueries.sentencesForEntry(1358280L).executeAsList()
+            assertEquals(3, sentences.size)
+            // The readable-length sentence leads even though it is the
+            // longest; below the band, the tilde separates two sentences
+            // of equal length.
+            assertEquals(
+                listOf("私は毎日パンを食べる。", "早く食べる。", "何を食べる。"),
+                sentences.map { it.japanese },
+            )
+            assertEquals(
+                listOf("I eat bread every day.", "Eat quickly.", "What will you eat?"),
+                sentences.map { it.english },
+            )
+            // The B-line is rewritten, not stored: 食べる gains the
+            // reading of the entry it resolved to and 毎日, which no
+            // entry carries, stays bare rather than disappearing.
+            assertEquals(
+                "私(わたし) は 毎日 パン を 食べる(たべる)#1358280",
+                sentences.first().breakdown,
+            )
+            assertEquals("早く 食べる(たべる)#1358280", sentences[1].breakdown)
+
+            assertTrue(
+                db.sentenceQueries.sentencesForEntry(5000002L).executeAsList().isEmpty(),
+                "a name entry is not a dictionary entry and links to nothing",
+            )
+        }
+    }
+
+    @Test
+    fun missingTatoebaSourceFailsFastWithFileName() {
+        val dataDir = tempDir()
+        Fixtures.writeDataDir(dataDir)
+        File(dataDir, "eng_sentences.tsv").delete()
+        val out = File(tempDir(), "okonomi.db")
+
+        val e = assertFailsWith<PipelineException> { Pipeline(dataDir, out).run() }
+        assertTrue("eng_sentences.tsv" in (e.message ?: ""), "message should name the file: ${e.message}")
+        assertTrue(!out.exists(), "no partial DB should be left behind")
+    }
+
+    @Test
     fun mergedEntitiesKeepsTheFirstSourcesWording() {
         val merged = mergedEntities(
             mapOf("m-sl" to "manga slang"),
@@ -173,10 +225,10 @@ class PipelineIntegrationTest {
         // version to itself and would pass at any value. Both counters
         // started at 1 pre-release; the schema version only moves with
         // the DDL (the read-only database is regenerated, never
-        // migrated), so the tag_label increment moved the format
-        // version alone.
+        // migrated), so the tag_label increment and the sentence tables
+        // moved the format version alone.
         assertEquals(1L, OkonomiDb.Schema.version)
-        assertEquals(2, DICTIONARY_FORMAT_VERSION)
+        assertEquals(3, DICTIONARY_FORMAT_VERSION)
     }
 
     @Test
@@ -204,7 +256,7 @@ class PipelineIntegrationTest {
         assertTrue(sidecar.isFile, "sidecar should be written next to the database")
         // Literals on purpose: the sidecar is the only thing that makes
         // a device re-copy, so a silent version regression must fail here.
-        assertEquals("${Fixtures.JMDICT_DATE}:1:2", sidecar.readText())
+        assertEquals("${Fixtures.JMDICT_DATE}:1:3", sidecar.readText())
         assertEquals(
             "${Fixtures.JMDICT_DATE}:${OkonomiDb.Schema.version}:$DICTIONARY_FORMAT_VERSION",
             sidecar.readText(),
@@ -216,7 +268,7 @@ class PipelineIntegrationTest {
     fun missingJmdictCreationDateFailsGeneration() {
         val dataDir = tempDir()
         Fixtures.writeDataDir(dataDir)
-        val jmdict = File(dataDir, "JMdict_e_examp.xml")
+        val jmdict = File(dataDir, "JMdict_e.xml")
         jmdict.writeText(jmdict.readText().replace(Regex("<!-- JMdict created: .* -->"), ""))
         val out = File(tempDir(), "okonomi.db")
 
@@ -243,7 +295,7 @@ class PipelineIntegrationTest {
         val emptyDir = tempDir()
         val out = File(tempDir(), "okonomi.db")
         val e = assertFailsWith<PipelineException> { Pipeline(emptyDir, out).run() }
-        assertTrue("JMdict_e_examp.xml" in (e.message ?: ""), "message should name the file: ${e.message}")
+        assertTrue("JMdict_e.xml" in (e.message ?: ""), "message should name the file: ${e.message}")
         assertTrue(!out.exists(), "no partial DB should be left behind")
     }
 }

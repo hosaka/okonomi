@@ -14,7 +14,6 @@
     <string name="entry_tab_kanji">Kanji</string>
     <string name="entry_tab_forms">Forms</string>
     <string name="entry_tab_phrases">Phrases</string>
-    <string name="entry_tab_placeholder">Coming in a later update</string>
     <string name="entry_section_reading">Reading</string>
     <string name="entry_section_english">English</string>
     <string name="entry_alternate_forms">also written %1$s</string>
@@ -83,6 +82,16 @@
          either. -->
     <string name="entry_forms_suru">This noun becomes a verb with する. Look up する to see how it conjugates.</string>
     <string name="entry_forms_error">The forms of this word could not be loaded</string>
+    <!-- The Tatoeba corpus covers about 14% of the dictionary, so this
+         is the outcome for most words and has to read as a normal
+         state rather than as something having gone wrong. -->
+    <string name="entry_phrases_empty">No example sentences for this word yet.</string>
+    <string name="entry_phrases_error">The example sentences for this word could not be loaded</string>
+    <!-- One word of a sentence's breakdown and how it reads: the word
+         first, its reading bracketed after it. Bracketing a reading is
+         a typographic convention, so a locale that writes it
+         differently changes it here. -->
+    <string name="entry_phrases_word_reading">%1$s (%2$s)</string>
     <string name="settings_title">Settings</string>
     <string name="settings_dictionary_label">Dictionary</string>
     <string name="settings_dictionary_value">JMdict %1$s · %2$s entries</string>
@@ -96,6 +105,8 @@
     <string name="settings_credit_usage_kanjidic">Kanji readings and meanings</string>
     <string name="settings_credit_usage_radkfile">Kanji radical decomposition data</string>
     <string name="settings_credit_usage_yomitan">Deinflection engine and rule data</string>
+    <string name="settings_credit_usage_tatoeba">Example sentences and their translations</string>
+    <string name="settings_credit_usage_tanaka">The sentence corpus Tatoeba\'s Japanese–English pairs came from</string>
     <string name="settings_libraries_open">Open libraries list</string>
     <string name="libraries_title">Open source libraries</string>
     <string name="libraries_back">Back</string>

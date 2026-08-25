@@ -27,8 +27,11 @@ import java.time.Instant
  * database is regenerated wholesale rather than migrated (pre-release),
  * so the schema version does not move with it and this counter is the
  * only thing that makes a provisioned device re-copy.
+ *
+ * 3: the Phrases tab's `sentence` and `entry_sentence` tables, built
+ * from Tatoeba's Japanese/English pairs and its word index.
  */
-const val DICTIONARY_FORMAT_VERSION = 2
+const val DICTIONARY_FORMAT_VERSION = 3
 
 /**
  * Union of several DTDs' entity declarations, earlier sources winning:
@@ -57,22 +60,34 @@ class Pipeline(private val dataDir: File, private val out: File) {
     }
 
     fun run(): Summary {
-        val jmdict = source("JMdict_e_examp.xml")
+        val jmdict = source("JMdict_e.xml")
         val jmnedict = source("JMnedict.xml")
         val kanjidic = source("kanjidic2.xml")
         val radk = source("radkfile")
+        val tatoeba = TatoebaParser(
+            japanese = source("jpn_sentences.tsv"),
+            english = source("eng_sentences.tsv"),
+            indices = source("jpn_indices.csv"),
+        )
 
         out.parentFile?.mkdirs()
         val tmp = File(out.parentFile, out.name + ".tmp")
         try {
-            return generate(jmdict, jmnedict, kanjidic, radk, tmp)
+            return generate(jmdict, jmnedict, kanjidic, radk, tatoeba, tmp)
         } catch (e: Exception) {
             tmp.delete()
             throw e
         }
     }
 
-    private fun generate(jmdict: File, jmnedict: File, kanjidic: File, radk: File, tmp: File): Summary {
+    private fun generate(
+        jmdict: File,
+        jmnedict: File,
+        kanjidic: File,
+        radk: File,
+        tatoeba: TatoebaParser,
+        tmp: File,
+    ): Summary {
         // The date stamps the sidecar that the app uses to detect updates;
         // without it, successive JMdict releases would look identical.
         val jmdictDate = extractCreationDate(jmdict)
@@ -85,6 +100,9 @@ class Pipeline(private val dataDir: File, private val out: File) {
         val jmnedictParser = JmnedictParser(jmnedict)
         DbWriter(tmp).use { writer ->
             writer.writeJmdict(jmdictParser)
+            // Straight after the entries: the sentence linker resolves
+            // B-line headwords against what writeJmdict just wrote.
+            writer.writeTatoeba(tatoeba)
             writer.writeKanjidic(KanjidicParser(kanjidic))
             writer.writeRadk(RadkParser.parse(radk))
             writer.writeNames(jmnedictParser)

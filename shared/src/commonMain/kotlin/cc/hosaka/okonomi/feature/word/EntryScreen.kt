@@ -38,6 +38,7 @@ import cc.hosaka.okonomi.db.EntryDetail
 import cc.hosaka.okonomi.feature.forms.FormsTab
 import cc.hosaka.okonomi.feature.kanji.KanjiTab
 import cc.hosaka.okonomi.feature.navigation.LocalNavigationController
+import cc.hosaka.okonomi.feature.phrases.PhrasesTab
 import cc.hosaka.okonomi.ui.CenteredBox
 import cc.hosaka.okonomi.ui.CenteredMessage
 import cc.hosaka.okonomi.ui.FloatingTabBar
@@ -158,7 +159,7 @@ private fun EntryTabs(
             modifier = Modifier
                 .fillMaxSize(),
         ) { page ->
-            when (val tab = tabs[page]) {
+            when (tabs[page]) {
                 EntryTab.Word -> WordTab(
                     entry = entry,
                     contentPadding = contentPadding,
@@ -174,8 +175,8 @@ private fun EntryTabs(
                     contentPadding = contentPadding,
                 )
 
-                else -> PlaceholderTab(
-                    tab = tab,
+                EntryTab.Phrases -> PhrasesTab(
+                    entry = entry,
                     contentPadding = contentPadding,
                 )
             }

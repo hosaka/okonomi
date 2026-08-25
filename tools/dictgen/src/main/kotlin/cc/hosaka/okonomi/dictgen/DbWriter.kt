@@ -16,6 +16,8 @@ class DbWriter(target: File) : AutoCloseable {
     private val driver: JdbcSqliteDriver
     private val db: OkonomiDb
     private var senseId = 0L
+    private var tatoeba: TatoebaStats? = null
+    private var rejectedWords = 0L
 
     init {
         target.parentFile?.mkdirs()
@@ -99,6 +101,138 @@ class DbWriter(target: File) : AutoCloseable {
         }
     }
 
+    /**
+     * Writes the Tatoeba pairs and the links from entries to them. Must
+     * run after [writeJmdict]: the linker resolves B-line headwords
+     * against the entries already in the file, so an id it hands back
+     * always exists.
+     *
+     * The cap cannot be applied while streaming — it is global per
+     * entry, and the tenth-shortest sentence for 行く is not knowable
+     * until all 4,606 of its candidates have been seen — so links are
+     * collected first, capped and ordered second, and the sentences no
+     * surviving link references are pruned last.
+     */
+    fun writeTatoeba(parser: TatoebaParser) {
+        val index = entryIndex()
+        val links = HashMap<Long, TopSentences>()
+        var stats: TatoebaStats? = null
+        db.transaction {
+            stats = parser.parse { sentence ->
+                val words = BLine.parse(sentence.breakdown)
+                rejectedWords += words.rejected
+                // Resolved once per word: the entry id the breakdown
+                // stores is the same one the link is built from.
+                val stored = words.tokens.map { index.storedWord(it) }
+                // The B-line is rewritten rather than stored: every
+                // kanji word leaves here with a reading, taken from the
+                // entry it resolved to where the source states none.
+                db.sentenceQueries.insertSentence(
+                    sentence.id,
+                    sentence.japanese,
+                    sentence.english,
+                    StoredBreakdown.encode(stored),
+                )
+                // A sentence naming one entry twice is one link, and the
+                // tilde counts for an entry only when it sits on a word
+                // that resolved to that entry: the mark is per word, and
+                // 26,329 lines carry it on some of their words against
+                // 24 that carry it on all.
+                val checkedByEntry = LinkedHashMap<Long, Boolean>()
+                words.tokens.forEachIndexed { position, token ->
+                    val entryId = stored[position].entryId ?: return@forEachIndexed
+                    checkedByEntry[entryId] = checkedByEntry[entryId] == true || token.checked
+                }
+                val key = SentenceKey.of(sentence.japanese)
+                checkedByEntry.forEach { (entryId, checked) ->
+                    links.getOrPut(entryId) { TopSentences(SENTENCES_PER_ENTRY) }.offer(
+                        SentenceLink(
+                            sentenceId = sentence.id,
+                            length = sentence.japanese.length,
+                            checked = checked,
+                            key = key,
+                        ),
+                    )
+                }
+            }
+        }
+        db.transaction {
+            // Sorted keys, so the generated file does not depend on hash
+            // iteration order from one run to the next.
+            links.keys.sorted().forEach { entryId ->
+                links.getValue(entryId).ordered().forEachIndexed { ord, link ->
+                    db.sentenceQueries.insertEntrySentence(entryId, link.sentenceId, ord.toLong())
+                }
+            }
+        }
+        db.transaction {
+            db.sentenceQueries.deleteUnlinkedSentences()
+        }
+        tatoeba = checkNotNull(stats) { "the parser must report what it read" }
+        checkTatoebaProducedSomething(tatoeba!!)
+    }
+
+    /**
+     * Fails generation when the sentence sources produced nothing
+     * usable.
+     *
+     * Every step here degrades quietly by design — an unreadable row is
+     * skipped, an unresolvable word is skipped — which is right per row
+     * and wrong in bulk. If Tatoeba ever shipped `jpn_indices.csv`
+     * genuinely comma-separated, as its extension invites, every row
+     * would skip, the build would succeed, and the Phrases tab would be
+     * empty on every entry with nothing anywhere saying why.
+     */
+    private fun checkTatoebaProducedSomething(stats: TatoebaStats) {
+        if (stats.rows > 0 && stats.pairs == 0L) {
+            throw PipelineException(
+                "Read ${stats.rows} sentence index rows and resolved none of them to a pair " +
+                    "(${stats.malformedRows} could not be split into three tab-separated columns). " +
+                    "The sentence sources are present but unreadable.",
+            )
+        }
+        val linked = db.sentenceQueries.entrySentenceCount().executeAsOne()
+        if (stats.pairs > 0 && linked == 0L) {
+            throw PipelineException(
+                "Resolved ${stats.pairs} sentence pairs but linked none of them to an entry. " +
+                    "The B-line grammar or the entry index is broken, not the sources.",
+            )
+        }
+    }
+
+    /**
+     * The (text -> entry) mapping the linker resolves headwords
+     * against, read back from the entries just written rather than
+     * accumulated during [writeJmdict]: the file is the single source of
+     * truth for what an entry id means, and a second in-memory copy
+     * built on the way in could only drift from it.
+     */
+    private fun entryIndex(): EntryIndex {
+        val byKanjiForm = HashMap<String, MutableList<Long>>()
+        db.entryQueries.allKanjiForms().executeAsList().forEach { row ->
+            byKanjiForm.getOrPut(row.text) { mutableListOf() } += row.entry_id
+        }
+        val byReading = HashMap<String, MutableList<Long>>()
+        // The query is ordered by (entry, ord), so each entry's
+        // readings arrive in JMdict's own order and the breakdown can
+        // take the first one that fits the written form it matched.
+        val readings = HashMap<Long, MutableList<IndexedReading>>()
+        db.entryQueries.allReadings().executeAsList().forEach { row ->
+            byReading.getOrPut(row.text) { mutableListOf() } += row.entry_id
+            readings.getOrPut(row.entry_id) { mutableListOf() } += IndexedReading(
+                text = row.text,
+                noKanji = row.no_kanji != 0L,
+                restrictions = row.restrictions
+                    ?.split(StoredFormat.RESTRICTIONS)
+                    ?.filter { it.isNotEmpty() }
+                    .orEmpty(),
+            )
+        }
+        val commonRank = db.entryQueries.allEntryRanks().executeAsList()
+            .associate { it.id to it.common_rank }
+        return EntryIndex(byKanjiForm, byReading, commonRank, readings)
+    }
+
     fun writeKanjidic(parser: KanjidicParser) {
         db.transaction {
             parser.parse { character ->
@@ -176,6 +310,14 @@ class DbWriter(target: File) : AutoCloseable {
         "radicals" to db.kanjiQueries.radicalCount().executeAsOne(),
         "names" to db.nameQueries.nameCount().executeAsOne(),
         "tags" to db.tagQueries.tagLabelCount().executeAsOne(),
+        "sentences" to db.sentenceQueries.sentenceCount().executeAsOne(),
+        "links" to db.sentenceQueries.entrySentenceCount().executeAsOne(),
+        // Not table sizes but the two quiet failure modes: index rows
+        // that never became a pair, and B-line words the grammar
+        // rejected. Both are near zero in the shipped sources, so a
+        // number that moves is the first sign a source changed shape.
+        "skipped" to (tatoeba?.skipped ?: 0L),
+        "rejected" to rejectedWords,
     )
 
     override fun close() {

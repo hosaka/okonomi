@@ -14,10 +14,16 @@ package cc.hosaka.okonomi.lang
  * Radicals Han. Those are marks and radical forms rather than
  * characters a learner looks up, so they get no card here.
  *
- * The divergence is harmless because the two answer different
- * questions. dictgen's rows feed `entry_kanji`, which only ever backs
- * `wordsContainingKanji` — a row for 々 is a lookup key nothing asks
- * for, not a wrong answer. This predicate decides what the reader sees.
+ * The divergence is bounded rather than harmless, and the boundary has
+ * moved once already. dictgen's predicate had one consumer,
+ * `entry_kanji` behind `wordsContainingKanji`, where a row for 々 is a
+ * lookup key nothing asks for rather than a wrong answer. It now has a
+ * second: `containsKanji` decides whether a word in a sentence
+ * breakdown is given a reading at all, so calling 々 a kanji there
+ * would hand a headword of 々 alone a reading it should not have. No
+ * shipped headword is written that way, which is why the two rules are
+ * still allowed to differ — but a third consumer is the point at which
+ * dictgen should adopt this rule instead of its own.
  */
 fun isHanCodePoint(code: Int): Boolean = when (code) {
     in 0x3400..0x4DBF, // CJK unified ideographs extension A

@@ -58,7 +58,17 @@ val generateDictionary = tasks.register<JavaExec>("generateDictionary") {
     classpath = sourceSets.main.get().runtimeClasspath
     // Locals only: lambdas below must not capture the build script object
     // (configuration cache cannot serialize script references).
-    val sourceNames = listOf("JMdict_e_examp.xml", "JMnedict.xml", "kanjidic2.xml", "radkfile")
+    val sourceNames = listOf(
+        "JMdict_e.xml",
+        "JMnedict.xml",
+        "kanjidic2.xml",
+        "radkfile",
+        // Tatoeba: the Japanese/English pairs and the word index that
+        // links them to entries (the Phrases tab).
+        "jpn_sentences.tsv",
+        "eng_sentences.tsv",
+        "jpn_indices.csv",
+    )
     val dataDir = rootDir.resolve("data")
     val outputDir = dictionaryOutputDir
     inputs.files(sourceNames.map { dataDir.resolve(it) })
@@ -79,7 +89,9 @@ val generateDictionary = tasks.register<JavaExec>("generateDictionary") {
             throw GradleException(
                 "Dictionary sources are missing from ${dataDir}: ${missing.joinToString()}. " +
                     "The app bundles the generated dictionary, so building it requires the " +
-                    "JMdict_e_examp.xml, JMnedict.xml, kanjidic2.xml and radkfile sources in data/.",
+                    "JMdict_e.xml, JMnedict.xml, kanjidic2.xml and radkfile sources from EDRDG, " +
+                    "plus jpn_sentences.tsv, eng_sentences.tsv and jpn_indices.csv from Tatoeba, " +
+                    "in data/. See README.md for where each one is downloaded from.",
             )
         }
     }

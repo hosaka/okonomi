@@ -95,6 +95,22 @@ WHERE id = :id;
 entryCount:
 SELECT COUNT(*) FROM entry;
 
+-- Generation only. The Tatoeba linker resolves a B-line headword to an
+-- entry, which needs the whole (text -> entry) mapping in memory at
+-- once; the app never scans these tables.
+allEntryRanks:
+SELECT id, common_rank FROM entry;
+
+allKanjiForms:
+SELECT entry_id, text FROM kanji_form ORDER BY entry_id, ord;
+
+-- no_kanji and restrictions come along because the sentence breakdown
+-- has to pick a reading that belongs to the written form it found: a
+-- re_nokanji reading is not a reading of the kanji at all, and a
+-- restricted one belongs only to the forms it names.
+allReadings:
+SELECT entry_id, text, no_kanji, restrictions FROM reading ORDER BY entry_id, ord;
+
 glossCount:
 SELECT COUNT(*) FROM gloss;
 

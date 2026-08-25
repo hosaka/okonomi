@@ -190,6 +190,10 @@ class JmdictParser(private val file: File) {
                         val content = r.readElementContent(declared, file.name)
                         if (lang == null || lang == "eng") glosses += content.text
                     }
+                    // Unreachable with the plain JMdict_e source, which carries no
+                    // example blocks (the Phrases tab uses Tatoeba directly). Kept
+                    // as insurance in case the source is ever switched back to the
+                    // JMdict_e_examp variant.
                     "example" -> r.skipElement()
                     else -> r.skipElement()
                 }

@@ -9,7 +9,8 @@ import kotlin.test.assertTrue
 
 /**
  * Guards the credits manifest: the licence obligations it discharges
- * (EDRDG attribution, Yomitan derivation) must not silently regress.
+ * (EDRDG attribution, Yomitan derivation, Tatoeba and Tanaka Corpus
+ * CC-BY attribution) must not silently regress.
  */
 class CreditsTest {
     private val stringsPath = "src/commonMain/composeResources/values/strings.xml"
@@ -46,11 +47,56 @@ class CreditsTest {
     }
 
     @Test
-    fun `the manifest contains the four EDRDG sources and Yomitan`() {
+    fun `the manifest contains the four EDRDG sources, Yomitan and the sentence sources`() {
         assertEquals(
-            listOf("JMdict", "JMnedict", "KANJIDIC2", "RADKFILE", "Yomitan"),
+            listOf("JMdict", "JMnedict", "KANJIDIC2", "RADKFILE", "Yomitan", "Tatoeba", "Tanaka Corpus"),
             creditEntries.map { it.name },
         )
+    }
+
+    @Test
+    fun `both sentence sources are credited to Creative Commons through Tatoeba`() {
+        // The field exists to discharge the attribution obligation, so
+        // it has to reach the terms rather than a home page. Both
+        // entries link the same page because both sets of sentences
+        // reach us the same way.
+        val sentenceSources = creditEntries.filter { it.name in setOf("Tatoeba", "Tanaka Corpus") }
+        assertEquals(listOf("Tatoeba", "Tanaka Corpus"), sentenceSources.map { it.name })
+        sentenceSources.forEach { entry ->
+            assertEquals("Creative Commons", entry.licence, entry.name)
+            assertEquals("https://tatoeba.org/en/terms_of_use", entry.licenceUrl, entry.name)
+        }
+    }
+
+    @Test
+    fun `no credit claims a Creative Commons variant the source does not name`() {
+        // Tatoeba says its data is released under "various Creative
+        // Commons licenses" and names no one of them, so any specific
+        // variant here would be a precision we invented. "CC BY 2.0 FR"
+        // is the plausible-looking string this guards against.
+        val variant = Regex("""CC[ -]?BY|\d\.\d""")
+        creditEntries
+            .filter { it.licence.contains("Creative Commons") }
+            .forEach { entry ->
+                assertTrue(
+                    !variant.containsMatchIn(entry.licence),
+                    "${entry.name} names a specific CC variant: ${entry.licence}",
+                )
+            }
+    }
+
+    @Test
+    fun `no credit links a bare host with nothing on it`() {
+        // A crude check for a real mistake: this field is where the
+        // reader goes for the terms, and a link to a project's front
+        // door discharges nothing. A path is not proof of a licence
+        // page, but its absence is proof of a home page.
+        creditEntries.forEach { entry ->
+            assertTrue(
+                entry.licenceUrl.trimEnd('/').count { it == '/' } > 2,
+                "${entry.name} links a home page rather than its terms: ${entry.licenceUrl}",
+            )
+        }
     }
 
     @Test

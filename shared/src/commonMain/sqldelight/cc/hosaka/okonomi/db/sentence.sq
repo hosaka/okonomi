@@ -1,0 +1,65 @@
+-- Tatoeba example sentences, one row per usable Japanese/English pair.
+--
+-- breakdown is the word-by-word reading aid the Phrases tab renders:
+-- space-separated `headword(reading)#entryId` words, written by dictgen
+-- from Tatoeba's B-line. Every word with kanji in it carries a reading,
+-- taken from the entry it resolved to wherever the source states none
+-- (the source states one for only 28% of them). The entry id is stored
+-- although nothing reads it yet: it is what future tappable words need,
+-- and it costs nothing to keep now against a regeneration later.
+--
+-- One column rather than per-token rows: the sentence table costs
+-- 22.4 MB and the links with their two indexes 5.3 MB more, against
+-- roughly 34 MB for the sentence text alone once exploded, and display
+-- is a parse instead of a second query per sentence.
+CREATE TABLE sentence (
+    id INTEGER PRIMARY KEY,
+    japanese TEXT NOT NULL,
+    english TEXT NOT NULL,
+    breakdown TEXT NOT NULL
+);
+
+-- Capped at ten rows per entry by dictgen; ord is the display order it
+-- chose (readable-length sentences first, then verified, then shorter).
+--
+-- The UNIQUE constraint makes a repeated link illegal in the file
+-- rather than merely prevented by a set in the generator: a sentence
+-- that names one entry twice is one example, and nothing downstream
+-- would notice the duplicate except the reader seeing it twice.
+CREATE TABLE entry_sentence (
+    entry_id INTEGER NOT NULL REFERENCES entry(id),
+    sentence_id INTEGER NOT NULL REFERENCES sentence(id),
+    ord INTEGER NOT NULL,
+    UNIQUE(entry_id, sentence_id)
+);
+
+-- (entry_id, ord) rather than entry_id alone: it is what
+-- sentencesForEntry both filters and sorts on, so the query never sorts.
+CREATE INDEX entry_sentence_entry_ord_idx ON entry_sentence(entry_id, ord);
+
+insertSentence:
+INSERT INTO sentence(id, japanese, english, breakdown) VALUES (?, ?, ?, ?);
+
+insertEntrySentence:
+INSERT INTO entry_sentence(entry_id, sentence_id, ord) VALUES (?, ?, ?);
+
+-- Generation only: a sentence no surviving link references is dead
+-- weight in a file every device downloads.
+deleteUnlinkedSentences:
+DELETE FROM sentence WHERE id NOT IN (SELECT sentence_id FROM entry_sentence);
+
+sentenceCount:
+SELECT COUNT(*) FROM sentence;
+
+entrySentenceCount:
+SELECT COUNT(*) FROM entry_sentence;
+
+-- The sentence id comes along as the row's stable identity: the list
+-- keys on it, and it is the handle a tappable-word increment would pair
+-- with the entry ids already stored in the breakdown.
+sentencesForEntry:
+SELECT s.id, s.japanese, s.english, s.breakdown
+FROM entry_sentence es
+JOIN sentence s ON s.id = es.sentence_id
+WHERE es.entry_id = :entryId
+ORDER BY es.ord;
