@@ -39,7 +39,7 @@ class BreakdownWordLabelTest {
     }
 
     @Test
-    fun `the reading's brackets come from the template, not the code`() {
+    fun `the reading's brackets come from the template rather than the code`() {
         // A locale that writes readings differently changes
         // entry_phrases_word_reading and nothing else.
         assertEquals(

@@ -56,7 +56,7 @@ class SearchStateProducerTest {
     }
 
     @Test
-    fun `starts with an empty query, no clear action and idle results`() = runTest {
+    fun `the initial state is an empty query with no clear action and idle results`() = runTest {
         val scope = FakeScreenStateScope()
 
         val states = collectStates(scope.searchScreenStateProducer(search = noSearch))
@@ -85,7 +85,7 @@ class SearchStateProducerTest {
     }
 
     @Test
-    fun `clear empties the query, hides clear and returns to idle`() = runTest {
+    fun `clear empties the query and returns to idle with the clear action hidden`() = runTest {
         val scope = FakeScreenStateScope()
         val states = collectStates(
             scope.searchScreenStateProducer(search = { SearchResults(listOf(hit(1))) }),

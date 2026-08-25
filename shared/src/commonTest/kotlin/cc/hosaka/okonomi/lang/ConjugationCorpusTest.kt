@@ -48,7 +48,7 @@ class ConjugationCorpusTest {
     }
 
     @Test
-    fun `a conjugable entry always produces a full table, never a half of one`() {
+    fun `a conjugable entry always produces a full table and never a half of one`() {
         val failures = mutableListOf<String>()
         for (entry in conjugationCorpus) {
             val conjugable = entry.posCodes.filter { conjugationClassOf(it, entry.headword) != null }

@@ -46,7 +46,7 @@ class FormRowLabelsTest {
     )
 
     @Test
-    fun `every row is labelled, and labelled as itself`() {
+    fun `every row is labelled and labelled as itself`() {
         assertEquals(FormId.entries, expected.map { it.first }, "a row was added without a label")
         for ((id, resource) in expected) {
             assertEquals(resource, id.label, "$id")

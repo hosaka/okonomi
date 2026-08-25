@@ -34,7 +34,19 @@ Practical rule: for new screens, follow the same split (see `feature/search/`):
 - `XxxState.kt` for the UI contract (nullable callbacks mean disabled),
 - `XxxStateProducer.kt` with `produceXxxScreenState()` and `suspend fun ScreenStateScope.xxxScreenStateProducer(): Flow<XxxState>` for state composition, persistence, and side effects.
 
-Verification: `./gradlew :androidApp:assembleDebug :shared:compileKotlinIosArm64 :shared:testAndroidHostTest :tools:dictgen:test`.
+Verification: `./gradlew :androidApp:assembleDebug :shared:compileKotlinIosArm64 :shared:compileTestKotlinIosSimulatorArm64 :shared:testAndroidHostTest :tools:dictgen:test`.
+
+`:shared:compileTestKotlinIosSimulatorArm64` is in the list because the other
+iOS task compiles main sources only. `commonTest` grew for months without ever
+being compiled for Kotlin/Native, and by the time anyone looked, 20 test names
+had commas in their backticks — which Kotlin/Native rejects outright.
+
+Compose UI tests live in `commonTest` and run on the JVM through
+`:shared:testAndroidHostTest`, with no emulator or device. Extend
+`cc.hosaka.okonomi.ui.test.ComposeUiTestBase` and call
+`androidx.compose.ui.test.v2.runComposeUiTest`; see that class and the
+`androidHostTest` dependency block for why the runner and Robolectric are wired
+the way they are.
 
 `:tools:dictgen` is part of the check, not an optional extra: it owns the dictionary's
 shape and its ranking rules, so a regression there changes search results while every

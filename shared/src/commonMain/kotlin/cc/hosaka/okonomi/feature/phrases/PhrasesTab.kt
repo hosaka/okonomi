@@ -56,8 +56,13 @@ fun PhrasesTab(
     )
 }
 
+/**
+ * Internal rather than private so a UI test can drive each branch directly:
+ * [PhrasesTab] resolves its state off the shared dictionary, which a host test
+ * has no database for.
+ */
 @Composable
-private fun PhrasesTabContent(
+internal fun PhrasesTabContent(
     state: PhrasesTabState,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,

@@ -78,7 +78,7 @@ class KanjiTabStateProducerTest {
     }
 
     @Test
-    fun `a headword with no kanji is its own state, reached without a query`() = runTest {
+    fun `a headword with no kanji is its own state reached without a query`() = runTest {
         val scope = FakeScreenStateScope()
 
         val kana = collectStates(

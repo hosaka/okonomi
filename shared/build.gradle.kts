@@ -86,6 +86,10 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
+            // Compose UI tests live in commonTest and execute on the JVM through
+            // androidHostTest. Use androidx.compose.ui.test.v2.runComposeUiTest:
+            // the v1 entry points are deprecated in Compose Multiplatform 1.11.
+            implementation(libs.compose.uiTest)
         }
         getByName("androidHostTest").dependencies {
             // Real org.json so the Android AboutLibraries parser works on the JVM.
@@ -94,6 +98,26 @@ kotlin {
             // Android AAR only carries device ABIs, so host tests exercise the
             // async-codegen queries over the synchronous JDBC driver instead.
             implementation(libs.sqldelight.sqliteDriver)
+            // Robolectric supplies the Android runtime that Compose UI tests need
+            // on the JVM. Without it runComposeUiTest fails with a bare
+            // NullPointerException rather than anything self-explanatory.
+            implementation(libs.robolectric)
+            // ui-test-manifest merges the <activity> entry for ComponentActivity
+            // that runComposeUiTest launches. Android's docs all say this belongs
+            // on debugImplementation; that guidance assumes the application
+            // plugin. The AGP KMP library plugin has no build types, so there is
+            // no debugImplementation and plain implementation here is correct.
+            // Removing it fails with "Unable to resolve activity for Intent".
+            implementation(libs.androidx.compose.uiTestManifest)
+            // AndroidJUnit4 dispatches to Robolectric on the host and to
+            // instrumentation on a device, so ComposeUiTestBase needs one runner.
+            implementation(libs.androidx.testExt.junit)
+        }
+        getByName("androidDeviceTest").dependencies {
+            // We run no device tests, but androidDeviceTest depends on commonTest
+            // (see sourceSetTreeName above), so it must still compile the
+            // ComposeUiTestBase actual and therefore needs the runner on its path.
+            implementation(libs.androidx.testExt.junit)
         }
         all {
             languageSettings {

@@ -16,13 +16,13 @@ class HanTest {
     }
 
     @Test
-    fun `collapses a repeat to one card, keeping first appearance order`() {
+    fun `collapses a repeat to one card keeping first appearance order`() {
         assertEquals(listOf("人"), hanCharacters("人人"))
         assertEquals(listOf("大", "学", "生"), hanCharacters("大学生大学"))
     }
 
     @Test
-    fun `skips kana, the iteration mark and punctuation`() {
+    fun `skips kana iteration marks and punctuation`() {
         // 々 is a symbol rather than an ideograph, so 日々 has one
         // character to show, not two.
         assertEquals(listOf("日"), hanCharacters("日々"))
@@ -59,7 +59,7 @@ class HanTest {
     }
 
     @Test
-    fun `rejects kana, latin and the marks the JVM predicate calls han`() {
+    fun `rejects kana latin and the marks the JVM predicate calls han`() {
         assertFalse(isHanCodePoint('べ'.code))
         assertFalse(isHanCodePoint('a'.code))
         assertFalse(isHanCodePoint(0x33FF), "just below extension A")

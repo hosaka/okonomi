@@ -68,7 +68,7 @@ class PhrasesTabStateProducerTest {
     }
 
     @Test
-    fun `an entry the corpus never uses is its own state, not an error`() = runTest {
+    fun `an entry the corpus never uses is its own state rather than an error`() = runTest {
         val scope = FakeScreenStateScope()
 
         val states = collectStates(

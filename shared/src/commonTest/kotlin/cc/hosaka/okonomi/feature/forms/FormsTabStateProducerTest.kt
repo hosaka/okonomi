@@ -78,7 +78,7 @@ class FormsTabStateProducerTest {
      * thing that arrives late.
      */
     @Test
-    fun `the table is drawn before the class name arrives, and upgrades in place`() = runTest {
+    fun `the table is drawn before the class name arrives and upgrades in place`() = runTest {
         val scope = FakeScreenStateScope()
 
         val states = collectStates(
@@ -92,7 +92,7 @@ class FormsTabStateProducerTest {
     }
 
     @Test
-    fun `two conjugable classes render one table each, in sense order`() = runTest {
+    fun `two conjugable classes render one table each in sense order`() = runTest {
         val scope = FakeScreenStateScope()
 
         val states = collectStates(
@@ -141,7 +141,7 @@ class FormsTabStateProducerTest {
     }
 
     @Test
-    fun `a suru noun is its own empty state, reached without a query`() = runTest {
+    fun `a suru noun is its own empty state reached without a query`() = runTest {
         val scope = FakeScreenStateScope()
 
         val states = collectStates(

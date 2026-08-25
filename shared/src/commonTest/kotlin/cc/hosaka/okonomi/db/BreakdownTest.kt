@@ -67,7 +67,7 @@ class BreakdownTest {
     }
 
     @Test
-    fun `a word the format does not accept is skipped, not the sentence`() {
+    fun `a word the format does not accept is skipped without dropping the sentence`() {
         val words = Breakdown.words("何(なに)#1 食(べ 食べる(たべる)#2")
 
         assertEquals(listOf("何", "食べる"), words.map { it.text })

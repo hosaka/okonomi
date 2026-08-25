@@ -89,7 +89,7 @@ class GlossHighlightsTest {
     }
 
     @Test
-    fun `every occurrence shifts, not just the first`() {
+    fun `every occurrence shifts rather than just the first`() {
         val line = senseLine("eat, eat", listOf("eat"))
 
         assertEquals("- eat, eat", line.text)

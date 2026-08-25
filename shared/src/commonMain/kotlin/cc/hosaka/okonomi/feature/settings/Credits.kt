@@ -6,7 +6,6 @@ import okonomi.shared.generated.resources.settings_credit_usage_jmdict
 import okonomi.shared.generated.resources.settings_credit_usage_jmnedict
 import okonomi.shared.generated.resources.settings_credit_usage_kanjidic
 import okonomi.shared.generated.resources.settings_credit_usage_radkfile
-import okonomi.shared.generated.resources.settings_credit_usage_tanaka
 import okonomi.shared.generated.resources.settings_credit_usage_tatoeba
 import okonomi.shared.generated.resources.settings_credit_usage_yomitan
 import okonomi.shared.generated.resources.settings_credits_edrdg_statement
@@ -87,20 +86,9 @@ val creditEntries: List<CreditEntry> = listOf(
         usage = Res.string.settings_credit_usage_yomitan,
     ),
     CreditEntry(
-        name = "Tatoeba",
+        name = "Tatoeba (Tanaka Corpus)",
         licence = CREATIVE_COMMONS_LICENCE_NAME,
         licenceUrl = TATOEBA_TERMS_URL,
         usage = Res.string.settings_credit_usage_tatoeba,
-    ),
-    // Tatoeba's Japanese-English pairs began as Yasuhito Tanaka's
-    // corpus, credited in its own right rather than folded into the
-    // Tatoeba entry. Same licence and same link: we receive these
-    // sentences through Tatoeba, under Tatoeba's terms, and the usage
-    // line is what says so.
-    CreditEntry(
-        name = "Tanaka Corpus",
-        licence = CREATIVE_COMMONS_LICENCE_NAME,
-        licenceUrl = TATOEBA_TERMS_URL,
-        usage = Res.string.settings_credit_usage_tanaka,
     ),
 )

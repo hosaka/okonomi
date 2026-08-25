@@ -91,7 +91,7 @@ class ConjugatorTest {
     }
 
     @Test
-    fun `the euphonic groups follow the final kana, not the class code`() {
+    fun `the euphonic groups follow the final kana rather than the class code`() {
         assertEquals("書いて" to "書かなくて", forms("書く", "v5k")[FormId.Te])
         assertEquals("書いた" to "書かなかった", forms("書く", "v5k")[FormId.Past])
         assertEquals("泳いで" to "泳がなくて", forms("泳ぐ", "v5g")[FormId.Te])
@@ -122,7 +122,7 @@ class ConjugatorTest {
     }
 
     @Test
-    fun `iku takes the te and past forms of a tsu verb, not of a ku verb`() {
+    fun `iku takes the te and past forms of a tsu verb rather than a ku verb`() {
         val iku = forms("行く", "v5k-s")
         assertEquals("行って" to "行かなくて", iku[FormId.Te])
         assertEquals("行った" to "行かなかった", iku[FormId.Past])
@@ -145,7 +145,7 @@ class ConjugatorTest {
     }
 
     @Test
-    fun `aru negates to nai, and so does an expression built on it`() {
+    fun `aru negates to nai and so does an expression built on it`() {
         val aru = forms("ある", "v5r-i")
         assertEquals("ある" to "ない", aru[FormId.NonPast])
         assertEquals("あった" to "なかった", aru[FormId.Past])
@@ -217,7 +217,7 @@ class ConjugatorTest {
     }
 
     @Test
-    fun `the suru classes conjugate the stored form, and differ in the potential`() {
+    fun `the suru classes conjugate the stored form and differ in the potential`() {
         val aisuru = forms("愛する", "vs-s")
         assertEquals("愛する" to "愛しない", aisuru[FormId.NonPast])
         assertEquals("愛します" to "愛しません", aisuru[FormId.NonPastPolite])
@@ -327,7 +327,7 @@ class ConjugatorTest {
     }
 
     @Test
-    fun `a suru noun is not conjugated, and neither is anything else without a verb code`() {
+    fun `a suru noun is not conjugated and neither is anything else without a verb code`() {
         assertNull(conjugationClassOf("vs", "勉強"))
         assertTrue(conjugate("勉強", "vs").isEmpty())
         assertTrue(conjugations("勉強", listOf("n", "vs")).isEmpty())
