@@ -26,19 +26,38 @@ import org.jetbrains.compose.resources.stringResource
  * The characters of the headword, one card each. The tab loads its own
  * data rather than riding on the entry state: a kanjidic failure must
  * cost this tab alone, never the entry view or its other tabs.
+ *
+ * [loadEnabled] false means the pager is only passing through this page
+ * on its way somewhere else: the tab renders its loading body and asks
+ * the database for nothing. The producer is not merely idle but
+ * uncalled, so no query is started and nothing has to be cancelled. Its
+ * view model outlives the gate closing again, so coming back to a tab
+ * that already loaded is still instant.
+ *
+ * It has no default on purpose. A default of true would mean that
+ * deleting the argument at the call site compiles and silently restores
+ * the bug — and the pass-through it guards against only happens
+ * mid-animation on a device, which no host test can stand at the right
+ * frame to see. Making the caller say what it wants is the check that
+ * does not depend on catching the moment.
  */
 @Composable
 fun KanjiTab(
     entry: EntryDetail,
     contentPadding: PaddingValues,
+    loadEnabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val state = produceKanjiTabState(
-        entryId = entry.entryId,
-        headword = entry.headword,
-    )
+    val state = if (loadEnabled) {
+        produceKanjiTabState(
+            entryId = entry.entryId,
+            headword = entry.headword,
+        ).value
+    } else {
+        KanjiTabState()
+    }
     KanjiTabContent(
-        state = state.value,
+        state = state,
         contentPadding = contentPadding,
         modifier = modifier,
     )

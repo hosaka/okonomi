@@ -218,10 +218,10 @@
         },
         {
             "uniqueId": "androidx.collection:collection-ktx",
-            "artifactVersion": "1.5.0",
+            "artifactVersion": "1.6.0",
             "name": "Collections Kotlin Extensions",
             "description": "Kotlin extensions for 'collection' artifact",
-            "website": "https://developer.android.com/jetpack/androidx/releases/collection#1.5.0",
+            "website": "https://developer.android.com/jetpack/androidx/releases/collection#1.6.0",
             "developers": [
                 {
                     "name": "The Android Open Source Project"
@@ -1637,6 +1637,81 @@
             ]
         },
         {
+            "uniqueId": "androidx.sqlite:sqlite-android",
+            "artifactVersion": "2.7.0",
+            "name": "SQLite",
+            "description": "SQLite API",
+            "website": "https://developer.android.com/jetpack/androidx/releases/sqlite#2.7.0",
+            "developers": [
+                {
+                    "name": "The Android Open Source Project"
+                }
+            ],
+            "organization": {
+                "name": "The Android Open Source Project"
+            },
+            "scm": {
+                "connection": "scm:git:https://android.googlesource.com/platform/frameworks/support",
+                "url": "https://cs.android.com/androidx/platform/frameworks/support"
+            },
+            "licenses": [
+                "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "androidx.sqlite:sqlite-bundled-android",
+            "artifactVersion": "2.7.0",
+            "name": "SQLite Bundled Integration",
+            "description": "The implementation of SQLite library using the bundled SQLite.",
+            "website": "https://developer.android.com/jetpack/androidx/releases/sqlite#2.7.0",
+            "developers": [
+                {
+                    "name": "The Android Open Source Project"
+                }
+            ],
+            "organization": {
+                "name": "The Android Open Source Project"
+            },
+            "scm": {
+                "connection": "scm:git:https://android.googlesource.com/platform/frameworks/support",
+                "url": "https://cs.android.com/androidx/platform/frameworks/support"
+            },
+            "licenses": [
+                "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "androidx.sqlite:sqlite-framework",
+            "artifactVersion": "2.7.0",
+            "name": "SQLite Framework Integration",
+            "description": "The implementation of SQLite library using the framework code.",
+            "website": "https://developer.android.com/jetpack/androidx/releases/sqlite#2.7.0",
+            "developers": [
+                {
+                    "name": "The Android Open Source Project"
+                }
+            ],
+            "organization": {
+                "name": "The Android Open Source Project"
+            },
+            "scm": {
+                "connection": "scm:git:https://android.googlesource.com/platform/frameworks/support",
+                "url": "https://cs.android.com/androidx/platform/frameworks/support"
+            },
+            "licenses": [
+                "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
             "uniqueId": "androidx.startup:startup-runtime",
             "artifactVersion": "1.1.1",
             "name": "Android App Startup Runtime",
@@ -1772,6 +1847,75 @@
             },
             "licenses": [
                 "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "app.cash.sqldelight:async-extensions-jvm",
+            "artifactVersion": "2.3.2",
+            "name": "SQLDelight Async Driver Extensions",
+            "description": "Kotlin extensions for working with Async drivers",
+            "website": "https://github.com/sqldelight/sqldelight/",
+            "developers": [
+                {
+                    "name": "Square, Inc."
+                }
+            ],
+            "scm": {
+                "connection": "scm:git:git://github.com/sqldelight/sqldelight.git",
+                "developerConnection": "scm:git:ssh://git@github.com/sqldelight/sqldelight.git",
+                "url": "https://github.com/sqldelight/sqldelight/"
+            },
+            "licenses": [
+                "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "app.cash.sqldelight:runtime-jvm",
+            "artifactVersion": "2.3.2",
+            "name": "SQLDelight Multiplatform Runtime (Experimental)",
+            "description": "Multiplatform runtime library to support generated code",
+            "website": "https://github.com/sqldelight/sqldelight/",
+            "developers": [
+                {
+                    "name": "Square, Inc."
+                }
+            ],
+            "scm": {
+                "connection": "scm:git:git://github.com/sqldelight/sqldelight.git",
+                "developerConnection": "scm:git:ssh://git@github.com/sqldelight/sqldelight.git",
+                "url": "https://github.com/sqldelight/sqldelight/"
+            },
+            "licenses": [
+                "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "com.eygraber:sqldelight-androidx-driver-android",
+            "artifactVersion": "0.2.2",
+            "name": "SqlDelight AndroidX Driver",
+            "description": "A SQLDelight Driver that wraps AndroidX Kotlin Multiplatform SQLite",
+            "website": "https://github.com/eygraber/sqldelight-androidx-driver/",
+            "developers": [
+                {
+                    "name": "Eliezer Graber"
+                }
+            ],
+            "scm": {
+                "connection": "scm:git:git://github.com/eygraber/sqldelight-androidx-driver.git",
+                "developerConnection": "scm:git:ssh://git@github.com/eygraber/sqldelight-androidx-driver.git",
+                "url": "https://github.com/eygraber/sqldelight-androidx-driver/"
+            },
+            "licenses": [
+                "MIT"
             ],
             "funding": [
                 
@@ -2735,8 +2879,8 @@
             ]
         },
         {
-            "uniqueId": "org.jetbrains.kotlinx:atomicfu",
-            "artifactVersion": "0.28.0",
+            "uniqueId": "org.jetbrains.kotlinx:atomicfu-jvm",
+            "artifactVersion": "0.33.0",
             "name": "atomicfu",
             "description": "AtomicFU utilities",
             "website": "https://github.com/Kotlin/kotlinx.atomicfu",
@@ -2780,7 +2924,7 @@
         },
         {
             "uniqueId": "org.jetbrains.kotlinx:kotlinx-coroutines-android",
-            "artifactVersion": "1.9.0",
+            "artifactVersion": "1.11.0",
             "name": "kotlinx-coroutines-android",
             "description": "Coroutines support libraries for Kotlin",
             "website": "https://github.com/Kotlin/kotlinx.coroutines",
@@ -2802,7 +2946,7 @@
         },
         {
             "uniqueId": "org.jetbrains.kotlinx:kotlinx-coroutines-bom",
-            "artifactVersion": "1.9.0",
+            "artifactVersion": "1.11.0",
             "name": "kotlinx-coroutines-bom",
             "description": "Coroutines support libraries for Kotlin",
             "website": "https://github.com/Kotlin/kotlinx.coroutines",
@@ -2824,7 +2968,7 @@
         },
         {
             "uniqueId": "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm",
-            "artifactVersion": "1.9.0",
+            "artifactVersion": "1.11.0",
             "name": "kotlinx-coroutines-core",
             "description": "Coroutines support libraries for Kotlin",
             "website": "https://github.com/Kotlin/kotlinx.coroutines",
@@ -3012,6 +3156,14 @@
             "internalHash": "Apache-2.0",
             "spdxId": "Apache-2.0",
             "hash": "Apache-2.0"
+        },
+        "MIT": {
+            "name": "MIT License",
+            "url": "https://spdx.org/licenses/MIT.html",
+            "content": "MIT License\n\nCopyright (c) <year> <copyright holders>\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.",
+            "internalHash": "MIT",
+            "spdxId": "MIT",
+            "hash": "MIT"
         }
     }
 }

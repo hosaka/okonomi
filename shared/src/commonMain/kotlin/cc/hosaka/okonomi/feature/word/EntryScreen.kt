@@ -68,7 +68,12 @@ fun EntryScreen(
     state: EntryState,
     modifier: Modifier = Modifier,
 ) {
-    val contentPadding = PaddingValues(bottom = FloatingTabBarDefaults.contentBottomPadding)
+    // Remembered, not rebuilt: this instance is the contentPadding of
+    // every tab's lazy list, and handing those a fresh equal-but-new
+    // PaddingValues on each recomposition costs a remeasure per frame
+    // under scroll.
+    val bottomPadding = FloatingTabBarDefaults.contentBottomPadding
+    val contentPadding = remember(bottomPadding) { PaddingValues(bottom = bottomPadding) }
     Surface(
         modifier = modifier
             .fillMaxSize(),
@@ -141,11 +146,14 @@ private fun EntryTabs(
     val tabs = EntryTab.entries
     val pagerState = rememberPagerState(pageCount = { tabs.size })
     val coroutineScope = rememberCoroutineScope()
-    val tabBarItems = tabs.map { tab ->
-        FloatingTabBarItem(
-            label = stringResource(tab.label),
-            icon = tab.icon,
-        )
+    val labels = tabs.map { tab -> stringResource(tab.label) }
+    val tabBarItems = remember(labels) {
+        tabs.mapIndexed { index, tab ->
+            FloatingTabBarItem(
+                label = labels[index],
+                icon = tab.icon,
+            )
+        }
     }
     // One animation at a time: rapid taps must not leave two scrolls
     // fighting over the pager.
@@ -159,6 +167,31 @@ private fun EntryTabs(
             modifier = Modifier
                 .fillMaxSize(),
         ) { page ->
+            // Tapping Phrases from Word animates the pager through Kanji
+            // and Forms, composing each of them on the way. Gating the
+            // tabs that read the database is what keeps that one tap to
+            // one query instead of three: an intermediate page renders
+            // its spinner and asks the dictionary for nothing. Forms is
+            // not gated because it computes its tables from the entry
+            // already in hand and never touches the database.
+            //
+            // Two pages open the gate, and both are needed:
+            //
+            // - settledPage, the page the pager has come to rest on.
+            // - targetPage, the page it intends to settle on. During a
+            //   drag this becomes the destination as soon as the gesture
+            //   is committed, and during animateScrollToPage it is the
+            //   FINAL destination for the whole animation — it does not
+            //   sweep through the pages in between the way currentPage
+            //   does, which is what keeps the three-tab tap to one query.
+            //
+            // settledPage alone was the regression: on an ordinary
+            // one-tab swipe the bar highlighted the destination at the
+            // halfway point (the bar reads currentPage) while its body
+            // stayed gated to a spinner until the settle animation
+            // finished. The rare tap was fixed at the cost of the common
+            // gesture. See EntryTabGestureUiTest, which pins both.
+            val loadEnabled = page == pagerState.settledPage || page == pagerState.targetPage
             when (tabs[page]) {
                 EntryTab.Word -> WordTab(
                     entry = entry,
@@ -168,6 +201,7 @@ private fun EntryTabs(
                 EntryTab.Kanji -> KanjiTab(
                     entry = entry,
                     contentPadding = contentPadding,
+                    loadEnabled = loadEnabled,
                 )
 
                 EntryTab.Forms -> FormsTab(
@@ -178,15 +212,24 @@ private fun EntryTabs(
                 EntryTab.Phrases -> PhrasesTab(
                     entry = entry,
                     contentPadding = contentPadding,
+                    loadEnabled = loadEnabled,
                 )
             }
         }
         BottomFade()
         FloatingTabBar(
             items = tabBarItems,
-            // settledPage, not currentPage: a half-swipe that snaps back
-            // must not leave the pill on a tab the reader never reached.
-            selectedIndex = pagerState.settledPage,
+            // currentPage, not settledPage. This reverses the earlier
+            // decision, which read settledPage so that a half-swipe
+            // snapping back could not leave the highlight on a tab the
+            // reader never reached. On a device that costs a whole swipe
+            // of latency: the segment only lights up after the pager has
+            // finished animating, so the bar always looks a beat behind
+            // the thumb. currentPage flips at the pager's own ~50%
+            // threshold, which is the point the gesture is committed,
+            // and a drag released short of it never moves it. Do not
+            // change this back without a device in hand.
+            selectedIndex = pagerState.currentPage,
             onSelect = { page ->
                 scrollJob.job?.cancel()
                 scrollJob.job = coroutineScope.launch {
@@ -198,8 +241,7 @@ private fun EntryTabs(
                 .windowInsetsPadding(
                     WindowInsets.systemBars
                         .only(WindowInsetsSides.Bottom),
-                )
-                .padding(FloatingTabBarDefaults.inset),
+                ),
         )
     }
 }

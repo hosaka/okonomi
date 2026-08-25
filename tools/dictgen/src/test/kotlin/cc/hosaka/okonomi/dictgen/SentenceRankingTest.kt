@@ -5,10 +5,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Which ten sentences an entry keeps. The rule replaced pure ascending
- * length, which filled 食べる's ten with 7-to-9 character fragments and
- * led 死ぬ with 死ね！, so each clause here is one thing that ordering
- * got wrong.
+ * Which sentences an entry keeps, and in what order. The rule replaced
+ * pure ascending length, which filled 食べる's slots with 7-to-9
+ * character fragments and led 死ぬ with 死ね！, so each clause here is
+ * one thing that ordering got wrong.
  */
 class SentenceRankingTest {
 
@@ -99,7 +99,7 @@ class TopSentencesTest {
     }
 
     @Test
-    fun `a candidate no better than the ten already kept changes nothing`() {
+    fun `a candidate no better than those already kept changes nothing`() {
         val top = TopSentences(2)
         top.offerAll(link(1L, 12), link(2L, 14))
         top.offer(link(3L, 40))
@@ -119,7 +119,7 @@ class TopSentencesTest {
         assertEquals(
             listOf(2L, 3L),
             top.ordered().map { it.sentenceId },
-            "one sentence must not take two of an entry's ten slots",
+            "one sentence must not take two of an entry's slots",
         )
     }
 

@@ -45,7 +45,11 @@ import cc.hosaka.okonomi.feature.navigation.LocalNavigationController
 import cc.hosaka.okonomi.feature.word.EntryRoute
 import cc.hosaka.okonomi.ui.CenteredBox
 import cc.hosaka.okonomi.ui.CommonWordChip
+import cc.hosaka.okonomi.ui.LoadMoreEffect
+import cc.hosaka.okonomi.ui.PagingFooterState
 import cc.hosaka.okonomi.ui.SearchTextField
+import cc.hosaka.okonomi.ui.pagingFooterItem
+import cc.hosaka.okonomi.ui.scrollIndicator
 import cc.hosaka.okonomi.ui.theme.Dimens
 import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
 import okonomi.shared.generated.resources.Res
@@ -148,6 +152,8 @@ private fun SearchResultsContent(
                     isFallback = results.isFallback,
                     resultsQuery = results.query,
                     glossTokens = results.glossTokens,
+                    onShowMore = results.onShowMore,
+                    footer = results.footer,
                 )
 
                 refining -> CenteredBox {
@@ -172,6 +178,8 @@ private fun SearchResultsList(
     isFallback: Boolean,
     resultsQuery: String,
     glossTokens: List<String>,
+    onShowMore: (() -> Unit)?,
+    footer: PagingFooterState,
 ) {
     val navigation = LocalNavigationController.current
     val listState = rememberLazyListState()
@@ -179,9 +187,11 @@ private fun SearchResultsList(
     LaunchedEffect(resultsQuery) {
         listState.scrollToItem(0)
     }
+    LoadMoreEffect(listState = listState, onLoadMore = onShowMore)
     LazyColumn(
         modifier = Modifier
-            .fillMaxSize(),
+            .fillMaxSize()
+            .scrollIndicator(listState),
         state = listState,
     ) {
         if (isFallback) {
@@ -210,6 +220,7 @@ private fun SearchResultsList(
                 },
             )
         }
+        pagingFooterItem(footer)
     }
 }
 

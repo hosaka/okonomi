@@ -3,6 +3,7 @@ package cc.hosaka.okonomi.feature.phrases
 import androidx.compose.runtime.Immutable
 import cc.hosaka.okonomi.db.BreakdownWord
 import cc.hosaka.okonomi.db.ExampleSentence
+import cc.hosaka.okonomi.ui.PagingFooterState
 
 private const val WORD_PLACEHOLDER = "%1\$s"
 
@@ -53,8 +54,26 @@ sealed interface PhrasesTabContentState {
 
     data object Empty : PhrasesTabContentState
 
+    /**
+     * [sentences] is a page of the entry's stored set, not all of it:
+     * dictgen keeps up to fifty per entry and the tab shows the first
+     * [PHRASES_PAGE_SIZE], extending as the reader scrolls. A null
+     * [onShowMore] means the stored set is exhausted.
+     *
+     * [footer] is what the reader is told below the last row, and it is
+     * separate from [onShowMore] on purpose: a null callback cannot
+     * distinguish "there is nothing further" from "there is something
+     * further and it is arriving". An entry whose examples all fit is
+     * [PagingFooterState.None] and shows nothing at all under them.
+     *
+     * Because a page is always a prefix of one already-ordered list,
+     * extending it can never reorder a sentence the reader is looking
+     * at.
+     */
     data class Ready(
         val sentences: List<ExampleSentence>,
+        val onShowMore: (() -> Unit)? = null,
+        val footer: PagingFooterState = PagingFooterState.None,
     ) : PhrasesTabContentState
 
     data class Error(

@@ -7,6 +7,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -25,6 +26,10 @@ class PhrasesTabStateProducerTest {
         english = "Eat quickly.",
         words = listOf(BreakdownWord("早く", null), BreakdownWord("食べる", "たべる")),
     )
+
+    private fun sentences(count: Int): List<ExampleSentence> = (1..count).map { index ->
+        sentence.copy(id = index.toLong(), japanese = "例文$index。")
+    }
 
     private val neverInvalidate: suspend () -> Unit = {
         throw AssertionError("the dictionary handle must not be dropped for this failure")
@@ -65,6 +70,90 @@ class PhrasesTabStateProducerTest {
             scope.phrasesTabStateProducer(entryId = 1358280L, load = load, invalidate = neverInvalidate),
         )
         assertEquals(1, loads)
+    }
+
+    @Test
+    fun `only the first page of a large stored set is shown`() = runTest {
+        val scope = FakeScreenStateScope()
+        val stored = sentences(50)
+
+        val states = collectStates(
+            scope.phrasesTabStateProducer(
+                entryId = 1L,
+                load = { stored },
+                invalidate = neverInvalidate,
+            ),
+        )
+
+        val ready = assertIs<PhrasesTabContentState.Ready>(states.last().content)
+        assertEquals(stored.take(PHRASES_PAGE_SIZE), ready.sentences)
+        assertNotNull(ready.onShowMore, "there are twenty more to reach")
+    }
+
+    @Test
+    fun `showing more extends the page without reordering what was already there`() = runTest {
+        val scope = FakeScreenStateScope()
+        val stored = sentences(50)
+
+        val states = collectStates(
+            scope.phrasesTabStateProducer(
+                entryId = 1L,
+                load = { stored },
+                invalidate = neverInvalidate,
+            ),
+        )
+        val first = assertIs<PhrasesTabContentState.Ready>(states.last().content)
+
+        first.onShowMore!!.invoke()
+        runCurrent()
+
+        val second = assertIs<PhrasesTabContentState.Ready>(states.last().content)
+        assertEquals(50, second.sentences.size)
+        // A page is a longer prefix of the same ordered list, so a
+        // sentence the reader is looking at can never move.
+        assertEquals(first.sentences, second.sentences.take(PHRASES_PAGE_SIZE))
+        assertNull(second.onShowMore, "the stored set is exhausted")
+    }
+
+    @Test
+    fun `asking for more twice before the page lands still adds one page`() = runTest {
+        val scope = FakeScreenStateScope()
+        val stored = sentences(50)
+
+        val states = collectStates(
+            scope.phrasesTabStateProducer(
+                entryId = 1L,
+                load = { stored },
+                invalidate = neverInvalidate,
+            ),
+        )
+        val first = assertIs<PhrasesTabContentState.Ready>(states.last().content)
+
+        // The scroll watcher is allowed to fire again before the state
+        // it asked for arrives; the callback has to be idempotent.
+        first.onShowMore!!.invoke()
+        first.onShowMore.invoke()
+        runCurrent()
+
+        val second = assertIs<PhrasesTabContentState.Ready>(states.last().content)
+        assertEquals(50, second.sentences.size)
+    }
+
+    @Test
+    fun `an entry whose examples all fit offers no way to show more`() = runTest {
+        val scope = FakeScreenStateScope()
+
+        val states = collectStates(
+            scope.phrasesTabStateProducer(
+                entryId = 1L,
+                load = { sentences(2) },
+                invalidate = neverInvalidate,
+            ),
+        )
+
+        val ready = assertIs<PhrasesTabContentState.Ready>(states.last().content)
+        assertEquals(2, ready.sentences.size)
+        assertNull(ready.onShowMore)
     }
 
     @Test

@@ -27,14 +27,21 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cc.hosaka.okonomi.ui.theme.Dimens
@@ -50,6 +57,10 @@ import org.jetbrains.compose.resources.stringResource
  *
  * A non-null [focusRequester] is attached to the inner text field so
  * callers can focus it programmatically.
+ *
+ * Focus arriving on a field that already holds text puts the caret at
+ * the end of it, so reselecting the Search tab leaves the reader ready
+ * to refine the query rather than to type in front of it.
  */
 @Composable
 fun SearchTextField(
@@ -97,6 +108,38 @@ fun SearchTextField(
             modifier = Modifier
                 .size(16.dp),
         )
+        // Selection-aware state, so focus can land the caret at the end
+        // of what is already typed. A plain String field cannot: nothing
+        // tracks the selection, and the platform puts the caret at
+        // offset zero when focus arrives from a tab reselect rather than
+        // from a tap that named a position.
+        //
+        // The caller stays the single source of truth for the query, so
+        // a value pushed in from outside (the clear action, a restored
+        // query) replaces what is here and puts the caret at the end of
+        // it. What must *not* be treated as such a push is the caller
+        // echoing back what the field just reported: [text] arrives
+        // asynchronously (querySink -> combine -> stateIn), so between a
+        // keystroke and its echo the two disagree for a frame or more.
+        // Rebuilding the value on that disagreement rebuilt the caret at
+        // the end of the string, which meant typing into the middle of
+        // an existing query lost the caret and the next keystroke landed
+        // at the end. Reacting to [text] *changing* instead of to the
+        // two differing tells the two cases apart.
+        var fieldValue by remember {
+            mutableStateOf(TextFieldValue(text, TextRange(text.length)))
+        }
+        // The last value seen from the caller. A push is a change of it;
+        // an echo is not.
+        var lastPushed by remember { mutableStateOf(text) }
+        if (text != lastPushed) {
+            lastPushed = text
+            // An echo that arrives late still changes [text], and by
+            // then the field already holds it: nothing to do.
+            if (text != fieldValue.text) {
+                fieldValue = TextFieldValue(text, TextRange(text.length))
+            }
+        }
         BasicTextField(
             modifier = Modifier
                 .weight(1f)
@@ -106,9 +149,33 @@ fun SearchTextField(
                     } else {
                         Modifier
                     },
-                ),
-            value = text,
-            onValueChange = { onTextChange?.invoke(it) },
+                )
+                // Every focus gain moves the caret to the end, not only
+                // the tab reselect this exists for. The handler is told
+                // that focus arrived and nothing about why: a reselect,
+                // a programmatic request and a tap that named a position
+                // are the same event here. Taps survive it in practice
+                // because the tap sets its own selection after focus
+                // lands, but that is the gesture's ordering rather than
+                // a distinction this code makes. Do not read the comment
+                // as one.
+                .onFocusChanged { focusState ->
+                    if (focusState.isFocused) {
+                        fieldValue = fieldValue.copy(
+                            selection = TextRange(fieldValue.text.length),
+                        )
+                    }
+                },
+            value = fieldValue,
+            onValueChange = { value ->
+                // The selection is always accepted, so typing and
+                // dragging the caret behave exactly as before; only the
+                // text is reported upward.
+                fieldValue = value
+                if (value.text != text) {
+                    onTextChange?.invoke(value.text)
+                }
+            },
             enabled = onTextChange != null,
             textStyle = textStyle,
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),

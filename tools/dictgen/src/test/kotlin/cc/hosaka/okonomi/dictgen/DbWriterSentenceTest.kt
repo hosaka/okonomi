@@ -10,8 +10,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The rules that turn 1.17 million B-line words into at most ten
- * sentences per entry: which ten, in what order, and what happens to
+ * The rules that turn 1.17 million B-line words into a capped set of
+ * sentences per entry: which ones, in what order, and what happens to
  * the sentences nothing keeps.
  */
 class DbWriterSentenceTest {
@@ -70,12 +70,32 @@ class DbWriterSentenceTest {
     private fun sentenceOfLength(length: Int) = "あ".repeat(length - 3) + "食べる"
 
     @Test
-    fun keepsTheTenMostReadableSentencesPerEntry() {
-        // Twelve candidates: nine inside the readable band, two below it
-        // and one above. The band comes first and is ordered by length
-        // within itself; the shortest sentence of all is kept only
-        // because a slot is left over, and lands last.
+    fun ordersTheReadableBandAheadOfEverythingElse() {
+        // Twelve candidates, comfortably under the cap: nine inside the
+        // readable band, two below it and one above. The band comes
+        // first and is ordered by length within itself; the sentences
+        // outside it follow, in their own length order.
         val lengths = listOf(16, 9, 25, 11, 4, 13, 8, 15, 6, 10, 14, 12)
+        val db = write(
+            entries = listOf(entry(1L, "食べる", "たべる")),
+            japanese = lengths.map { sentenceOfLength(it) },
+            indices = lengths.indices.map { "${it + 1}\t${it + 1}\t食べる" },
+        )
+
+        assertEquals(
+            listOf(8, 9, 10, 11, 12, 13, 14, 15, 16, 4, 6, 25).map { sentenceOfLength(it) },
+            db.sentenceQueries.sentencesForEntry(1L).executeAsList().map { it.japanese },
+        )
+    }
+
+    @Test
+    fun keepsAtMostTheCappedNumberOfSentencesPerEntry() {
+        // More candidates than the cap allows whatever it is set to, each
+        // a distinct length so none collapses as a near duplicate and none
+        // falls below the readable band — with the band satisfied by all
+        // of them, ascending length is the whole of the order, so the
+        // survivors are simply the shortest [SENTENCES_PER_ENTRY].
+        val lengths = (READABLE_LENGTH_MIN..READABLE_LENGTH_MAX + SENTENCES_PER_ENTRY).toList()
         val db = write(
             entries = listOf(entry(1L, "食べる", "たべる")),
             japanese = lengths.map { sentenceOfLength(it) },
@@ -85,7 +105,7 @@ class DbWriterSentenceTest {
         val kept = db.sentenceQueries.sentencesForEntry(1L).executeAsList()
         assertEquals(SENTENCES_PER_ENTRY, kept.size)
         assertEquals(
-            listOf(8, 9, 10, 11, 12, 13, 14, 15, 16, 4).map { sentenceOfLength(it) },
+            lengths.take(SENTENCES_PER_ENTRY).map { sentenceOfLength(it) },
             kept.map { it.japanese },
         )
     }
@@ -126,7 +146,7 @@ class DbWriterSentenceTest {
         assertEquals(
             listOf("教室で食べるの。", "廊下で食べるの。"),
             db.sentenceQueries.sentencesForEntry(1L).executeAsList().map { it.japanese },
-            "one sentence must not take two of an entry's ten slots",
+            "one sentence must not take two of an entry's slots",
         )
     }
 

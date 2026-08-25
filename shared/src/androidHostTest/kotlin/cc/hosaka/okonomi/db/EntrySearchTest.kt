@@ -509,6 +509,26 @@ class EntrySearchTest {
         assertEquals(2000L, results.hits.first().entryId)
         assertEquals(SEARCH_RESULT_LIMIT, results.hits.size)
         assertTrue(results.hasMore)
+
+        // The ceiling, on a match set larger than the pool. The pool is
+        // a constant at every limit, never `limit + 1`: the last page
+        // would otherwise be the one page ranked over 401 entries while
+        // every earlier page ranked 400, and that 401st entry is fine
+        // ranked by a comparator the SQL order knows nothing about, so
+        // it could land anywhere among rows already on screen.
+        val lastPage = database.searchEntries("eat", limit = SEARCH_MAX_RESULTS)
+        assertEquals(SEARCH_MAX_RESULTS, lastPage.hits.size)
+        assertFalse(lastPage.hasMore, "paging must stop honestly at the pool")
+
+        // One page short of the ceiling there is still more to show.
+        val nextToLast = database.searchEntries("eat", limit = SEARCH_MAX_RESULTS - SEARCH_RESULT_LIMIT)
+        assertTrue(nextToLast.hasMore)
+        // And what it shows is a prefix of the last page: same pool,
+        // same ranking, one longer.
+        assertEquals(
+            nextToLast.hits.map { it.entryId },
+            lastPage.hits.map { it.entryId }.take(nextToLast.hits.size),
+        )
     }
 
     @Test
@@ -582,6 +602,77 @@ class EntrySearchTest {
 
         driver.execute(null, "INSERT INTO gloss_fts(gloss_fts) VALUES('rebuild')", 0).await()
         return DictionaryDatabase(db, driver).also { openedDatabases += it }
+    }
+
+    /**
+     * A corpus built to break the paging guarantee the way the real
+     * dictionary did: one entry carrying several readings under the same
+     * prefix, and a common_rank shared by everything so the order is
+     * decided entirely by the tie-break.
+     *
+     * Under the old queries — one row per matching *text*, ordered by
+     * common_rank alone — entry 101 spent three of the reading query's
+     * rows, so a page of two saw only one entry through the readings and
+     * filled the rest from the kanji forms. The next page's larger limit
+     * reached entries 102 and 103, which sort above the kanji-form
+     * entries already on screen: page one was [101, 201] and page two
+     * began [101, 102]. The row the reader was looking at moved.
+     *
+     * The queries now return one row per entry with its best rank and a
+     * total (common_rank, entry_id) order, so a page can only ever be a
+     * longer prefix of the same sequence.
+     */
+    private suspend fun duplicateReadingDatabase(): DictionaryDatabase {
+        val path = tempDir().resolve(DICTIONARY_DB_NAME).absolutePath
+        val driver = JdbcSqliteDriver("jdbc:sqlite:$path")
+        OkonomiDb.Schema.create(driver).await()
+        val db = OkonomiDb(driver)
+        val rank = 500L
+
+        // 101 matches the prefix through three readings at once; 102-105
+        // through one each.
+        db.entryQueries.insertEntry(101, rank, 0)
+        listOf("かあ", "かい", "かう").forEachIndexed { ord, text ->
+            db.entryQueries.insertReading(101, ord.toLong(), text, 0, rank, null, 0)
+        }
+        listOf(102L to "かえ", 103L to "かお", 104L to "かき", 105L to "かく")
+            .forEach { (id, text) ->
+                db.entryQueries.insertEntry(id, rank, 0)
+                db.entryQueries.insertReading(id, 0, text, 0, rank, null, 0)
+            }
+        // Kanji forms that begin with kana are ordinary in JMdict
+        // (かき氷, かけ算). They matter here because they arrive from the
+        // second of the two prefix queries, each with its own limit.
+        listOf(201L to "かき氷", 202L to "かけ算", 203L to "かん詰め", 204L to "かな書き", 205L to "から傘")
+            .forEach { (id, text) ->
+                db.entryQueries.insertEntry(id, rank, 0)
+                db.entryQueries.insertKanjiForm(id, 0, text, rank, 0)
+                db.entryQueries.insertReading(id, 0, "よみ$id", 0, rank, null, 0)
+            }
+        driver.execute(null, "INSERT INTO gloss_fts(gloss_fts) VALUES('rebuild')", 0).await()
+        return DictionaryDatabase(db, driver).also { openedDatabases += it }
+    }
+
+    @Test
+    fun `a page of japanese results is always a prefix of the next page`() = runTest {
+        val database = duplicateReadingDatabase()
+
+        val pages = listOf(2, 4, 6, 8).map { limit ->
+            limit to database.searchEntries("か", limit = limit).hits.map { it.entryId }
+        }
+
+        pages.zipWithNext { (shortLimit, shorter), (longLimit, longer) ->
+            assertEquals(
+                shorter,
+                longer.take(shorter.size),
+                "page of $shortLimit must be a prefix of page of $longLimit",
+            )
+        }
+        // Named outright, so the assertion above cannot pass on two
+        // orders that merely agree with each other while both being
+        // wrong. The entry with three matching readings spends one row,
+        // not three, and the tie is broken by entry id.
+        assertEquals(listOf(101L, 102L), pages.first().second)
     }
 
     @Test

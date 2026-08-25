@@ -5,6 +5,7 @@ import cc.hosaka.okonomi.db.SearchHit
 import cc.hosaka.okonomi.db.TitleSegment
 import cc.hosaka.okonomi.db.forEachWord
 import cc.hosaka.okonomi.db.matchedToken
+import cc.hosaka.okonomi.ui.PagingFooterState
 
 @Immutable
 data class SearchState(
@@ -50,6 +51,42 @@ sealed interface SearchResultsState {
          * results only); see [glossHighlights].
          */
         val glossTokens: List<String> = emptyList(),
+        /**
+         * Asks for the next page of hits. Null when there is no next
+         * page — either the whole match set is already on screen, or
+         * paging has reached the ranking pool it stops honestly at.
+         *
+         * A page is a longer prefix of the same ranking, so extending
+         * appends rows rather than reordering the ones being read. That
+         * holds because of two properties the search deliberately
+         * maintains, not by luck:
+         *
+         * - every ranked order is *total*. The Japanese path orders on
+         *   (common_rank, entry_id) in both the SQL and the Kotlin
+         *   merge, and the English path on (sense, gloss, common_rank,
+         *   word position, entry_id). common_rank alone is not total,
+         *   and the ties used to fall out of the scan order, which
+         *   changes with the limit.
+         * - every LIMIT counts *entries*, not matching rows. The
+         *   Japanese prefix queries group by entry (see entry.sq), so
+         *   the fifty rows fetched are fifty entries; before that an
+         *   entry with several matching readings spent several of them
+         *   and page two pulled in entries that sorted above rows
+         *   already on screen. The English path ranks the same fixed
+         *   pool at every limit for the same reason.
+         *
+         * Null while a page is already in flight, too: asking again for
+         * the page that is coming would be noise. [footer] is what says
+         * so on screen.
+         */
+        val onShowMore: (() -> Unit)? = null,
+        /**
+         * What is drawn under the last row: nothing, a page on its way,
+         * or a page that failed with a way to ask again. Its own state
+         * rather than something read off [onShowMore], which cannot
+         * tell "no more results" apart from "more results, loading".
+         */
+        val footer: PagingFooterState = PagingFooterState.None,
     ) : SearchResultsState
 }
 

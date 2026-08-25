@@ -4,7 +4,10 @@ import cc.hosaka.okonomi.common.model.Loadable
 import cc.hosaka.okonomi.feature.navigation.state.FakeScreenStateScope
 import cc.hosaka.okonomi.feature.navigation.state.ScreenStateViewModel
 import com.mikepenz.aboutlibraries.Libs
+import com.mikepenz.aboutlibraries.entity.Developer
 import com.mikepenz.aboutlibraries.entity.Library
+import com.mikepenz.aboutlibraries.entity.License
+import com.mikepenz.aboutlibraries.entity.Organization
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -21,6 +24,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class LibrariesStateProducerTest {
@@ -146,18 +150,28 @@ class LibrariesStateProducerTest {
 private fun FakeScreenStateScope.librariesSink() =
     mutablePersistedFlow<Loadable<Libs?>>("libraries", Loadable.Loading)
 
-private fun libsOf(vararg uniqueIds: String): Libs = Libs(
+/**
+ * A [Libs] carrying one library per id. Internal rather than private:
+ * the screen's own test composes the credits list from the same fixture,
+ * so the two cannot drift apart in what they think a library looks like.
+ */
+internal fun libsOf(
+    vararg uniqueIds: String,
+    website: String? = null,
+    licenses: Set<License> = emptySet(),
+): Libs = Libs(
     libraries = uniqueIds.map { uniqueId ->
         Library(
             uniqueId = uniqueId,
             artifactVersion = "1.0.0",
             name = uniqueId.substringAfter(':'),
             description = null,
-            website = null,
+            website = website,
             developers = emptyList(),
             organization = null,
             scm = null,
+            licenses = licenses,
         )
     },
-    licenses = emptySet(),
+    licenses = licenses,
 )

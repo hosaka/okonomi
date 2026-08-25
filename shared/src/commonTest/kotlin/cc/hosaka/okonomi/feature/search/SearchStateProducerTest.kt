@@ -1,9 +1,12 @@
 package cc.hosaka.okonomi.feature.search
 
+import cc.hosaka.okonomi.db.SEARCH_MAX_RESULTS
+import cc.hosaka.okonomi.db.SEARCH_RESULT_LIMIT
 import cc.hosaka.okonomi.db.SearchHit
 import cc.hosaka.okonomi.db.SearchResults
 import cc.hosaka.okonomi.db.TitleSegment
 import cc.hosaka.okonomi.feature.navigation.state.FakeScreenStateScope
+import cc.hosaka.okonomi.ui.PagingFooterState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -33,7 +36,7 @@ class SearchStateProducerTest {
         isCommon = true,
     )
 
-    private val noSearch: suspend (String) -> SearchResults = {
+    private val noSearch: suspend (String, Int) -> SearchResults = { _, _ ->
         throw AssertionError("search must not run for this scenario")
     }
 
@@ -73,7 +76,7 @@ class SearchStateProducerTest {
     fun `typing updates the query and enables clear`() = runTest {
         val scope = FakeScreenStateScope()
         val states = collectStates(
-            scope.searchScreenStateProducer(search = { SearchResults(listOf(hit(1))) }),
+            scope.searchScreenStateProducer(search = { _, _ -> SearchResults(listOf(hit(1))) }),
         )
 
         states.last().onQueryChange!!.invoke("こんにちは")
@@ -88,7 +91,7 @@ class SearchStateProducerTest {
     fun `clear empties the query and returns to idle with the clear action hidden`() = runTest {
         val scope = FakeScreenStateScope()
         val states = collectStates(
-            scope.searchScreenStateProducer(search = { SearchResults(listOf(hit(1))) }),
+            scope.searchScreenStateProducer(search = { _, _ -> SearchResults(listOf(hit(1))) }),
         )
 
         states.last().onQueryChange!!.invoke("こんにちは")
@@ -106,7 +109,7 @@ class SearchStateProducerTest {
     fun `query is kept in the persisted flow`() = runTest {
         val scope = FakeScreenStateScope()
         val states = collectStates(
-            scope.searchScreenStateProducer(search = { SearchResults(emptyList()) }),
+            scope.searchScreenStateProducer(search = { _, _ -> SearchResults(emptyList()) }),
         )
 
         states.last().onQueryChange!!.invoke("辞書")
@@ -134,7 +137,7 @@ class SearchStateProducerTest {
         val searched = mutableListOf<String>()
         val states = collectStates(
             scope.searchScreenStateProducer(
-                search = { query ->
+                search = { query, _ ->
                     searched += query
                     SearchResults(listOf(hit(1)))
                 },
@@ -159,7 +162,7 @@ class SearchStateProducerTest {
         val searched = mutableListOf<String>()
         val states = collectStates(
             scope.searchScreenStateProducer(
-                search = { query ->
+                search = { query, _ ->
                     searched += query
                     SearchResults(listOf(hit(query.length.toLong())))
                 },
@@ -181,7 +184,7 @@ class SearchStateProducerTest {
         val scope = FakeScreenStateScope()
         val states = collectStates(
             scope.searchScreenStateProducer(
-                search = { query ->
+                search = { query, _ ->
                     if (query == "たべ") {
                         // Slow stale search: cancelled by the newer query.
                         delay(10_000)
@@ -210,7 +213,7 @@ class SearchStateProducerTest {
         var fail = true
         val states = collectStates(
             scope.searchScreenStateProducer(
-                search = {
+                search = { _, _ ->
                     if (fail) error("boom")
                     SearchResults(listOf(hit(1)))
                 },
@@ -232,7 +235,7 @@ class SearchStateProducerTest {
         val scope = FakeScreenStateScope()
         val states = collectStates(
             scope.searchScreenStateProducer(
-                search = { query -> SearchResults(listOf(hit(query.length.toLong()))) },
+                search = { query, _ -> SearchResults(listOf(hit(query.length.toLong()))) },
             ),
         )
 
@@ -262,7 +265,7 @@ class SearchStateProducerTest {
         val scope = FakeScreenStateScope()
         val states = collectStates(
             scope.searchScreenStateProducer(
-                search = { SearchResults(listOf(hit(1)), glossTokens = listOf("to", "eat")) },
+                search = { _, _ -> SearchResults(listOf(hit(1)), glossTokens = listOf("to", "eat")) },
             ),
         )
 
@@ -282,7 +285,7 @@ class SearchStateProducerTest {
         scope.mutablePersistedFlow("query", "").value = "たべ"
 
         val states = collectStates(
-            scope.searchScreenStateProducer(search = { SearchResults(listOf(hit(1))) }),
+            scope.searchScreenStateProducer(search = { _, _ -> SearchResults(listOf(hit(1))) }),
         )
 
         // Before the debounce elapses the screen must say it is working,
@@ -297,7 +300,7 @@ class SearchStateProducerTest {
         val scope = FakeScreenStateScope()
         val states = collectStates(
             scope.searchScreenStateProducer(
-                search = { throw IllegalArgumentException("limit must be positive") },
+                search = { _, _ -> throw IllegalArgumentException("limit must be positive") },
                 invalidate = { throw AssertionError("the handle must survive a programming error") },
             ),
         )
@@ -316,7 +319,7 @@ class SearchStateProducerTest {
         var invalidations = 0
         val states = collectStates(
             scope.searchScreenStateProducer(
-                search = { throw RuntimeException("database gone") },
+                search = { _, _ -> throw RuntimeException("database gone") },
                 invalidate = { invalidations++ },
             ),
         )
@@ -329,11 +332,289 @@ class SearchStateProducerTest {
     }
 
     @Test
+    fun `results with nothing more behind them offer no way to show more`() = runTest {
+        val scope = FakeScreenStateScope()
+        val states = collectStates(
+            scope.searchScreenStateProducer(
+                search = { _, _ -> SearchResults(listOf(hit(1)), hasMore = false) },
+            ),
+        )
+
+        states.last().onQueryChange!!.invoke("たべ")
+        settle()
+
+        val results = assertIs<SearchResultsState.Results>(states.last().results)
+        assertNull(results.onShowMore)
+    }
+
+    @Test
+    fun `showing more asks for a longer page of the same ranking`() = runTest {
+        val scope = FakeScreenStateScope()
+        val limits = mutableListOf<Int>()
+        val states = collectStates(
+            scope.searchScreenStateProducer(
+                search = { _, limit ->
+                    limits += limit
+                    // Deterministic ranking: a longer limit is a longer
+                    // prefix of the same order, which is what lets the
+                    // rows already on screen stay put.
+                    SearchResults(
+                        hits = (1..limit).map { hit(it.toLong()) },
+                        hasMore = true,
+                    )
+                },
+            ),
+        )
+
+        states.last().onQueryChange!!.invoke("たべ")
+        settle()
+        val first = assertIs<SearchResultsState.Results>(states.last().results)
+        assertEquals(SEARCH_RESULT_LIMIT, first.hits.size)
+
+        first.onShowMore!!.invoke()
+        settle()
+
+        val second = assertIs<SearchResultsState.Results>(states.last().results)
+        assertEquals(SEARCH_RESULT_LIMIT * 2, second.hits.size)
+        assertEquals(first.hits, second.hits.take(SEARCH_RESULT_LIMIT))
+        assertEquals(listOf(SEARCH_RESULT_LIMIT, SEARCH_RESULT_LIMIT * 2), limits)
+    }
+
+    @Test
+    fun `asking for more twice before the page lands still adds one page`() = runTest {
+        val scope = FakeScreenStateScope()
+        val limits = mutableListOf<Int>()
+        val states = collectStates(
+            scope.searchScreenStateProducer(
+                search = { _, limit ->
+                    limits += limit
+                    SearchResults((1..limit).map { hit(it.toLong()) }, hasMore = true)
+                },
+            ),
+        )
+
+        states.last().onQueryChange!!.invoke("たべ")
+        settle()
+        val first = assertIs<SearchResultsState.Results>(states.last().results)
+
+        // The scroll watcher may fire again before the page it asked for
+        // arrives, so the callback has to be idempotent.
+        first.onShowMore!!.invoke()
+        first.onShowMore.invoke()
+        settle()
+
+        assertEquals(listOf(SEARCH_RESULT_LIMIT, SEARCH_RESULT_LIMIT * 2), limits)
+    }
+
+    @Test
+    fun `paging stops at the ranking pool rather than growing it`() = runTest {
+        val scope = FakeScreenStateScope()
+        val states = collectStates(
+            scope.searchScreenStateProducer(
+                // hasMore stays true forever: a match set larger than the
+                // pool always has more behind it, and stopping is the
+                // producer's decision rather than the search's.
+                search = { _, limit ->
+                    SearchResults((1..limit).map { hit(it.toLong()) }, hasMore = true)
+                },
+            ),
+        )
+
+        states.last().onQueryChange!!.invoke("to eat")
+        settle()
+        var results = assertIs<SearchResultsState.Results>(states.last().results)
+        var pages = 0
+        while (results.onShowMore != null) {
+            pages++
+            assertTrue(pages < 100, "paging must terminate")
+            results.onShowMore!!.invoke()
+            settle()
+            results = assertIs<SearchResultsState.Results>(states.last().results)
+        }
+
+        assertEquals(SEARCH_MAX_RESULTS, results.hits.size)
+    }
+
+    @Test
+    fun `a refined query starts from the first page again`() = runTest {
+        val scope = FakeScreenStateScope()
+        val limits = mutableListOf<Int>()
+        val states = collectStates(
+            scope.searchScreenStateProducer(
+                search = { _, limit ->
+                    limits += limit
+                    SearchResults((1..limit).map { hit(it.toLong()) }, hasMore = true)
+                },
+            ),
+        )
+
+        states.last().onQueryChange!!.invoke("たべ")
+        settle()
+        assertIs<SearchResultsState.Results>(states.last().results).onShowMore!!.invoke()
+        settle()
+        limits.clear()
+
+        states.last().onQueryChange!!.invoke("たべる")
+        settle()
+
+        // Asking the new query at the depth the old one was scrolled to
+        // would make a keystroke cost a hundred rows nobody has reached.
+        assertEquals(listOf(SEARCH_RESULT_LIMIT), limits)
+    }
+
+    @Test
+    fun `a failed extension leaves the rows already on screen standing`() = runTest {
+        val scope = FakeScreenStateScope()
+        val states = collectStates(
+            scope.searchScreenStateProducer(
+                search = { _, limit ->
+                    if (limit > SEARCH_RESULT_LIMIT) error("database gone")
+                    SearchResults((1..limit).map { hit(it.toLong()) }, hasMore = true)
+                },
+                invalidate = {},
+            ),
+        )
+
+        states.last().onQueryChange!!.invoke("たべ")
+        settle()
+        val first = assertIs<SearchResultsState.Results>(states.last().results)
+
+        first.onShowMore!!.invoke()
+        settle()
+
+        // The reader was reading these; a page that failed to arrive
+        // must not replace them with an error screen.
+        val after = assertIs<SearchResultsState.Results>(states.last().results)
+        assertEquals(first.hits, after.hits)
+    }
+
+    /**
+     * The half of the failed extension that was silently broken.
+     *
+     * The rows stayed on screen, but the "show more" they came back with
+     * was the one built for the fifty-row result — it wrote 100 into the
+     * limit, which already held 100, and a `StateFlow` conflates an
+     * identical value away. No search ever ran again, for the rest of
+     * that query. LazyListPaging's own kdoc justifies watching the
+     * layout precisely because "an extension that failed could never be
+     * retried by scrolling to the end again"; this is that promise.
+     */
+    @Test
+    fun `scrolling to the end again after a failed extension runs the search again`() = runTest {
+        val scope = FakeScreenStateScope()
+        val limits = mutableListOf<Int>()
+        var failExtensions = true
+        val states = collectStates(
+            scope.searchScreenStateProducer(
+                search = { _, limit ->
+                    limits += limit
+                    if (limit > SEARCH_RESULT_LIMIT && failExtensions) error("database gone")
+                    SearchResults((1..limit).map { hit(it.toLong()) }, hasMore = true)
+                },
+                invalidate = {},
+            ),
+        )
+
+        states.last().onQueryChange!!.invoke("たべ")
+        settle()
+        assertIs<SearchResultsState.Results>(states.last().results).onShowMore!!.invoke()
+        settle()
+        assertEquals(listOf(SEARCH_RESULT_LIMIT, SEARCH_RESULT_LIMIT * 2), limits)
+
+        // The reader scrolls to the end again. The database has come
+        // back by now, so a retry that actually runs also lands.
+        failExtensions = false
+        val standing = assertIs<SearchResultsState.Results>(states.last().results)
+        assertNotNull(standing.onShowMore, "a failed extension must leave the rows pageable")
+        standing.onShowMore!!.invoke()
+        settle()
+
+        assertEquals(
+            listOf(SEARCH_RESULT_LIMIT, SEARCH_RESULT_LIMIT * 2, SEARCH_RESULT_LIMIT * 2),
+            limits,
+            "the retry must re-run the search at the limit that failed",
+        )
+        val after = assertIs<SearchResultsState.Results>(states.last().results)
+        assertEquals(SEARCH_RESULT_LIMIT * 2, after.hits.size)
+    }
+
+    /**
+     * Item K: the reader has to be told that a page is on its way, and
+     * that one did not arrive. Neither could be inferred from
+     * `onShowMore` being null, which is why the footer is its own state.
+     */
+    @Test
+    fun `an extension in flight puts a loading footer under the standing rows`() = runTest {
+        val scope = FakeScreenStateScope()
+        val states = collectStates(
+            scope.searchScreenStateProducer(
+                search = { _, limit ->
+                    if (limit > SEARCH_RESULT_LIMIT) delay(1_000)
+                    SearchResults((1..limit).map { hit(it.toLong()) }, hasMore = true)
+                },
+            ),
+        )
+
+        states.last().onQueryChange!!.invoke("たべ")
+        settle()
+        val first = assertIs<SearchResultsState.Results>(states.last().results)
+        assertEquals(PagingFooterState.None, first.footer)
+
+        first.onShowMore!!.invoke()
+        runCurrent()
+
+        val inFlight = assertIs<SearchResultsState.Results>(states.last().results)
+        assertEquals(PagingFooterState.Loading, inFlight.footer)
+        assertEquals(first.hits, inFlight.hits, "the rows being read must stay put")
+        assertNull(inFlight.onShowMore, "the page it would ask for is already on its way")
+
+        advanceTimeBy(2_000.milliseconds)
+        runCurrent()
+
+        val landed = assertIs<SearchResultsState.Results>(states.last().results)
+        assertEquals(PagingFooterState.None, landed.footer)
+        assertEquals(SEARCH_RESULT_LIMIT * 2, landed.hits.size)
+    }
+
+    @Test
+    fun `a failed extension says so in the footer and its retry runs the search`() = runTest {
+        val scope = FakeScreenStateScope()
+        val limits = mutableListOf<Int>()
+        val states = collectStates(
+            scope.searchScreenStateProducer(
+                search = { _, limit ->
+                    limits += limit
+                    if (limit > SEARCH_RESULT_LIMIT) error("database gone")
+                    SearchResults((1..limit).map { hit(it.toLong()) }, hasMore = true)
+                },
+                invalidate = {},
+            ),
+        )
+
+        states.last().onQueryChange!!.invoke("たべ")
+        settle()
+        assertIs<SearchResultsState.Results>(states.last().results).onShowMore!!.invoke()
+        settle()
+
+        val failed = assertIs<SearchResultsState.Results>(states.last().results)
+        val footer = assertIs<PagingFooterState.Failed>(failed.footer)
+        assertEquals(SEARCH_RESULT_LIMIT, failed.hits.size, "the rows on screen must stand")
+
+        footer.onRetry!!.invoke()
+        settle()
+
+        assertEquals(
+            listOf(SEARCH_RESULT_LIMIT, SEARCH_RESULT_LIMIT * 2, SEARCH_RESULT_LIMIT * 2),
+            limits,
+        )
+    }
+
+    @Test
     fun `the fallback flag reaches the state`() = runTest {
         val scope = FakeScreenStateScope()
         val states = collectStates(
             scope.searchScreenStateProducer(
-                search = { SearchResults(listOf(hit(1)), isFallback = true) },
+                search = { _, _ -> SearchResults(listOf(hit(1)), isFallback = true) },
             ),
         )
 

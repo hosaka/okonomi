@@ -19,8 +19,13 @@ CREATE TABLE sentence (
     breakdown TEXT NOT NULL
 );
 
--- Capped at ten rows per entry by dictgen; ord is the display order it
--- chose (readable-length sentences first, then verified, then shorter).
+-- Capped per entry by dictgen (SENTENCES_PER_ENTRY); ord is the display
+-- order it chose (readable-length sentences first, then verified, then
+-- shorter). The query below takes neither a limit nor an offset: the cap
+-- is what bounds it, so one entry's whole set is at most fifty small
+-- rows read through the (entry_id, ord) index without a sort. Paging is
+-- a `take(limit)` in PhrasesTabStateProducer, over the loaded list —
+-- what costs money there is composing a breakdown row, not reading one.
 --
 -- The UNIQUE constraint makes a repeated link illegal in the file
 -- rather than merely prevented by a set in the generator: a sentence

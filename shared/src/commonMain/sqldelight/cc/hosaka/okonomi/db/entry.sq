@@ -16,7 +16,9 @@ CREATE TABLE kanji_form (
     is_common INTEGER NOT NULL DEFAULT 0
 );
 
-CREATE INDEX kanji_form_text_idx ON kanji_form(text);
+-- (text, entry_id, common_rank) rather than (text) alone: see the note
+-- on reading_text_idx.
+CREATE INDEX kanji_form_text_idx ON kanji_form(text, entry_id, common_rank);
 CREATE INDEX kanji_form_entry_idx ON kanji_form(entry_id);
 
 CREATE TABLE reading (
@@ -29,7 +31,31 @@ CREATE TABLE reading (
     is_common INTEGER NOT NULL DEFAULT 0
 );
 
-CREATE INDEX reading_text_idx ON reading(text);
+-- Covering, and deliberately so. Every column the prefix and exact
+-- search queries read is in the index, so SQLite answers them from the
+-- index alone (`USING COVERING INDEX`) instead of doing one table
+-- lookup per matching row — and a hot prefix like し matches thirteen
+-- thousand rows.
+--
+-- It REPLACES the former (text) index rather than sitting beside it:
+-- text is still the leading column, so it serves everything the old one
+-- did. The queries that do not use it — anything filtering on entry_id,
+-- plus the generation-only full scans — go through reading_entry_idx
+-- and were checked to be unaffected.
+--
+-- What it costs, measured on the generated file: reading_text_idx grows
+-- 6.96 MB -> 8.75 MB and kanji_form_text_idx 4.44 MB -> 6.01 MB, about
+-- 3.3 MB on a 213 MB database. What it buys is roughly a third off the
+-- per-keystroke prefix query, which also pays back the row-per-entry
+-- GROUP BY those queries need for stable paging. This is the schema
+-- change Alex approved on 2026-08-25 against a standing "no schema
+-- changes" constraint; see the spec's change log.
+--
+-- It reaches devices on DICTIONARY_FORMAT_VERSION 4, not on a schema
+-- version: this project has no migration files, so SQLDelight's schema
+-- version is pinned at 1 and cannot signal a DDL change. Any FURTHER
+-- index or column change must bump the format version. See Pipeline.kt.
+CREATE INDEX reading_text_idx ON reading(text, entry_id, common_rank);
 CREATE INDEX reading_entry_idx ON reading(entry_id);
 
 -- pos, misc, field and dial hold comma-joined short codes that resolve
@@ -119,32 +145,63 @@ SELECT ord, text, no_kanji, common_rank, restrictions, is_common FROM reading WH
 
 -- The range form is BINARY-collated: unlike the removed LIKE queries,
 -- ASCII letters in stored text match case-sensitively (accepted, rare).
+--
+-- One row per *entry*, not per matching text, and a total order. Both
+-- halves are what makes paging stable, and neither is optional:
+--
+--   * LIMIT counts rows. An entry with several readings under the same
+--     prefix used to spend several of them, so fifty-one fetched rows
+--     could collapse to far fewer than fifty distinct entries once the
+--     Kotlin side deduplicated. Page two then fetched rows that sorted
+--     *above* entries already on screen and inserted them rather than
+--     appending — the reader's rows moved under their thumb. GROUP BY
+--     entry_id spends one row per entry, so LIMIT counts what the
+--     screen counts and page one is always a prefix of page two.
+--   * ORDER BY common_rank alone is not a total order. Ties resolved by
+--     whatever order the scan happened to produce, which changes with
+--     the LIMIT. Appending entry_id makes the order total, so the same
+--     prefix always yields the same sequence.
+--
+-- `text` is a bare column beside MIN(): SQLite documents that in a
+-- simple MIN()/MAX() aggregate query the bare columns come from the row
+-- that supplied the extreme value, so this is the text of the reading
+-- that carries the entry's best rank. That guarantee is a SQLite
+-- extension, not standard SQL — a different engine would be free to
+-- return the text of any row in the group.
 searchReadingRangePrefix:
-SELECT entry_id, text, common_rank
+SELECT entry_id, text, MIN(common_rank) AS common_rank
 FROM reading
 WHERE text >= :prefix AND text < :prefixEnd
-ORDER BY common_rank
+GROUP BY entry_id
+ORDER BY common_rank, entry_id
 LIMIT :limit;
 
 searchKanjiFormRangePrefix:
-SELECT entry_id, text, common_rank
+SELECT entry_id, text, MIN(common_rank) AS common_rank
 FROM kanji_form
 WHERE text >= :prefix AND text < :prefixEnd
-ORDER BY common_rank
+GROUP BY entry_id
+ORDER BY common_rank, entry_id
 LIMIT :limit;
 
+-- Row per matching text rather than per entry: the caller pairs each
+-- row's text with the deinflection candidate that produced it, which a
+-- grouped row would lose. The order is still made total (entry_id, then
+-- text) so which of an entry's several matching readings arrives first
+-- does not depend on the scan order, and the whole exact group is a
+-- prefix of itself at a larger limit.
 readingsExact:
 SELECT entry_id, text, common_rank
 FROM reading
 WHERE text IN :texts
-ORDER BY common_rank
+ORDER BY common_rank, entry_id, text
 LIMIT :limit;
 
 kanjiFormsExact:
 SELECT entry_id, text, common_rank
 FROM kanji_form
 WHERE text IN :texts
-ORDER BY common_rank
+ORDER BY common_rank, entry_id, text
 LIMIT :limit;
 
 kanjiFormsForEntries:

@@ -25,6 +25,7 @@ import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -131,15 +132,21 @@ fun ScaffoldColumn(
  * Adds the shared vertical screen padding on top of a scaffold's inner
  * padding, so that content using its own scrollable container gets the
  * same spacing as [ScaffoldColumn] and [ScaffoldLazyColumn].
+ *
+ * Remembered rather than rebuilt: the result is a lazy list's
+ * contentPadding, and a fresh equal-but-new instance on each
+ * recomposition costs that list a remeasure per frame under scroll.
  */
 @Composable
 internal fun PaddingValues.plusScreenPadding(): PaddingValues {
     val layoutDirection = LocalLayoutDirection.current
     val screenPadding = Dimens.contentPadding
-    return PaddingValues(
-        start = calculateStartPadding(layoutDirection),
-        top = calculateTopPadding() + screenPadding,
-        end = calculateEndPadding(layoutDirection),
-        bottom = calculateBottomPadding() + screenPadding,
-    )
+    return remember(this, layoutDirection, screenPadding) {
+        PaddingValues(
+            start = calculateStartPadding(layoutDirection),
+            top = calculateTopPadding() + screenPadding,
+            end = calculateEndPadding(layoutDirection),
+            bottom = calculateBottomPadding() + screenPadding,
+        )
+    }
 }

@@ -14,7 +14,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -24,6 +23,7 @@ import cc.hosaka.okonomi.db.DictionaryInfo
 import cc.hosaka.okonomi.feature.libraries.LibrariesRoute
 import cc.hosaka.okonomi.feature.navigation.LocalNavigationController
 import cc.hosaka.okonomi.ui.ScaffoldColumn
+import cc.hosaka.okonomi.ui.openSafely
 import cc.hosaka.okonomi.ui.theme.Dimens
 import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
 import cc.hosaka.okonomi.ui.toolbar.LargeToolbar
@@ -239,19 +239,5 @@ private fun LibrariesRow(
             imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
             contentDescription = null,
         )
-    }
-}
-
-/**
- * Opens the URL in the browser. The failure is swallowed deliberately:
- * a device without a browser must never crash the screen, and the app
- * has no logging or snackbar infrastructure yet to surface it, so the
- * tap simply has no effect.
- */
-private fun UriHandler.openSafely(uri: String) {
-    try {
-        openUri(uri)
-    } catch (e: Exception) {
-        // Deliberately swallowed, see above.
     }
 }

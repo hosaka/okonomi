@@ -49,23 +49,26 @@ class CreditsTest {
     @Test
     fun `the manifest contains the four EDRDG sources, Yomitan and the sentence sources`() {
         assertEquals(
-            listOf("JMdict", "JMnedict", "KANJIDIC2", "RADKFILE", "Yomitan", "Tatoeba", "Tanaka Corpus"),
+            listOf("JMdict", "JMnedict", "KANJIDIC2", "RADKFILE", "Yomitan", "Tatoeba (Tanaka Corpus)"),
             creditEntries.map { it.name },
         )
     }
 
     @Test
-    fun `both sentence sources are credited to Creative Commons through Tatoeba`() {
-        // The field exists to discharge the attribution obligation, so
-        // it has to reach the terms rather than a home page. Both
-        // entries link the same page because both sets of sentences
-        // reach us the same way.
-        val sentenceSources = creditEntries.filter { it.name in setOf("Tatoeba", "Tanaka Corpus") }
-        assertEquals(listOf("Tatoeba", "Tanaka Corpus"), sentenceSources.map { it.name })
-        sentenceSources.forEach { entry ->
-            assertEquals("Creative Commons", entry.licence, entry.name)
-            assertEquals("https://tatoeba.org/en/terms_of_use", entry.licenceUrl, entry.name)
-        }
+    fun `the sentence sources are credited to Creative Commons through Tatoeba`() {
+        // One entry naming both sources rather than two entries: the
+        // Japanese-English pairs began as Yasuhito Tanaka's corpus and
+        // reach us through Tatoeba under Tatoeba's terms, so one credit
+        // discharges both attributions and its name says whose work it
+        // is. Alex made that call; this test follows it.
+        //
+        // What the test is actually for is unchanged: the field exists
+        // to discharge the attribution obligation, so it has to reach
+        // the terms rather than a home page, and the licence has to stay
+        // the unqualified name Tatoeba itself uses.
+        val sentenceSource = creditEntries.single { it.name == "Tatoeba (Tanaka Corpus)" }
+        assertEquals("Creative Commons", sentenceSource.licence)
+        assertEquals("https://tatoeba.org/en/terms_of_use", sentenceSource.licenceUrl)
     }
 
     @Test

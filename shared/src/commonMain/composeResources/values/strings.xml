@@ -9,6 +9,12 @@
     <string name="search_no_results">No results</string>
     <string name="search_results_fallback">No exact matches — showing the closest entries</string>
     <string name="search_error">Search is unavailable right now. Keep typing to retry.</string>
+    <!-- The footer under the last row of a list that pages: shown while
+         a further page is on its way, and when one failed to arrive. A
+         list with nothing further behind it shows neither. -->
+    <string name="paging_more_failed">More results could not be loaded</string>
+    <string name="paging_more_loading">Loading more</string>
+    <string name="paging_retry">Try again</string>
     <string name="entry_back">Back</string>
     <string name="entry_tab_word">Word</string>
     <string name="entry_tab_kanji">Kanji</string>

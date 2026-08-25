@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
@@ -19,6 +20,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import cc.hosaka.okonomi.common.model.Loadable
 import cc.hosaka.okonomi.feature.navigation.LocalNavigationController
 import cc.hosaka.okonomi.ui.plusScreenPadding
+import cc.hosaka.okonomi.ui.scrollIndicator
 import cc.hosaka.okonomi.ui.toolbar.LargeToolbar
 import cc.hosaka.okonomi.ui.toolbar.util.ToolbarBehavior
 import com.mikepenz.aboutlibraries.Libs
@@ -85,6 +87,26 @@ fun LibrariesScreen(
     }
 }
 
+/**
+ * The credits list.
+ *
+ * AboutLibraries' own [LibrariesContainer] rather than a hand-written
+ * list. A hand-written one was tried, on the theory that the container's
+ * per-row animations and non-skippable `Library` were what made this
+ * screen feel sluggish under a flick. It was not: Alex measured a
+ * release build and the list scrolls smoothly. The choppiness was the
+ * debug build's uncompiled composition, so the replacement was paying
+ * real attribution cost — the container's licence and website actions
+ * had to be rebuilt by hand — for nothing. Reverted.
+ *
+ * Two things are deliberately not left to the container's defaults:
+ * - [rememberLazyListState] is hoisted so [scrollIndicator] can attach.
+ *   The container takes a `lazyListState`, so the indicator survives the
+ *   revert; the reader keeps a position hint on a list of 131 rows.
+ * - `variant` is [LibrariesVariant.Refined]. `detailMode` is left at its
+ *   default, `Inline`, which expands the row in place — the licence is
+ *   reachable from the row rather than behind a dialog.
+ */
 @Composable
 private fun LibrariesContent(
     libraries: Libs?,
@@ -107,16 +129,21 @@ private fun LibrariesContent(
             )
         }
 
-        else -> LibrariesContainer(
-            libraries = libraries,
-            modifier = Modifier
-                .fillMaxSize(),
-            contentPadding = contentPadding,
-            variant = LibrariesVariant.Refined,
-            colors = LibraryDefaults.libraryColors(
-                libraryBackgroundColor = MaterialTheme.colorScheme.surface,
-            ),
-        )
+        else -> {
+            val listState = rememberLazyListState()
+            LibrariesContainer(
+                libraries = libraries,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .scrollIndicator(listState, contentPadding),
+                lazyListState = listState,
+                contentPadding = contentPadding,
+                variant = LibrariesVariant.Refined,
+                colors = LibraryDefaults.libraryColors(
+                    libraryBackgroundColor = MaterialTheme.colorScheme.surface,
+                ),
+            )
+        }
     }
 }
 

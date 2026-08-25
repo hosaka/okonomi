@@ -18,6 +18,14 @@ import java.time.Instant
  * formula change would otherwise leave every provisioned device on the
  * old rankings forever.
  *
+ * What a bump costs, which is the other half of the decision: the app
+ * re-copies the whole bundled database, currently 213 MB, on every
+ * device that already has one — decompressing and writing it out again
+ * before the dictionary can be used. That is not a migration cost that
+ * scales with what changed; it is the same for a new column and for a
+ * one-word label fix. Bump it for anything a device could not otherwise
+ * notice, and batch data changes rather than shipping one per bump.
+ *
  * Started at 1 alongside the schema version, deliberately: nothing has
  * shipped and there is no installed base to migrate, so the pre-release
  * shape is simply "version 1". The first shipped release freezes both
@@ -30,8 +38,62 @@ import java.time.Instant
  *
  * 3: the Phrases tab's `sentence` and `entry_sentence` tables, built
  * from Tatoeba's Japanese/English pairs and its word index.
+ *
+ * 4: [SENTENCES_PER_ENTRY] raised from 10 to 50 so the Phrases tab has
+ * something to page through. No DDL moved — only how many rows the
+ * generator keeps — which is exactly the case this counter exists for:
+ * a device holding a version 3 copy would otherwise stay capped at ten
+ * sentences forever.
+ *
+ * THIS COUNTER IS THE ONLY RE-COPY SIGNAL. Bump it for a schema change
+ * too, not only for a data change.
+ *
+ * The sidecar is `<jmdict_date>:<schema_version>:<format_version>` and
+ * is compared by whole-string equality, so on the face of it either of
+ * the last two would do. In practice only this one can move. SQLDelight
+ * derives `OkonomiDb.Schema.version` from the number of `.sqm` migration
+ * files, and this project has none and will have none: it ships a
+ * read-only prebuilt database that is replaced wholesale, never
+ * migrated (`verifyMigrations` is off for the same reason). With no
+ * migration files the schema version is pinned at 1 by policy and is
+ * inert — it cannot move even when the DDL genuinely does.
+ *
+ * So: a schema change that does not bump THIS counter leaves every
+ * provisioned device on its old database, with the old DDL, forever. A
+ * missing index is merely slow; a missing or renamed column is a crash.
+ * The covering search indexes shipped alongside version 4 and were
+ * carried by it; a future one gets no such luck. This has already been
+ * relied on by accident once. Do not rely on it again — and do not add
+ * a migration file to make the schema version move instead, because the
+ * app has no migration path to run it.
+ *
+ * [DICTIONARY_SCHEMA_FINGERPRINT] is what stops that from being a thing
+ * anyone has to remember.
  */
-const val DICTIONARY_FORMAT_VERSION = 3
+const val DICTIONARY_FORMAT_VERSION = 4
+
+/**
+ * Fingerprint of the schema DDL, as a guard on the counter above.
+ *
+ * The failure mode this exists for: change the schema, forget to bump
+ * [DICTIONARY_FORMAT_VERSION], ship — and every device that already has
+ * a database silently keeps the old one. Nothing else catches it. The
+ * schema version cannot move (no migration files, by policy), the app
+ * does not inspect the DDL it copied, and a stale database is not an
+ * error, just wrong: a missing index is slow, a renamed column crashes.
+ *
+ * So the DDL is hashed and the hash is checked in HERE, one line from
+ * the counter it guards, and `SchemaFingerprintTest` fails the moment
+ * they disagree. The point is not the value; it is that editing a `.sq`
+ * file makes a test fail with a message naming the version bump.
+ *
+ * Changed by a human, never by a generator that rewrites it — a guard
+ * that re-baselines itself guards nothing. When the test fails: decide
+ * whether devices need the change (they almost always do), bump
+ * [DICTIONARY_FORMAT_VERSION], then paste the new value the failure
+ * message prints.
+ */
+const val DICTIONARY_SCHEMA_FINGERPRINT = "6415d12732697f3c"
 
 /**
  * Union of several DTDs' entity declarations, earlier sources winning:

@@ -56,6 +56,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // This is a development convenience, NOT a shipping config —
+            // a store build has to be signed with the real upload key
+            // before it goes anywhere.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {

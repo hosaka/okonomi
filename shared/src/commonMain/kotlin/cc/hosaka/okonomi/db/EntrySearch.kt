@@ -1,5 +1,6 @@
 package cc.hosaka.okonomi.db
 
+import androidx.compose.runtime.Immutable
 import cc.hosaka.okonomi.deinflect.Deinflection
 import cc.hosaka.okonomi.deinflect.JapaneseDeinflector
 import cc.hosaka.okonomi.deinflect.LanguageTransformer
@@ -11,13 +12,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
-/** The most hits one search returns. */
+/** How many hits one page of results holds. */
 const val SEARCH_RESULT_LIMIT = 50
-
-private const val SENSE_LINE_LIMIT = 3
-
-/** At most this many tail-truncation retries on the fallback path. */
-private const val MAX_FALLBACK_STEPS = 8
 
 /**
  * How many entries the English path hydrates before fine ranking. The
@@ -26,7 +22,25 @@ private const val MAX_FALLBACK_STEPS = 8
  * best-positioned entries no matter how large the match set was; the
  * cap only bounds hydration work.
  */
-private const val FTS_RANKING_POOL = 400
+internal const val FTS_RANKING_POOL = 400
+
+/**
+ * The most hits paging will ever ask for.
+ *
+ * This is the English path's ranking pool ([FTS_RANKING_POOL]) and not a
+ * separate policy: SQL pre-ranks the full match set and Kotlin fine
+ * ranks the best-placed pool of it, so past this point there is nothing
+ * further to page through without growing the pool and re-ranking — and
+ * re-ranking would reorder rows already on screen. Paging stops honestly
+ * at the pool instead. The Japanese path has no such pool, but the same
+ * ceiling applies to it: nobody reads four hundred results.
+ */
+const val SEARCH_MAX_RESULTS = FTS_RANKING_POOL
+
+private const val SENSE_LINE_LIMIT = 3
+
+/** At most this many tail-truncation retries on the fallback path. */
+private const val MAX_FALLBACK_STEPS = 8
 
 /** Packs (sense ord, gloss ord) into one sortable number; see fts.sq. */
 private const val GLOSS_POSITION_FACTOR = 1000L
@@ -37,6 +51,7 @@ private const val GLOSS_POSITION_FACTOR = 1000L
  * not match (deinflected hits carry no highlight at all — their match is
  * explained by [SearchHit.traceLabels] instead).
  */
+@Immutable
 data class TitleSegment(
     val text: String,
     val highlight: IntRange? = null,
@@ -49,7 +64,12 @@ data class TitleSegment(
  * to three sense lines (glosses joined ", ", the last suffixed "…" when
  * more senses exist), and whether any of the entry's forms carries a
  * first-tier priority tag (jisho's "common word" badge).
+ *
+ * Immutable so a result row is skippable: without it the `List` fields
+ * make the whole class unstable to the Compose compiler, and every row
+ * on screen recomposes whenever anything above the list does.
  */
+@Immutable
 data class SearchHit(
     val entryId: Long,
     val titleSegments: List<TitleSegment>,
@@ -63,8 +83,11 @@ data class SearchResults(
     val isFallback: Boolean = false,
     /**
      * More entries matched than [hits] carries (the pre-truncation
-     * pool exceeded the limit). No UI treatment yet; reserved for
-     * future pagination.
+     * pool exceeded the limit). Paging asks for a larger limit while
+     * this is true and the ceiling ([SEARCH_MAX_RESULTS]) has not been
+     * reached; the two conditions are separate, because a match set
+     * larger than the ranking pool leaves this true at a point where
+     * there is honestly nothing more to show.
      */
     val hasMore: Boolean = false,
     /**
@@ -101,7 +124,9 @@ suspend fun searchEntries(
  * matching on readings and kanji forms plus exact matching of the
  * deinflection candidates, each candidate validated against the entry's
  * part-of-speech flags. Deinflected exact hits rank before prefix hits;
- * both groups are ordered by common_rank and entries are deduplicated.
+ * both groups are ordered by (common_rank, entry_id) — a total order,
+ * so paging extends the list instead of reshuffling it — and entries
+ * are deduplicated.
  * When nothing matches, the query tail is truncated progressively and
  * prefix matching re-run; such results are marked
  * [SearchResults.isFallback].
@@ -302,9 +327,17 @@ private suspend fun DictionaryDatabase.searchJapanese(query: String, limit: Int)
 private suspend fun DictionaryDatabase.searchEnglish(query: String, limit: Int): SearchResults {
     val match = sanitizeFtsQuery(query) ?: return SearchResults(emptyList())
     val tokens = queryTokens(query)
-    // A caller asking for more than the standard pool still gets a pool
-    // big enough to answer, and one row of headroom keeps hasMore true.
-    val pool = maxOf(FTS_RANKING_POOL, limit + 1)
+    // Always exactly the pool, never limit + 1. Paging never asks past
+    // [SEARCH_MAX_RESULTS], which *is* the pool, so the final page would
+    // otherwise be the one page ranked over 401 entries where every
+    // earlier page ranked 400 — and that 401st entry is fine-ranked by a
+    // comparator the SQL order knows nothing about, so it can land
+    // anywhere among the rows already on screen. Ranking the same pool
+    // every time is what makes each page a longer prefix of one order.
+    // hasMore then falls false exactly at the ceiling (400 > 400 is
+    // false), which is the honest answer: there is nothing further to
+    // show without growing the pool and re-ranking.
+    val pool = FTS_RANKING_POOL
     val rows = db.ftsQueries.searchGlossFtsRankedEntryIds(match, pool.toLong()).awaitList()
     if (rows.isEmpty()) return SearchResults(emptyList())
     coroutineContext.ensureActive()
@@ -462,12 +495,20 @@ private suspend fun DictionaryDatabase.deinflectedExactMatches(
 private fun Deinflection.matchesEntryFlags(entryFlags: Long): Boolean =
     LanguageTransformer.conditionsMatch(conditions, entryFlags)
 
+/**
+ * Prefix hits, one row per entry per source: see entry.sq for why the
+ * queries group by entry and order totally, which is what lets a later
+ * page extend this list rather than reshuffle it.
+ */
 private suspend fun DictionaryDatabase.prefixMatches(prefix: String, limit: Int): List<RankedMatch> {
     val end = prefixRangeEnd(prefix)
+    // A null MIN() over a group that exists is impossible, so the
+    // fallback only has to avoid rewarding the impossible with the best
+    // rank on the page.
     val rows = db.entryQueries.searchReadingRangePrefix(prefix, end, limit.toLong()).awaitList()
-        .map { MatchedRow(it.entry_id, it.text, it.common_rank) } +
+        .map { MatchedRow(it.entry_id, it.text, it.common_rank ?: Long.MAX_VALUE) } +
         db.entryQueries.searchKanjiFormRangePrefix(prefix, end, limit.toLong()).awaitList()
-            .map { MatchedRow(it.entry_id, it.text, it.common_rank) }
+            .map { MatchedRow(it.entry_id, it.text, it.common_rank ?: Long.MAX_VALUE) }
     return rows.map { row ->
         RankedMatch(
             entryId = row.entryId,
@@ -493,6 +534,13 @@ private class MatchedRow(
  * breadcrumb ranking applies to prefix-only situations, so e.g. たべ
  * shows 食べる as a highlighted prefix match, not as "continuative".
  * Returns the full deduplicated pool; callers truncate to their limit.
+ *
+ * Each group is sorted on (common_rank, entry_id) rather than on
+ * common_rank alone: common_rank is not a total order, and under a plain
+ * `sortedBy` the tied rows kept whatever position concatenating the two
+ * source queries gave them — an order that changes with the limit, and
+ * so moves rows the reader is already looking at when a page lands. The
+ * group ordering (exact, then prefix) is deliberate and stays.
  */
 private fun mergeMatches(
     exact: List<RankedMatch>,
@@ -500,7 +548,8 @@ private fun mergeMatches(
 ): List<RankedMatch> {
     val prefixIds = prefix.map { it.entryId }.toSet()
     val exactOnly = exact.filter { it.entryId !in prefixIds }
-    return (exactOnly.sortedBy { it.commonRank } + prefix.sortedBy { it.commonRank })
+    val byRankThenId = compareBy<RankedMatch>({ it.commonRank }, { it.entryId })
+    return (exactOnly.sortedWith(byRankThenId) + prefix.sortedWith(byRankThenId))
         .distinctBy { it.entryId }
 }
 

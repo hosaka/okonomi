@@ -1,6 +1,8 @@
 package cc.hosaka.okonomi.feature.home
 
+import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -10,6 +12,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -50,6 +53,7 @@ import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberDecoratedNavEntries
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
+import androidx.navigation3.scene.Scene
 import androidx.navigation3.ui.NavDisplay
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
@@ -75,6 +79,51 @@ import org.jetbrains.compose.resources.stringResource
  * so the content never jumps by the inset height mid-transition.
  */
 private const val NAVIGATION_ANIMATION_MILLIS = 220
+
+/**
+ * How long one screen takes to replace another. This is the value
+ * `NavDisplay`'s own default fade used, kept deliberately: the push and
+ * the toolbar back already looked right at it, and the fix below is
+ * about the transitions that did not match, not about retiming the one
+ * that did.
+ */
+private const val SCREEN_TRANSITION_MILLIS = 700
+
+/**
+ * One specification for every screen transition.
+ *
+ * `NavDisplay` ships three separate defaults, and two of them disagree:
+ * push and pop are a 700ms cross fade, while a predictive (system or
+ * gesture) back is `fadeIn(spring(stiffness = 1600f))` against
+ * `scaleOut(targetScale = 0.7f)`. On a device that reads as two
+ * different apps — the toolbar arrow dissolves the screen, the back
+ * gesture snaps it away and shrinks it. Handing all three the same fade
+ * is what makes the two backs feel like one gesture with two triggers.
+ *
+ * What this does not reach: Android 14+ draws the predictive back
+ * preview itself. The system's window-level scale and slide, the edge
+ * affordance, the progress curve the gesture is interpolated along and
+ * the cross-activity animation when the gesture would leave the app are
+ * all outside the composition and cannot be specified from here. What is
+ * ours is the transition between two of our screens, which now has one
+ * definition; a gesture cancelled halfway is likewise the system's to
+ * unwind. Deliberately not fought with a custom gesture handler.
+ */
+private val screenTransitionSpec:
+    AnimatedContentTransitionScope<Scene<NavKey>>.() -> ContentTransform = {
+        fadeIn(tween(SCREEN_TRANSITION_MILLIS)) togetherWith
+            fadeOut(tween(SCREEN_TRANSITION_MILLIS))
+    }
+
+/**
+ * The same fade again, in the shape the predictive-back parameter wants.
+ * The `Int` it is handed is the edge the gesture started from, which a
+ * transition with no direction in it has no use for.
+ */
+private val predictiveScreenTransitionSpec:
+    AnimatedContentTransitionScope<Scene<NavKey>>.(Int) -> ContentTransform = { _ ->
+        screenTransitionSpec()
+    }
 
 /**
  * The shell of the app: a navigation bar (portrait) or a navigation
@@ -279,6 +328,9 @@ private fun HomeNavigationContent(
                 entries = section.entries,
                 modifier = modifier
                     .fillMaxSize(),
+                transitionSpec = screenTransitionSpec,
+                popTransitionSpec = screenTransitionSpec,
+                predictivePopTransitionSpec = predictiveScreenTransitionSpec,
                 onBack = {
                     section.controller.pop()
                 },

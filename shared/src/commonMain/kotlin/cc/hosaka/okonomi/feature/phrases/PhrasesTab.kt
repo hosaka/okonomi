@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -17,12 +18,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import cc.hosaka.okonomi.db.BreakdownWord
 import cc.hosaka.okonomi.db.EntryDetail
 import cc.hosaka.okonomi.db.ExampleSentence
 import cc.hosaka.okonomi.ui.CenteredBox
 import cc.hosaka.okonomi.ui.CenteredMessage
+import cc.hosaka.okonomi.ui.LoadMoreEffect
+import cc.hosaka.okonomi.ui.PagingFooterState
+import cc.hosaka.okonomi.ui.pagingFooterItem
+import cc.hosaka.okonomi.ui.scrollIndicator
 import cc.hosaka.okonomi.ui.theme.Dimens
 import cc.hosaka.okonomi.ui.theme.horizontalPaddingHalf
 import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
@@ -46,11 +52,19 @@ import org.jetbrains.compose.resources.stringResource
 fun PhrasesTab(
     entry: EntryDetail,
     contentPadding: PaddingValues,
+    loadEnabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val state = producePhrasesTabState(entryId = entry.entryId)
+    // See KanjiTab: false means the pager is only passing through on its
+    // way to another tab, and this one must not query for the trip — and
+    // see there too for why this parameter carries no default.
+    val state = if (loadEnabled) {
+        producePhrasesTabState(entryId = entry.entryId).value
+    } else {
+        PhrasesTabState()
+    }
     PhrasesTabContent(
-        state = state.value,
+        state = state,
         contentPadding = contentPadding,
         modifier = modifier,
     )
@@ -96,6 +110,8 @@ internal fun PhrasesTabContent(
 
         is PhrasesTabContentState.Ready -> SentenceList(
             sentences = content.sentences,
+            onShowMore = content.onShowMore,
+            footer = content.footer,
             contentPadding = contentPadding,
             modifier = modifier,
         )
@@ -105,14 +121,28 @@ internal fun PhrasesTabContent(
 @Composable
 private fun SentenceList(
     sentences: List<ExampleSentence>,
+    onShowMore: (() -> Unit)?,
+    footer: PagingFooterState,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
+    val listState = rememberLazyListState()
+    // The template itself, not a formatted result: the substitution is
+    // [breakdownWordLabel]'s, so that the rule for when a reading is
+    // shown at all can be tested without rendering. Read once for the
+    // whole list rather than per row: a resource lookup inside an item
+    // is a lookup for every row the reader flicks past.
+    val readingFormat = stringResource(Res.string.entry_phrases_word_reading)
+    LoadMoreEffect(listState = listState, onLoadMore = onShowMore)
     // A sentence is something a learner copies into a note or a search box.
     SelectionContainer {
         LazyColumn(
             modifier = modifier
-                .fillMaxSize(),
+                .fillMaxSize()
+                // The tab's content padding keeps the indicator clear of
+                // the floating tab bar the last rows scroll under.
+                .scrollIndicator(listState, contentPadding),
+            state = listState,
             contentPadding = contentPadding,
         ) {
             itemsIndexed(
@@ -127,14 +157,15 @@ private fun SentenceList(
                             .padding(horizontal = Dimens.contentPadding),
                     )
                 }
-                SentenceBlock(sentence)
+                SentenceBlock(sentence = sentence, readingFormat = readingFormat)
             }
+            pagingFooterItem(footer)
         }
     }
 }
 
 @Composable
-private fun SentenceBlock(sentence: ExampleSentence) {
+private fun SentenceBlock(sentence: ExampleSentence, readingFormat: String) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -153,7 +184,7 @@ private fun SentenceBlock(sentence: ExampleSentence) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (sentence.words.isNotEmpty()) {
-            BreakdownRow(sentence.words)
+            BreakdownRow(words = sentence.words, readingFormat = readingFormat)
         }
     }
 }
@@ -170,19 +201,21 @@ private fun SentenceBlock(sentence: ExampleSentence) {
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun BreakdownRow(words: List<BreakdownWord>) {
-    // The template itself, not a formatted result: the substitution is
-    // [breakdownWordLabel]'s, so that the rule for when a reading is
-    // shown at all can be tested without rendering.
-    val readingFormat = stringResource(Res.string.entry_phrases_word_reading)
+private fun BreakdownRow(words: List<BreakdownWord>, readingFormat: String) {
+    // Up to 47 substitutions per row, and the row recomposes whenever
+    // anything above it in the item does. Derived once per sentence
+    // instead: the words and the template are both fixed for its life.
+    val labels = remember(words, readingFormat) {
+        words.map { word -> breakdownWordLabel(word, readingFormat) }
+    }
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(Dimens.horizontalPaddingHalf),
         modifier = Modifier
             .padding(top = Dimens.verticalPaddingHalf),
     ) {
-        words.forEach { word ->
+        labels.forEach { label ->
             Text(
-                text = breakdownWordLabel(word, readingFormat),
+                text = label,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

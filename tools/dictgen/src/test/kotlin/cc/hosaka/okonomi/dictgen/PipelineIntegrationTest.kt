@@ -225,10 +225,21 @@ class PipelineIntegrationTest {
         // version to itself and would pass at any value. Both counters
         // started at 1 pre-release; the schema version only moves with
         // the DDL (the read-only database is regenerated, never
-        // migrated), so the tag_label increment and the sentence tables
-        // moved the format version alone.
+        // migrated), so the tag_label increment, the sentence tables and
+        // the raised sentence cap each moved the format version alone.
+        //
+        // The schema version is PINNED AT 1 and is expected to stay
+        // there for the life of the project. SQLDelight derives it from
+        // the number of .sqm migration files, and this project has none
+        // by policy: the database is replaced, never migrated. If this
+        // assertion ever fails because the value went UP, someone added
+        // a migration file to a project that does not migrate. If a
+        // schema change needs to reach devices, bump
+        // DICTIONARY_FORMAT_VERSION instead — it is the only component
+        // of the sidecar that can move, and therefore the only thing
+        // that makes a provisioned device re-copy.
         assertEquals(1L, OkonomiDb.Schema.version)
-        assertEquals(3, DICTIONARY_FORMAT_VERSION)
+        assertEquals(4, DICTIONARY_FORMAT_VERSION)
     }
 
     @Test
@@ -256,12 +267,27 @@ class PipelineIntegrationTest {
         assertTrue(sidecar.isFile, "sidecar should be written next to the database")
         // Literals on purpose: the sidecar is the only thing that makes
         // a device re-copy, so a silent version regression must fail here.
-        assertEquals("${Fixtures.JMDICT_DATE}:1:3", sidecar.readText())
+        assertEquals("${Fixtures.JMDICT_DATE}:1:4", sidecar.readText())
         assertEquals(
             "${Fixtures.JMDICT_DATE}:${OkonomiDb.Schema.version}:$DICTIONARY_FORMAT_VERSION",
             sidecar.readText(),
         )
         assertTrue(!File(sidecar.parentFile, sidecar.name + ".tmp").exists(), "sidecar tmp file should be moved away")
+
+        // The schema component is inert and must stay so. It is spelled
+        // out here, separately from the whole-string assertion above,
+        // because the whole-string one fails the same way for any of the
+        // three components and would not tell the reader which rule they
+        // have run into.
+        assertEquals(
+            "1",
+            sidecar.readText().split(":")[1],
+            "The sidecar's schema component must stay 1. This project ships a read-only " +
+                "prebuilt database and never migrates, so SQLDelight's schema version has no " +
+                "migration files to count and can never move. If you changed the DDL and need " +
+                "devices to pick it up, bump DICTIONARY_FORMAT_VERSION — do NOT add a migration " +
+                "file to make this number move.",
+        )
     }
 
     @Test

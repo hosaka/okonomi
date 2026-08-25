@@ -2,11 +2,18 @@ package cc.hosaka.okonomi.dictgen
 
 /**
  * Highest number of example sentences one entry keeps. The Phrases tab
- * shows ten without paging, and the cap is what keeps the sentence
- * tables from dwarfing the dictionary: は is a word in 99,947 of the
- * corpus's sentences, 為る in 26,704 and 事 in 8,669.
+ * shows the first thirty and pages through the rest, so the stored set
+ * has to be larger than one screenful; the cap is still what keeps the
+ * sentence tables from dwarfing the dictionary, because は is a word in
+ * 99,947 of the corpus's sentences, 為る in 26,704 and 事 in 8,669.
+ *
+ * Was 10 while the tab showed everything it loaded. Raising it to 50
+ * took entry_sentence from 122,407 links to 255,563 — 133,156 further
+ * links, plus the sentence text those links keep alive — which is the
+ * price of the tab no longer stopping at ten on the words a learner
+ * looks up most.
  */
-const val SENTENCES_PER_ENTRY = 10
+const val SENTENCES_PER_ENTRY = 50
 
 /**
  * The length band an example is preferred to fall in, in characters.
@@ -66,8 +73,8 @@ val SENTENCE_ORDER: Comparator<SentenceLink> = compareBy<SentenceLink> { !it.inR
  * Collapses sentences that differ only in how they end.
  *
  * The corpus carries near-identical pairs — 教室で食べるの。 and
- * 教室で食べるの？ — and showing both wastes two of an entry's ten slots
- * on one sentence. Trailing punctuation is stripped and the rest
+ * 教室で食べるの？ — and showing both wastes two of an entry's slots on
+ * one sentence. Trailing punctuation is stripped and the rest
  * compared exactly: deliberately not fuzzy matching, which would start
  * silently discarding sentences that genuinely differ.
  */
@@ -87,7 +94,7 @@ object SentenceKey {
  * would mean holding 1.17 million links and sorting a 99,947-element
  * list for は alone; here both the memory and the work per candidate
  * stay proportional to the cap, and the common case for a frequent word
- * — a sentence no better than the ten already kept — costs one
+ * — a sentence no better than the ones already kept — costs one
  * comparison.
  */
 class TopSentences(private val limit: Int) {
