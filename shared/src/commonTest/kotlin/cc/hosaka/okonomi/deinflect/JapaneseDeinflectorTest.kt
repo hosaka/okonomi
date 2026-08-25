@@ -160,6 +160,12 @@ class JapaneseDeinflectorTest {
             "vz" to "vz",
             "adj-i" to "adj-i",
             "adj-ix" to "adj-i",
+            // An auxiliary adjective inflects as an adjective, and the
+            // Forms tab conjugates it as one.
+            "aux-adj" to "adj-i",
+            // The old uru class inflects on its え stem like an ichidan
+            // verb, which is the paradigm the conjugator gives it.
+            "v5uru" to "v1",
             "v-unspec" to "v",
         )
         for ((code, conditionType) in documentedMapping) {
@@ -176,9 +182,14 @@ class JapaneseDeinflectorTest {
         assertEquals(v5Flags, posCodesToConditionFlags("v5r,vt"))
         assertEquals(v1Flags or v5Flags, posCodesToConditionFlags("v1, v5k-s, n, exp"))
 
+        // The precursor su class is written both ways (兼する, 兼す), so
+        // it carries the union its two conjugation paradigms need.
+        val vsFlags = JapaneseDeinflector.conditionFlagsForConditionType("vs")
+        assertEquals(vsFlags or v5Flags, posCodesToConditionFlags("vs-c"))
+
         // Unknown codes, including the archaic verb classes, contribute 0.
         assertEquals(0L, posCodesToConditionFlags("n,exp,adj-na"))
-        assertEquals(0L, posCodesToConditionFlags("v2a-s,v4r,vn,vr,vs-c"))
+        assertEquals(0L, posCodesToConditionFlags("v2a-s,v4r,vn,vr"))
         assertEquals(0L, posCodesToConditionFlags(null))
         assertEquals(0L, posCodesToConditionFlags(""))
     }

@@ -28,6 +28,7 @@ class EntryStateProducerTest {
         readings = listOf(EntryReading("たべる", "taberu", emptyList(), isCommon = true)),
         senses = listOf(
             EntrySense(
+                posCodes = listOf("v1"),
                 tags = listOf("Ichidan verb"),
                 glosses = listOf("to eat"),
                 info = null,

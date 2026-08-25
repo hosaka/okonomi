@@ -25,8 +25,8 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * The tabs of the entry view, in swipe order. [Word] and [Kanji] have
- * content; the other two are placeholders for their own increments.
+ * The tabs of the entry view, in swipe order. Only [Phrases] is still a
+ * placeholder for its own increment.
  */
 enum class EntryTab(
     val label: StringResource,

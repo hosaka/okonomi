@@ -32,9 +32,14 @@ data class EntryReading(
  * unknown codes kept verbatim), its English glosses, the editorial note
  * from `s_inf`, and the forms or readings the sense is restricted to
  * (`stagk`/`stagr`).
+ *
+ * [posCodes] keeps the part-of-speech codes unresolved beside their
+ * labels: the Forms tab classifies the entry by code (`v5k`, `adj-ix`),
+ * which no label can be parsed back into.
  */
 @Immutable
 data class EntrySense(
+    val posCodes: List<String>,
     val tags: List<String>,
     val glosses: List<String>,
     val info: String?,
@@ -66,6 +71,26 @@ data class EntryDetail(
     /** The written forms other than the headword, in source order. */
     val alternateForms: List<EntryForm>
         get() = forms.drop(1)
+
+    /**
+     * Every part-of-speech code the entry states, in sense order and
+     * without repeats. The Forms tab reads it to decide which
+     * paradigms the entry has: the first sense carrying a conjugable
+     * code heads the table, and a second sense in a genuinely
+     * different class adds one of its own.
+     *
+     * A sense's `stagk`/`stagr` restrictions are deliberately not
+     * applied. 81 senses in the shipped dictionary restrict a
+     * conjugable sense to a subset of the entry's spellings, and in
+     * every one of them the restricted and unrestricted senses land in
+     * the same conjugation class, so honouring the restriction would
+     * change no table today. It would start to matter for an entry
+     * whose spellings conjugate differently — the display-form
+     * increment is where that becomes visible, and where this should be
+     * revisited.
+     */
+    val posCodes: List<String>
+        get() = senses.flatMap { it.posCodes }.distinct()
 }
 
 /**
@@ -112,6 +137,7 @@ suspend fun DictionaryDatabase.loadEntryDetail(entryId: Long): EntryDetail? {
     val senses = senseRows
         .map { row ->
             EntrySense(
+                posCodes = StoredValues.codes(row.pos),
                 tags = tagCodesOf(row.pos, row.misc, row.field_, row.dial)
                     .distinct()
                     // A code the label table does not know is shown as
@@ -156,6 +182,24 @@ private fun tagCodesOf(
     StoredValues.codes(misc) +
     StoredValues.codes(field) +
     StoredValues.codes(dial)
+
+/**
+ * Reads the `tag_label` rows for [codes] off the shared app-lifetime
+ * dictionary. The Forms tab heads each table with the class's own label
+ * rather than a second hard-coded code-to-name map; a code the table
+ * does not know is simply absent from the result, and the caller shows
+ * the code itself.
+ */
+suspend fun loadTagLabels(codes: List<String>): Map<String, String> {
+    if (codes.isEmpty()) return emptyMap()
+    val database = dictionary()
+    // Same reasoning as loadEntryDetail: no common IO dispatcher exists
+    // here and the query is short-lived, so Default keeps the
+    // synchronous SQLite work off the main thread.
+    return withContext(Dispatchers.Default) {
+        database.labelsFor(codes)
+    }
+}
 
 private suspend fun DictionaryDatabase.labelsFor(codes: List<String>): Map<String, String> {
     val distinct = codes.distinct()

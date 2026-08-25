@@ -25,18 +25,30 @@ import cc.hosaka.okonomi.db.StoredValues
  *
  * Mapping table:
  * - `v1`, `v1-s` -> v1 (ichidan)
- * - all `v5*` codes (v5u, v5u-s, v5k, v5k-s, v5g, v5s, v5t, v5n, v5b, v5m,
- *   v5r, v5r-i, v5aru) -> v5 (godan)
+ * - `v5uru` -> v1: the old uru class inflects on its え stem like an
+ *   ichidan verb, which is the paradigm the conjugator gives it
+ * - every other `v5*` code (v5u, v5u-s, v5k, v5k-s, v5g, v5s, v5t, v5n,
+ *   v5b, v5m, v5r, v5r-i, v5aru) -> v5 (godan)
  * - `vk` -> vk (kuru)
  * - `vs`, `vs-i`, `vs-s` -> vs (suru)
+ * - `vs-c` -> vs | v5: the precursor class is written both ways (兼する,
+ *   兼す), and the union is what its two paradigms need
  * - `vz` -> vz (zuru)
- * - `adj-i`, `adj-ix` -> adj-i
+ * - `adj-i`, `adj-ix`, `aux-adj` -> adj-i
  * - `v-unspec` -> the umbrella v flags (v1 | v5 | vk | vs | vz)
  * - anything else contributes 0 (never throws)
  *
- * The archaic verb classes (`v2*`, `v4*`, `vn`, `vr`, `vs-c`) deliberately
- * map to 0: the ported rule set carries no conjugation rules for them, so
- * flags would never match a derivation.
+ * The archaic verb classes (`v2*`, `v4*`, `vn`, `vr`) deliberately map to
+ * 0: the ported rule set carries no conjugation rules for them, so flags
+ * would never match a derivation.
+ *
+ * This table and [cc.hosaka.okonomi.lang.conjugationClassOf] classify the
+ * same JMdict codes from opposite directions and must stay in step: a code
+ * the conjugator produces forms for but that maps to 0 here can never be
+ * round-trip verified, and a code that gains flags here without a paradigm
+ * there is a class the Forms tab silently drops. [UNCONJUGATED_POS_CODES]
+ * names the deliberate exceptions, and `ConjugationVocabularyTest` holds
+ * both directions.
  */
 fun posCodesToConditionFlags(pos: String?): Long {
     var flags = 0L
@@ -62,13 +74,25 @@ private object PosConditionFlags {
     val v: Long = v1 or v5 or vk or vs or vz
 }
 
+/**
+ * The codes that carry condition flags but deliberately have no
+ * conjugation paradigm, so the two-way vocabulary check knows they are
+ * omissions on purpose rather than gaps.
+ *
+ * `vs` is a noun stored without its する — there is no verb in the
+ * headword to inflect. `v-unspec` says a word is a verb without saying
+ * which kind, and no paradigm follows from that.
+ */
+val UNCONJUGATED_POS_CODES: Set<String> = setOf("vs", "v-unspec")
+
 private fun conditionFlagsForPosCode(code: String): Long = when {
-    code == "v1" || code == "v1-s" -> PosConditionFlags.v1
+    code == "v1" || code == "v1-s" || code == "v5uru" -> PosConditionFlags.v1
     code.startsWith("v5") -> PosConditionFlags.v5
     code == "vk" -> PosConditionFlags.vk
     code == "vs" || code == "vs-i" || code == "vs-s" -> PosConditionFlags.vs
+    code == "vs-c" -> PosConditionFlags.vs or PosConditionFlags.v5
     code == "vz" -> PosConditionFlags.vz
-    code == "adj-i" || code == "adj-ix" -> PosConditionFlags.adjI
+    code == "adj-i" || code == "adj-ix" || code == "aux-adj" -> PosConditionFlags.adjI
     code == "v-unspec" -> PosConditionFlags.v
     else -> 0L
 }

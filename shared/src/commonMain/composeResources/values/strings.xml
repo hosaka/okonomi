@@ -44,6 +44,45 @@
         <item quantity="one">%1$d stroke</item>
         <item quantity="other">%1$d strokes</item>
     </plurals>
+    <!-- Column headers and row labels of the conjugation table. Jisho's
+         table shows neither romaji nor an English hint per row, so these
+         labels are the reader's only guide to what a row is. -->
+    <string name="entry_forms_affirmative">Affirmative</string>
+    <string name="entry_forms_negative">Negative</string>
+    <string name="entry_forms_row_non_past">Non-past</string>
+    <string name="entry_forms_row_non_past_polite">Non-past polite</string>
+    <string name="entry_forms_row_past">Past</string>
+    <string name="entry_forms_row_past_polite">Past polite</string>
+    <string name="entry_forms_row_te">Te-form</string>
+    <string name="entry_forms_row_potential">Potential</string>
+    <string name="entry_forms_row_passive">Passive</string>
+    <string name="entry_forms_row_causative">Causative</string>
+    <!-- The longest label, and the one the label column is sized for. -->
+    <string name="entry_forms_row_causative_passive">Causative passive</string>
+    <string name="entry_forms_row_imperative">Imperative</string>
+    <string name="entry_forms_row_volitional">Volitional</string>
+    <!-- The kana names the two conditionals apart; "Conditional" twice
+         would tell the reader nothing about which is which. -->
+    <string name="entry_forms_row_conditional_ba">Conditional ば</string>
+    <string name="entry_forms_row_conditional_tara">Conditional たら</string>
+    <string name="entry_forms_row_desiderative">Desiderative たい</string>
+    <!-- A row that exists with no negative cell: the volitional's true
+         negative is the literary 〜まい, so the cell shows an em dash. A
+         dash announces as nothing at all, hence the spoken wording. -->
+    <string name="entry_forms_no_form">no such form</string>
+    <!-- One spoken sentence per row. Without it a screen reader reads
+         three unrelated strings with nothing tying a form to its label
+         or its column. -->
+    <string name="entry_forms_row_description">%1$s. Affirmative: %2$s. Negative: %3$s.</string>
+    <!-- Reached by anything with no conjugable part of speech: nouns,
+         adverbs, expressions with no verb in them. -->
+    <string name="entry_forms_none">This word has no forms to conjugate.</string>
+    <!-- The far more common way to reach the empty state: JMdict stores
+         a suru noun without its する (勉強, not 勉強する), so there is no
+         inflecting tail here to show. Jisho shows no table for these
+         either. -->
+    <string name="entry_forms_suru">This noun becomes a verb with する. Look up する to see how it conjugates.</string>
+    <string name="entry_forms_error">The forms of this word could not be loaded</string>
     <string name="settings_title">Settings</string>
     <string name="settings_dictionary_label">Dictionary</string>
     <string name="settings_dictionary_value">JMdict %1$s · %2$s entries</string>

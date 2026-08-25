@@ -109,10 +109,15 @@ class EntryDetailTest {
         assertEquals("colloquial", first.info)
         assertEquals(listOf("食べる", "喰べる"), first.restrictions)
 
+        // The codes survive beside their labels: the Forms tab
+        // classifies by code, which no label can be parsed back into.
+        assertEquals(listOf("v1", "vt"), first.posCodes)
+
         val second = entry.senses[1]
         assertEquals(listOf("Ichidan verb"), second.tags)
         assertNull(second.info)
         assertEquals(emptyList(), second.restrictions)
+        assertEquals(listOf("v1", "vt"), entry.posCodes, "repeats across senses collapse, in sense order")
     }
 
     @Test

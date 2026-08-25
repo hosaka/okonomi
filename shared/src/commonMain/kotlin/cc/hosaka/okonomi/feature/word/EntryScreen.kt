@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import cc.hosaka.okonomi.db.EntryDetail
+import cc.hosaka.okonomi.feature.forms.FormsTab
 import cc.hosaka.okonomi.feature.kanji.KanjiTab
 import cc.hosaka.okonomi.feature.navigation.LocalNavigationController
 import cc.hosaka.okonomi.ui.CenteredBox
@@ -164,6 +165,11 @@ private fun EntryTabs(
                 )
 
                 EntryTab.Kanji -> KanjiTab(
+                    entry = entry,
+                    contentPadding = contentPadding,
+                )
+
+                EntryTab.Forms -> FormsTab(
                     entry = entry,
                     contentPadding = contentPadding,
                 )
