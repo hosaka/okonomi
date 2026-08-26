@@ -46,10 +46,12 @@ class SentenceDetailTest {
             "What subjects are you studying at school?",
             // 科目 and 勉強 state no reading in the source; dictgen took
             // theirs from the entries they resolved to, so every word
-            // with kanji in it arrives here already carrying one. The
-            // ids are arbitrary: nothing reads them yet, and this
+            // with kanji in it arrives here already carrying one. 為る
+            // is written して here and carries the surface that says so.
+            // The ids are arbitrary: nothing reads them yet, and this
             // database seeds no entries for them.
-            "学校(がっこう)#101 で#102 どんな#103 科目(かもく)#104 を#105 勉強(べんきょう)#106 為る(する)#107",
+            "学校(がっこう)#101 で#102 どんな#103 科目(かもく)#104 を#105 " +
+                "勉強(べんきょう)#106 為る(する){して}#107 居る(いる){います}#108",
         )
         db.sentenceQueries.insertSentence(
             2L,
@@ -91,14 +93,14 @@ class SentenceDetailTest {
         val words = seededDatabase().loadSentencesForEntry(1L).first().words
 
         assertEquals(
-            listOf("学校", "で", "どんな", "科目", "を", "勉強", "為る"),
+            listOf("学校", "で", "どんな", "科目", "を", "勉強", "為る", "居る"),
             words.map { it.text },
-            "the breakdown shows the dictionary form, not the inflected surface",
+            "a word is stored in its dictionary form, whatever the sentence writes",
         )
-        // This is what the breakdown exists for: a kanji word with no
+        // This is what the readings exist for: a kanji word with no
         // reading would leave the line no more readable than before.
         assertEquals(
-            listOf("がっこう", "かもく", "べんきょう", "する"),
+            listOf("がっこう", "かもく", "べんきょう", "する", "いる"),
             words.filter { it.reading != null }.map { it.reading },
         )
         assertEquals(
@@ -106,6 +108,43 @@ class SentenceDetailTest {
             words.filter { it.reading == null }.map { it.text },
             "a word written in kana already reads as itself",
         )
+    }
+
+    @Test
+    fun `a sentence's words are located in the text the reader sees`() = runTest {
+        val sentence = seededDatabase().loadSentencesForEntry(1L).first()
+
+        // Every word of this sentence, and each one at the characters
+        // the sentence spells it with: 為る as して, 居る as います.
+        assertEquals(
+            listOf("学校", "で", "どんな", "科目", "を", "勉強", "して", "います"),
+            sentence.tokens.map { sentence.japanese.substring(it.start, it.end) },
+        )
+        assertEquals(
+            listOf("学校", "で", "どんな", "科目", "を", "勉強", "為る", "居る"),
+            sentence.tokens.map { it.word.text },
+            "a tap searches the dictionary form, not what is on screen",
+        )
+    }
+
+    @Test
+    fun `a word the sentence does not contain is skipped without losing the others`() = runTest {
+        val database = seededDatabase()
+        database.db.sentenceQueries.insertSentence(
+            5L,
+            "水を飲む。",
+            "I drink water.",
+            // 犬 is in no part of this sentence: an index row naming a
+            // word the text does not carry, which is what the seventeen
+            // unplaced words of the shipped database all are.
+            "水(みず)#120 を#121 犬(いぬ)#122 飲む(のむ)#123",
+        )
+        database.db.sentenceQueries.insertEntrySentence(2L, 5L, 0L)
+
+        val sentence = database.loadSentencesForEntry(2L).single()
+
+        assertEquals(listOf("水", "を", "飲む"), sentence.tokens.map { it.word.text })
+        assertEquals(4, sentence.words.size, "the word is still parsed; it is only unplaceable")
     }
 
     @Test

@@ -93,11 +93,6 @@
          state rather than as something having gone wrong. -->
     <string name="entry_phrases_empty">No example sentences for this word yet.</string>
     <string name="entry_phrases_error">The example sentences for this word could not be loaded</string>
-    <!-- One word of a sentence's breakdown and how it reads: the word
-         first, its reading bracketed after it. Bracketing a reading is
-         a typographic convention, so a locale that writes it
-         differently changes it here. -->
-    <string name="entry_phrases_word_reading">%1$s (%2$s)</string>
     <string name="settings_title">Settings</string>
     <string name="settings_dictionary_label">Dictionary</string>
     <string name="settings_dictionary_value">JMdict %1$s · %2$s entries</string>

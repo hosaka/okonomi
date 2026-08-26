@@ -16,32 +16,36 @@ import cc.hosaka.okonomi.ui.test.ScreenHost
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-private val SURU = BreakdownWord(text = "為る", reading = null, entryId = 1_157_170L)
+private val GAKKOU = BreakdownWord(text = "学校", reading = "がっこう", entryId = 1_301_230L)
+
+private val DE = BreakdownWord(text = "で", reading = null, entryId = 2_028_980L)
+
+private val HANASHI = BreakdownWord(text = "話", reading = "はなし", entryId = 1_589_580L)
 
 private val WO = BreakdownWord(text = "を", reading = null, entryId = 2_029_010L)
 
-private val HANASHI = BreakdownWord(text = "話", reading = null, entryId = 1_589_580L)
-
 /**
- * The same word as [HANASHI] but carrying its reading, so the label the
- * row draws is `話 (はなし)` while the word itself is still 話. Every
- * other fixture here reads as itself, which makes the label and the
- * query the same string and hides the difference between them.
+ * 為る is written します here, which is the case the sentence rework
+ * exists for: the word on screen is not the word a tap searches for,
+ * and every fixture whose surface equals its headword is blind to the
+ * difference between them.
  */
-private val GAKKOU = BreakdownWord(text = "学校", reading = "がっこう", entryId = 1_301_230L)
-
-/** The shipped `entry_phrases_word_reading` template, applied. */
-private const val GAKKOU_LABEL = "学校 (がっこう)"
+private val SURU = BreakdownWord(
+    text = "為る",
+    reading = "する",
+    surface = "します",
+    entryId = 1_157_170L,
+)
 
 /**
- * Tapping a breakdown word lives inside a composable, so no producer
- * test can reach it: the `navigate(...)` call could be deleted with the
- * rule's own tests still green. These drive the real row and read back
- * what the navigation controller was asked to do.
+ * Tapping a word of the sentence lives inside a composable, so no
+ * producer test can reach it: the `navigate(...)` call could be deleted
+ * with the rule's own tests still green. These drive the real sentence
+ * and read back what the navigation controller was asked to do.
  *
  * The tap opens a *search*, not the linked entry, and it pushes rather
- * than pops — the breakdown's link can be wrong, and back has to return
- * the reader to the sentence they were reading.
+ * than pops — the index's link can be wrong, and back has to return the
+ * reader to the sentence they were reading.
  */
 @OptIn(ExperimentalTestApi::class)
 class PhrasesTapUiTest : ComposeUiTestBase() {
@@ -52,23 +56,26 @@ class PhrasesTapUiTest : ComposeUiTestBase() {
             PhrasesUnderTest(navigation = navigation)
         }
 
-        onNodeWithText(SURU.text).performClick()
+        onNodeWithText(HANASHI.text).performClick()
 
-        // The word's own text, which the breakdown already stores in
-        // dictionary form: 為る, never the inflected surface form.
-        assertEquals<List<Route>>(listOf(SearchRoute("為る")), navigation.navigated)
+        assertEquals<List<Route>>(listOf(SearchRoute("話")), navigation.navigated)
     }
 
+    /**
+     * The matrix row: the surface is what the reader touches and the
+     * dictionary form is what is searched for. Navigating with the text
+     * on screen would search for します, which finds nothing.
+     */
     @Test
-    fun `the word searched for is the one that was tapped`() = runComposeUiTest {
+    fun `tapping an inflected word searches for its dictionary form`() = runComposeUiTest {
         val navigation = RecordingNavigationController()
         setContent {
             PhrasesUnderTest(navigation = navigation)
         }
 
-        onNodeWithText(HANASHI.text).performClick()
+        onNodeWithText("します").performClick()
 
-        assertEquals<List<Route>>(listOf(SearchRoute("話")), navigation.navigated)
+        assertEquals<List<Route>>(listOf(SearchRoute("為る")), navigation.navigated)
     }
 
     @Test
@@ -83,28 +90,6 @@ class PhrasesTapUiTest : ComposeUiTestBase() {
         assertEquals<List<Route>>(emptyList(), navigation.navigated)
     }
 
-    /**
-     * The search term is the word, not the label. A word with a reading
-     * is drawn as `学校 (がっこう)`, and navigating with what is on
-     * screen instead of with `word.text` would search for that whole
-     * string — which finds nothing, and which every fixture that reads
-     * as itself is blind to.
-     */
-    @Test
-    fun `a word shown with its reading is searched for without it`() = runComposeUiTest {
-        val navigation = RecordingNavigationController()
-        setContent {
-            PhrasesUnderTest(navigation = navigation)
-        }
-        // The reading template is a resource, and a resource resolves a
-        // frame late; clicking before it lands would click the bare word.
-        waitForIdle()
-
-        onNodeWithText(GAKKOU_LABEL).performClick()
-
-        assertEquals<List<Route>>(listOf(SearchRoute("学校")), navigation.navigated)
-    }
-
     /** Several words can be looked up from one sentence, one after another. */
     @Test
     fun `a second word can be tapped after the first`() = runComposeUiTest {
@@ -114,16 +99,16 @@ class PhrasesTapUiTest : ComposeUiTestBase() {
         }
 
         onNodeWithText(HANASHI.text).performClick()
-        onNodeWithText(SURU.text).performClick()
+        onNodeWithText(GAKKOU.text).performClick()
 
         assertEquals<List<Route>>(
-            listOf(SearchRoute("話"), SearchRoute("為る")),
+            listOf(SearchRoute("話"), SearchRoute("学校")),
             navigation.navigated,
         )
     }
 
     @Test
-    fun `rendering a breakdown navigates nowhere on its own`() = runComposeUiTest {
+    fun `rendering a sentence navigates nowhere on its own`() = runComposeUiTest {
         val navigation = RecordingNavigationController()
         setContent {
             PhrasesUnderTest(navigation = navigation)
@@ -131,6 +116,7 @@ class PhrasesTapUiTest : ComposeUiTestBase() {
 
         assertEquals<List<Route>>(emptyList(), navigation.navigated)
     }
+
 }
 
 @Composable
@@ -142,9 +128,9 @@ private fun PhrasesUnderTest(navigation: RecordingNavigationController) {
                     sentences = listOf(
                         ExampleSentence(
                             id = 1L,
-                            japanese = "学校で話を為る。",
-                            english = "Have a talk at school.",
-                            words = listOf(GAKKOU, HANASHI, WO, SURU),
+                            japanese = "学校で話をします。",
+                            english = "I have a talk at school.",
+                            words = listOf(GAKKOU, DE, HANASHI, WO, SURU),
                         ),
                     ),
                     tappableWords = setOf(GAKKOU, HANASHI, SURU),

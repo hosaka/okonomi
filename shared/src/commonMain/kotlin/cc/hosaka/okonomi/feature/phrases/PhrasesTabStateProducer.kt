@@ -35,10 +35,11 @@ fun producePhrasesTabState(
  * and how many each further page adds.
  *
  * A page rather than the whole stored set because dictgen now keeps up
- * to fifty per entry: composing fifty breakdown rows — 食べる's run to
- * dozens of words each — to show the three that fit on screen is the
- * cost this exists to avoid. The query still reads the entry's set in
- * one go; it is indexed on (entry_id, ord) and the rows are small.
+ * to fifty per entry: locating fifty sentences' words, aligning their
+ * readings and composing a text node per word — 食べる's examples run to
+ * dozens each — to show the three that fit on screen is the cost this
+ * exists to avoid. The query still reads the entry's set in one go; it
+ * is indexed on (entry_id, ord) and the rows are small.
  */
 internal const val PHRASES_PAGE_SIZE = 30
 
@@ -81,6 +82,7 @@ suspend fun ScreenStateScope.phrasesTabStateProducer(
                     PhrasesTabContentState.Ready(
                         sentences = state.value.sentences.take(limit),
                         tappableWords = state.value.tappableWords,
+                        entryPos = state.value.entryPos,
                         // Computed from the limit this state was built
                         // for rather than incremented, so the scroll
                         // watcher calling it twice before the next state
@@ -109,12 +111,15 @@ suspend fun ScreenStateScope.phrasesTabStateProducer(
 }
 
 /**
- * An entry's stored examples and which of their words a tap opens a
- * search for.
+ * An entry's stored examples, which of their words a tap opens a search
+ * for, and what the dictionary said about those words' parts of speech
+ * — which decides the taps and, in `SentenceFurigana.kt`, which
+ * readings may be set over an inflected form.
  */
 private data class LoadedExamples(
     val sentences: List<ExampleSentence>,
     val tappableWords: Set<BreakdownWord>,
+    val entryPos: Map<Long, List<String>> = emptyMap(),
 )
 
 /**
@@ -143,18 +148,33 @@ private suspend fun loadExamples(
     invalidate: suspend () -> Unit,
 ): LoadedExamples {
     val sentences = load(entryId)
-    val words = sentences.flatMap { it.words }.distinct()
-    if (words.isEmpty()) return LoadedExamples(sentences, emptySet())
+    // Located words only: one the scan could not place has no span on
+    // screen, so asking the dictionary about it buys nothing.
+    val located = sentences.flatMap { sentence -> sentence.tokens.map { it.word } }
+    // One question per (dictionary form, entry id). A headword the
+    // corpus inflects five ways is five distinct BreakdownWord values
+    // with one answer between them, because the rule reads neither the
+    // surface nor the reading — asking five times would put five copies
+    // of the same word in the query.
+    val asked = located.distinctBy { it.text to it.entryId }
+    if (asked.isEmpty()) return LoadedExamples(sentences, emptySet())
     val pos = try {
-        loadPos(words)
+        loadPos(asked)
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
         healDictionaryAfter(e, invalidate)
         return LoadedExamples(sentences, emptySet())
     }
+    val tappable = asked
+        .filter { isBreakdownWordTappable(it, pos) }
+        .mapTo(mutableSetOf()) { it.text to it.entryId }
     return LoadedExamples(
         sentences = sentences,
-        tappableWords = words.filterTo(mutableSetOf()) { isBreakdownWordTappable(it, pos) },
+        // Expanded back to the values the tab holds, which carry their
+        // surfaces: the answer was settled once, and every spelling of
+        // the word it was settled for takes it.
+        tappableWords = located.filterTo(mutableSetOf()) { (it.text to it.entryId) in tappable },
+        entryPos = pos.byEntryId,
     )
 }

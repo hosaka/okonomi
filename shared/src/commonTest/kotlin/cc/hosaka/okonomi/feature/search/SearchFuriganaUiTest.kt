@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -12,11 +13,14 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextStyle
 import cc.hosaka.okonomi.db.SearchHit
 import cc.hosaka.okonomi.db.TitleSegment
 import cc.hosaka.okonomi.feature.navigation.LocalNavigationController
 import cc.hosaka.okonomi.ui.test.ComposeUiTestBase
 import cc.hosaka.okonomi.ui.test.RecordingNavigationController
+import cc.hosaka.okonomi.ui.theme.atJapaneseReadingSize
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -91,6 +95,47 @@ class SearchFuriganaUiTest : ComposeUiTestBase() {
         onNodeWithText("‹ continuative").assertIsDisplayed()
         assertEquals(WORD, onNodeWithText(WORD).annotatedText().text)
     }
+
+    /**
+     * Alex asked for the search rows' Japanese to be set at the size the
+     * Phrases tab reads its sentences at (2026-08-26), and for the
+     * English to stay where it was — the two sizes are what say which
+     * line is the word and which explains it.
+     *
+     * Pinned against `atJapaneseReadingSize` rather than against a
+     * literal, so the two screens cannot drift apart without this
+     * failing; the size itself is documented where it is defined.
+     */
+    @Test
+    fun `the headword is set at the size Japanese is read at and the gloss is not`() = runComposeUiTest {
+        var expected = TextStyle.Default
+        setContent {
+            expected = MaterialTheme.typography.titleMedium.atJapaneseReadingSize()
+            SearchRowUnderTest(hit = taberuHit())
+        }
+        waitForIdle()
+
+        val title = onNodeWithText(WORD, useUnmergedTree = true).layout().layoutInput.style
+        assertEquals(expected.fontSize, title.fontSize)
+        // The line height moves with the size and is not optional: the
+        // ruby is drawn above the line and needs the room. See
+        // atJapaneseReadingSize.
+        assertEquals(expected.lineHeight, title.lineHeight)
+
+        val gloss = onNodeWithText("to eat", substring = true, useUnmergedTree = true)
+            .layout().layoutInput.style
+        assertTrue(
+            gloss.fontSize < title.fontSize,
+            "the English explains the word and must stay smaller than it: ${gloss.fontSize}",
+        )
+    }
+}
+
+private fun SemanticsNodeInteraction.layout(): TextLayoutResult {
+    val results = mutableListOf<TextLayoutResult>()
+    val action = fetchSemanticsNode().config.getOrNull(SemanticsActions.GetTextLayoutResult)
+    assertTrue(action?.action?.invoke(results) == true, "the node reports no text layout")
+    return results.first()
 }
 
 private fun SemanticsNodeInteraction.annotatedText(): AnnotatedString =

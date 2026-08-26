@@ -192,12 +192,14 @@ class DbWriterSentenceTest {
             entries = listOf(entry(1L, "食べる", "たべる"), entry(2L, "水", "みず")),
             japanese = listOf("水を食べた"),
             // 水 states its reading, 食べる does not, を is kana and in
-            // no entry, and the sense index and surface form are noise.
+            // no entry, and the sense index is noise. The surface is
+            // kept: it is what says which characters of the sentence
+            // 食べる is, and the reading is set over exactly those.
             indices = listOf("1\t1\t水(みず) を[01] 食べる{食べた}~"),
         )
 
         assertEquals(
-            "水(みず)#2 を 食べる(たべる)#1",
+            "水(みず)#2 を 食べる(たべる){食べた}#1",
             db.sentenceQueries.sentencesForEntry(1L).executeAsList().single().breakdown,
         )
     }
@@ -211,7 +213,7 @@ class DbWriterSentenceTest {
         )
 
         assertEquals(
-            "三日間 食べる(たべる)#1",
+            "三日間 食べる(たべる){食べた}#1",
             db.sentenceQueries.sentencesForEntry(1L).executeAsList().single().breakdown,
         )
     }

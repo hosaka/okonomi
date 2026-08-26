@@ -126,17 +126,26 @@ data class BLineWords(
 internal fun containsKanji(text: String): Boolean =
     text.codePoints().anyMatch { Character.UnicodeScript.of(it) == Character.UnicodeScript.HAN }
 
-/** One word of a sentence as the database stores it. */
+/**
+ * One word of a sentence as the database stores it.
+ *
+ * [surface] is the word as this sentence writes it, and is null when
+ * the sentence writes the headword unchanged. It is what locates the
+ * word in the sentence text: the breakdown holds dictionary forms, so
+ * nothing else says where 食べる sits in 父は果物を食べないんです。
+ */
 data class StoredBreakdownWord(
     val headword: String,
     val reading: String?,
+    val surface: String?,
     val entryId: Long?,
 )
 
 /**
  * The word breakdown as the `sentence.breakdown` column holds it:
- * space-separated `headword(reading)#entryId` words, the reading and
- * the entry id each omitted when there is none.
+ * space-separated `headword(reading){surface}#entryId` words, with the
+ * reading, the surface and the entry id each omitted when there is
+ * none.
  *
  * It is a rewrite of Tatoeba's B-line rather than the B-line itself,
  * for two reasons:
@@ -145,14 +154,20 @@ data class StoredBreakdownWord(
  *   only 200,691 of its 717,800 kanji words (28%), because it states
  *   readings to tell homographs apart, not to make the line readable.
  *   Storing the B-line verbatim would leave 72% of kanji words bare and
- *   the breakdown failing at the one job it exists for, so a word
+ *   the reading aid failing at the one job it exists for, so a word
  *   without a stated reading takes the one from the entry the
  *   disambiguation cascade already resolved it to. That resolution is
  *   what makes 行った read いった rather than おこなった.
- * - **The sense index and the inflected surface form are dropped.**
- *   Nothing reads them: the breakdown shows dictionary forms, and the
- *   sentence above it already shows the surface. Dropping them pays for
- *   most of what the injected readings and entry ids cost.
+ * - **The sense index is dropped.** Nothing reads it: the tab links a
+ *   sentence to an entry, not to one of its senses.
+ *
+ * The surface, on the other hand, is kept — it was dropped until the
+ * furigana rework and is the whole reason this format moved. The app
+ * sets the readings over the sentence itself, and the only thing that
+ * says which characters of もっと果物を食べるべきです。are the 食べる the
+ * breakdown holds is the surface Tatoeba states for it. Written only
+ * where it differs from the headword, which is the minority case, so
+ * the column grows by very little.
  *
  * The entry id is kept although the reader never sees it: every word is
  * already resolved here, and carrying the id is what lets the app ask
@@ -172,28 +187,42 @@ object StoredBreakdown {
 
     const val READING_CLOSE = ')'
 
+    const val SURFACE_OPEN = '{'
+
+    const val SURFACE_CLOSE = '}'
+
     const val ENTRY_ID_PREFIX = '#'
 
     /**
      * The characters this encoding gives a meaning to, and which
-     * therefore may not appear inside a headword or a reading.
+     * therefore may not appear inside a headword, a reading or a
+     * surface.
      */
-    private val DELIMITERS = charArrayOf(WORD_SEPARATOR, READING_OPEN, READING_CLOSE, ENTRY_ID_PREFIX)
+    private val DELIMITERS = charArrayOf(
+        WORD_SEPARATOR,
+        READING_OPEN,
+        READING_CLOSE,
+        SURFACE_OPEN,
+        SURFACE_CLOSE,
+        ENTRY_ID_PREFIX,
+    )
 
     /**
      * Encodes one sentence's words.
      *
      * The format carries no escape sequence, so it depends on no
-     * headword or reading containing a delimiter. That holds in the
-     * shipped data — the B-line grammar uses the parentheses and the
-     * space as delimiters itself, and no `reading` or `kanji_form` row
-     * in JMdict contains one either — and this checks it rather than
-     * assuming it: a future release that broke the property would
-     * otherwise corrupt every breakdown carrying the offending word,
-     * silently and unrecoverably.
+     * headword, reading or surface containing a delimiter. That holds in
+     * the shipped data — the B-line grammar uses the parentheses, the
+     * braces and the space as delimiters itself, and no `reading` or
+     * `kanji_form` row in JMdict contains one either — and this checks
+     * it rather than assuming it: a future release that broke the
+     * property would otherwise corrupt every breakdown carrying the
+     * offending word, silently and unrecoverably.
      *
      * A blank reading encodes as no reading at all. `語()` would render
-     * to the reader as `語 ()`, which is worse than the bare word.
+     * to the reader as `語 ()`, which is worse than the bare word. A
+     * surface equal to the headword encodes as no surface, because it
+     * says nothing the headword did not.
      */
     fun encode(words: List<StoredBreakdownWord>): String = words.joinToString(WORD_SEPARATOR.toString()) { word ->
         buildString {
@@ -201,9 +230,62 @@ object StoredBreakdown {
             word.reading
                 ?.takeIf { it.isNotBlank() }
                 ?.let { append(READING_OPEN).append(checkEncodable(it, "reading")).append(READING_CLOSE) }
+            word.surface
+                ?.takeIf { it.isNotBlank() && it != word.headword }
+                ?.let { append(SURFACE_OPEN).append(checkEncodable(it, "surface")).append(SURFACE_CLOSE) }
             word.entryId?.let { append(ENTRY_ID_PREFIX).append(it) }
         }
     }
+
+    /**
+     * How many of [words] the app will be able to find in [japanese],
+     * and a check that the spans it finds tile the sentence in order.
+     *
+     * The twin of `SentenceDetail.kt`'s `locateTokens`, written out here
+     * for the same reason the format is: the two modules cannot share
+     * code, and the property the app's whole rendering rests on — that
+     * the pieces spell the stored sentence back exactly — is a property
+     * of THIS data, checkable only where the data is. The app has 210 MB
+     * of it and no way to assert over it; the generator has it in hand
+     * one sentence at a time.
+     *
+     * A mismatch between this and the app's scan shows up as a count
+     * that moved, which is what [DbWriter.counts] reports it for.
+     */
+    fun locate(japanese: String, words: List<StoredBreakdownWord>): Int {
+        val folded = widthFolded(japanese)
+        var located = 0
+        var cursor = 0
+        words.forEach { word ->
+            val written = word.surface?.takeIf { it != word.headword } ?: word.headword
+            if (written.isEmpty()) return@forEach
+            val start = folded.indexOf(widthFolded(written), cursor)
+            if (start < 0) return@forEach
+            val end = start + written.length
+            if (start < cursor || end > japanese.length) {
+                throw PipelineException(
+                    "Locating \"$written\" in \"$japanese\" produced the span [$start, $end), which " +
+                        "runs backwards or past the end. The app renders the sentence from these spans, " +
+                        "so it would render something other than the sentence.",
+                )
+            }
+            located++
+            cursor = end
+        }
+        return located
+    }
+
+    /** Full-width ASCII folded onto ASCII, length for length. See the app-side twin. */
+    private fun widthFolded(text: String): String {
+        if (text.none { it.code in FULL_WIDTH_ASCII }) return text
+        return buildString(text.length) {
+            text.forEach { append(if (it.code in FULL_WIDTH_ASCII) (it.code - FULL_WIDTH_OFFSET).toChar() else it) }
+        }
+    }
+
+    private val FULL_WIDTH_ASCII = 0xFF01..0xFF5E
+
+    private const val FULL_WIDTH_OFFSET = 0xFEE0
 
     private fun checkEncodable(value: String, part: String): String {
         val offending = value.indexOfAny(DELIMITERS)
@@ -281,6 +363,11 @@ class EntryIndex(
      * this sentence (二十歳 as はたち, not にじゅっさい). A word with no
      * kanji in it needs no reading and gets none, which is the rule
      * that keeps どんな and は clean.
+     *
+     * The surface comes across untouched except that one equal to the
+     * headword is dropped: it is the sentence's own spelling of the
+     * word, and the app locates the word by scanning the sentence for
+     * exactly it.
      */
     fun storedWord(token: BLineToken): StoredBreakdownWord {
         val entryId = resolve(token)
@@ -292,6 +379,7 @@ class EntryIndex(
         return StoredBreakdownWord(
             headword = token.headword,
             reading = reading,
+            surface = token.surface?.takeIf { it != token.headword },
             entryId = entryId,
         )
     }

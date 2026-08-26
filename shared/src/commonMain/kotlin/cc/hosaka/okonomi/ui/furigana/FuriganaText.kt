@@ -245,12 +245,38 @@ fun FuriganaText(
     maxLines: Int = Int.MAX_VALUE,
 ) {
     val contentColor = LocalContentColor.current
-    val mergedStyle = style.merge(color = color.takeOrElse { style.color.takeOrElse { contentColor } })
+    val requestedStyle = style.merge(color = color.takeOrElse { style.color.takeOrElse { contentColor } })
+
+    // Every size below is derived by scaling this one, and the ruby is
+    // then positioned against the line height in the same unit. An em
+    // font size makes those two numbers incomparable, so it is not
+    // scaled at all: the default stands in and the ruby stays where the
+    // arithmetic can put it.
+    val fontSize = if (requestedStyle.fontSize.isScalablePixels) requestedStyle.fontSize else DEFAULT_FONT_SIZE.sp
+    val rubyFontSize = fontSize * RUBY_SCALE
+    val rubyGap = fontSize * RUBY_GAP_SCALE
+    val rubyLetterSpacing = -fontSize * RUBY_GAP_SCALE
+    // The ruby is drawn outside the base line's own box, so the line has
+    // to be tall enough to hold it or consecutive lines overlap.
+    val minLineHeight = (fontSize.value + rubyFontSize.value + rubyGap.value).sp
+    val lineHeight = when {
+        requestedStyle.lineHeight.isScalablePixels && requestedStyle.lineHeight > minLineHeight ->
+            requestedStyle.lineHeight
+
+        else -> minLineHeight
+    }
+    // Resolved once, for both branches, and this is the whole of what
+    // keeps them level. See [CENTRED_IN_LINE].
+    val mergedStyle = requestedStyle.merge(lineHeight = lineHeight).let {
+        if (it.lineHeightStyle != null) it else it.copy(lineHeightStyle = CENTRED_IN_LINE)
+    }
 
     if (segments.none { it.reading != null }) {
         // Nothing to set above anything: the line is ordinary text, and
         // paying for placeholders and inline composables to say so would
-        // be a cost every kana-only entry carries for no reading.
+        // be a cost every kana-only entry carries for no reading. It
+        // takes the same line box all the same — that is the agreement,
+        // not the machinery.
         BasicText(
             text = remember(segments, highlightStyle) { plainAnnotatedString(segments, highlightStyle) },
             modifier = modifier,
@@ -262,22 +288,6 @@ fun FuriganaText(
         return
     }
 
-    // Every size below is derived by scaling this one, and the ruby is
-    // then positioned against the line height in the same unit. An em
-    // font size makes those two numbers incomparable, so it is not
-    // scaled at all: the default stands in and the ruby stays where the
-    // arithmetic can put it.
-    val fontSize = if (mergedStyle.fontSize.isScalablePixels) mergedStyle.fontSize else DEFAULT_FONT_SIZE.sp
-    val rubyFontSize = fontSize * RUBY_SCALE
-    val rubyGap = fontSize * RUBY_GAP_SCALE
-    val rubyLetterSpacing = -fontSize * RUBY_GAP_SCALE
-    // The ruby is drawn outside the base line's own box, so the line has
-    // to be tall enough to hold it or consecutive lines overlap.
-    val minLineHeight = (fontSize.value + rubyFontSize.value + rubyGap.value).sp
-    val lineHeight = when {
-        mergedStyle.lineHeight.isScalablePixels && mergedStyle.lineHeight > minLineHeight -> mergedStyle.lineHeight
-        else -> minLineHeight
-    }
     val baseStyle = mergedStyle.merge(
         fontSize = fontSize,
         letterSpacing = if (mergedStyle.letterSpacing.isSpecified) mergedStyle.letterSpacing else 0.sp,
@@ -285,12 +295,13 @@ fun FuriganaText(
 
     val density = LocalDensity.current
     val fontResolver = LocalFontFamilyResolver.current
-    val (text, inlineContent) = remember(segments, baseStyle, highlightStyle, lineHeight, density, fontResolver) {
+    // baseStyle carries the resolved line height, so it keys this on its
+    // own; the placeholder no longer takes one.
+    val (text, inlineContent) = remember(segments, baseStyle, highlightStyle, density, fontResolver) {
         rubyAnnotatedString(
             segments = segments,
             style = baseStyle,
             highlightStyle = highlightStyle,
-            lineHeight = lineHeight,
             rubyFontSize = rubyFontSize,
             rubyGap = rubyGap,
             rubyLetterSpacing = rubyLetterSpacing,
@@ -302,13 +313,62 @@ fun FuriganaText(
     BasicText(
         text = text,
         modifier = modifier,
-        style = mergedStyle.merge(lineHeight = lineHeight),
+        style = mergedStyle,
         overflow = overflow,
         softWrap = softWrap,
         maxLines = maxLines,
         inlineContent = inlineContent,
     )
 }
+
+/**
+ * The line box both branches draw in, and the reference both put a
+ * glyph against. Named `rubyReadyLineBox` in prose because that is what
+ * it is: a line sized and aligned for a reading, whether or not this
+ * particular line has one.
+ *
+ * Two branches drawing the same word at the same size used to disagree
+ * about where on the line it went, and the disagreement was invisible
+ * one line at a time. It shows the moment two of them sit side by side:
+ * the Phrases tab draws each word of a sentence as its own
+ * [FuriganaText] in a row, so 羊は草を食べる。put は and を on a different
+ * baseline from 羊 and 草. Reported in review during the increment that
+ * introduced the split, fixed only when it reached a screenshot — and
+ * then only in part. The box was one of three causes; the other two
+ * were the word inside a ruby unit being drawn by a second text engine
+ * (see [PieceRow]) and the placeholder rewriting the line's own metrics
+ * (see [rubyAnnotatedString]). Only the first is visible to a host
+ * test.
+ *
+ * Two things had to be made to agree, and only both together are
+ * enough:
+ *
+ * - **The height of the box.** The ruby-free path used to take the
+ *   caller's line height unchanged while the ruby path raised it to
+ *   the ruby floor, so a caller asking for less than the floor got two
+ *   different boxes. Now the floor is applied before either branch, and
+ *   a kana-only line is as tall as the kanji line beside it.
+ * - **Where the glyph sits in it.** This is the half that bit. The ruby
+ *   path centres its base characters — the placeholder is aligned
+ *   `TextCenter` and [RubyUnit] draws into the middle of it — while
+ *   ordinary text is distributed proportionally, roughly four fifths of
+ *   the slack above the glyph and one fifth below. Same box, same
+ *   font, two different answers, some six sp apart at the sentence
+ *   size. Stating the alignment makes the ruby path's own convention
+ *   the line's convention.
+ *
+ * Centring is also the alignment the ruby floor was always arithmetic
+ * for: with the glyph centred, the reading's top lands within a hair of
+ * the top of the box (`fontSize / 2 + ruby + gap` up from the middle of
+ * a box `fontSize + ruby + gap` tall). Under the proportional default
+ * that sum was never quite the right one. A caller that states its own
+ * `lineHeightStyle` still gets it — [RubyUnit] reads the alignment back
+ * and follows it — so this is a default, not an override.
+ */
+private val CENTRED_IN_LINE = LineHeightStyle(
+    alignment = LineHeightStyle.Alignment.Center,
+    trim = LineHeightStyle.Trim.None,
+)
 
 private fun plainAnnotatedString(
     segments: List<FuriganaSegment>,
@@ -340,12 +400,44 @@ private fun AnnotatedString.Builder.appendPlain(
  * are drawn by. Each such run reserves a placeholder as wide as the
  * wider of base and reading, and draws both inside it: the base
  * centred, the reading translated up out of the line box.
+ *
+ * **The placeholder is sized and aligned so that it does not decide
+ * where the line sits**, and both halves of that sentence are load
+ * bearing. Android asks a replacement span for its size and lets it
+ * rewrite the line's font metrics while doing so, and Compose's
+ * `PlaceholderSpan.getSize` begins by assigning the line
+ * `paint.getFontMetricsInt()` — the metrics of the span's own typeface —
+ * before widening them to the placeholder's height. The paint there is
+ * the primary font. The Japanese around it is drawn from the CJK
+ * fallback, whose ascent and descent are larger and whose midpoint sits
+ * some two sp lower at reading size.
+ *
+ * So a placeholder as tall as the line, aligned to the *text* centre,
+ * used to hand the whole line the primary font's idea of where text
+ * goes — and every ordinary character on that line moved with it, while
+ * an ordinary line beside it kept the fallback's. 食べる's べ sat five
+ * device pixels above the べ of べき in the very same sentence. Measured
+ * off a screenshot rather than argued about: same glyph, same size,
+ * same line, forty-pixel ink height on both, tops five pixels apart.
+ *
+ * Two changes together, and each is needed:
+ *
+ * - **An em tall, not a line tall.** A placeholder no taller than the
+ *   text's own block never widens the metrics past what the real runs
+ *   already claim, so the line keeps the metrics of the characters on
+ *   it. The height was never doing anything else: the word inside
+ *   measures itself and the reading is drawn outside the box entirely.
+ * - **Aligned to the line, not to the text.** `Center` rather than
+ *   `TextCenter` puts the box's middle at the middle of the line box,
+ *   which is a position, not a font's opinion. The word drawn inside it
+ *   then lands where [LineHeightStyle.Alignment.Center] puts ordinary
+ *   text — the middle of the same box — so the two agree by measuring
+ *   against the same thing rather than by two fonts happening to.
  */
 private fun rubyAnnotatedString(
     segments: List<FuriganaSegment>,
     style: TextStyle,
     highlightStyle: SpanStyle,
-    lineHeight: TextUnit,
     rubyFontSize: TextUnit,
     rubyGap: TextUnit,
     rubyLetterSpacing: TextUnit,
@@ -394,15 +486,15 @@ private fun rubyAnnotatedString(
             inlineContent[inlineId] = InlineTextContent(
                 placeholder = Placeholder(
                     width = max(baseWidth, rubyWidth).sp,
-                    // The line the box sits in, not the style's own
-                    // line height: the ruby is what made the line
-                    // taller, and a box left at the smaller number
-                    // hangs the base text away from its neighbours.
-                    height = lineHeight,
+                    // The em box of the characters it stands in for,
+                    // and deliberately NOT the line height; see above.
+                    height = style.fontSize,
+                    // Against the LINE, not against the text: Top rather
+                    // than TextTop, Center rather than TextCenter.
                     placeholderVerticalAlign = when (style.lineHeightStyle?.alignment) {
-                        LineHeightStyle.Alignment.Top -> PlaceholderVerticalAlign.TextTop
-                        LineHeightStyle.Alignment.Bottom -> PlaceholderVerticalAlign.TextBottom
-                        else -> PlaceholderVerticalAlign.TextCenter
+                        LineHeightStyle.Alignment.Top -> PlaceholderVerticalAlign.Top
+                        LineHeightStyle.Alignment.Bottom -> PlaceholderVerticalAlign.Bottom
+                        else -> PlaceholderVerticalAlign.Center
                     },
                 ),
                 children = {
@@ -465,7 +557,25 @@ private fun RubyUnit(
             pieces = text,
             style = style,
             highlightStyle = highlightStyle,
-            modifier = Modifier.wrapContentWidth(unbounded = true),
+            // The word half, and NOT through TextSpacingRemoved: this
+            // is the second copy of characters the line has already
+            // laid out, and it has to land exactly where the line put
+            // them. A platform TextView measures a Japanese run against
+            // the primary font while Compose measures it against the
+            // CJK fallback, and two blocks of different heights centred
+            // in one box do not share a baseline. Drawing it with the
+            // same composable and the same style as an ordinary line is
+            // what makes them agree, and it is the whole reason the
+            // parameter exists. It was not the whole of why 羊 and 草
+            // sat above は and を — see [rubyAnnotatedString] for the
+            // placeholder that moved the entire line — but it is the
+            // half that governs this glyph.
+            tightened = false,
+            // Unbounded in both directions now that the box it sits in
+            // is an em tall rather than a line tall: the word measures
+            // at its own line height and is centred on the box, which
+            // is the line's own centre.
+            modifier = Modifier.wrapContentSize(unbounded = true),
         )
         val rubyModifier = Modifier.graphicsLayer {
             translationY = -(
@@ -513,6 +623,12 @@ private fun RubyUnit(
                     pieces = reading,
                     style = rubyStyle,
                     highlightStyle = highlightStyle,
+                    // The reading half keeps the tight metrics: it is
+                    // positioned against the base rather than against
+                    // the line, and the vertical padding a platform
+                    // text view can be told to drop is padding the
+                    // ruby cannot afford.
+                    tightened = true,
                     modifier = Modifier.wrapContentSize(unbounded = true),
                 )
             }
@@ -528,31 +644,66 @@ private fun RubyUnit(
  * piece and draws through the same single text call it always did —
  * only a partial highlight puts a row around it, so the ordinary case
  * keeps the metrics it was tuned with.
+ *
+ * [tightened] chooses which of two text renderers draws it, and the two
+ * halves want opposite things. The reading is placed against the base
+ * beneath it and has no room for the vertical padding Android adds, so
+ * it goes through [TextSpacingRemoved], which drops it. The word is
+ * placed against the LINE — it has to sit exactly where the same
+ * characters sit in an ordinary piece beside it — so it goes through
+ * the same [BasicText] an ordinary piece does, with the same style, and
+ * is thereby laid out by the same engine against the same font
+ * fallbacks. Nothing else can guarantee they agree; two renderers
+ * asked politely to match will not.
  */
 @Composable
 private fun PieceRow(
     pieces: List<Piece>,
     style: TextStyle,
     highlightStyle: SpanStyle,
+    tightened: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val single = pieces.singleOrNull()
     if (single != null) {
-        TextSpacingRemoved(
+        PieceText(
             text = single.text,
             style = if (single.highlighted) style.merge(highlightStyle) else style,
+            tightened = tightened,
             modifier = modifier,
         )
         return
     }
     Row(modifier = modifier) {
         pieces.forEach { piece ->
-            TextSpacingRemoved(
+            PieceText(
                 text = piece.text,
                 style = if (piece.highlighted) style.merge(highlightStyle) else style,
+                tightened = tightened,
                 modifier = Modifier.wrapContentWidth(unbounded = true),
             )
         }
+    }
+}
+
+@Composable
+private fun PieceText(
+    text: String,
+    style: TextStyle,
+    tightened: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    if (tightened) {
+        TextSpacingRemoved(text = text, style = style, modifier = modifier)
+    } else {
+        BasicText(
+            text = text,
+            modifier = modifier,
+            style = style,
+            softWrap = false,
+            maxLines = 1,
+            overflow = TextOverflow.Visible,
+        )
     }
 }
 

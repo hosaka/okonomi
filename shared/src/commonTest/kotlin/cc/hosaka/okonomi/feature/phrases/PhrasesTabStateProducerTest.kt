@@ -28,8 +28,12 @@ class PhrasesTabStateProducerTest {
         words = listOf(BreakdownWord("早く", null), BreakdownWord("食べる", "たべる")),
     )
 
+    // The sentence text carries the fixture's words, because the
+    // producer now asks the dictionary only about words the scan could
+    // place: a fixture whose sentence does not contain its own words
+    // would take the "nothing located" path and test nothing.
     private fun sentences(count: Int): List<ExampleSentence> = (1..count).map { index ->
-        sentence.copy(id = index.toLong(), japanese = "例文$index。")
+        sentence.copy(id = index.toLong(), japanese = "例文$index。早く食べる。")
     }
 
     /**
@@ -294,13 +298,21 @@ class PhrasesTabStateProducerTest {
         val scope = FakeScreenStateScope()
         val particle = BreakdownWord("を", null, entryId = 2_029_010L)
         val verb = BreakdownWord("食べる", "たべる", entryId = 1_358_280L)
+        // Named by the index but nowhere in the sentence, so it has no
+        // span to tap and the dictionary is never asked about it.
+        val absent = BreakdownWord("犬", "いぬ", entryId = 1_226_940L)
         var asked: List<BreakdownWord>? = null
 
         val states = collectStates(
             scope.phrasesTabStateProducer(
                 entryId = 1L,
                 load = {
-                    listOf(sentence.copy(words = listOf(particle, verb)))
+                    listOf(
+                        sentence.copy(
+                            japanese = "ご飯を食べる。",
+                            words = listOf(particle, absent, verb),
+                        ),
+                    )
                 },
                 loadPos = { words ->
                     asked = words
@@ -316,7 +328,8 @@ class PhrasesTabStateProducerTest {
             ),
         )
 
-        // Asked once, for the whole stored set, rather than per word.
+        // Asked once, for the whole stored set, rather than per word —
+        // and only about the words the sentence actually holds.
         assertEquals(listOf(particle, verb), asked)
         val ready = assertIs<PhrasesTabContentState.Ready>(states.last().content)
         assertEquals(setOf(verb), ready.tappableWords)

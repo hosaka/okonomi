@@ -45,6 +45,16 @@ import java.time.Instant
  * a device holding a version 3 copy would otherwise stay capped at ten
  * sentences forever.
  *
+ * 5: the `sentence.breakdown` column carries each word's inflected
+ * surface form, which the Phrases tab needs to find the word in the
+ * sentence and set its reading over it. Again no DDL: the column's
+ * contents changed and its type did not, so
+ * [DICTIONARY_SCHEMA_FINGERPRINT] below must NOT have moved with it.
+ * A device left on a version 4 copy does not lose its sentences — the
+ * 71% of words a sentence writes exactly as the dictionary does still
+ * locate off the headword alone — but it loses the 29% that carry a
+ * surface, which is every inflected verb in the corpus.
+ *
  * THIS COUNTER IS THE ONLY RE-COPY SIGNAL. Bump it for a schema change
  * too, not only for a data change.
  *
@@ -70,7 +80,7 @@ import java.time.Instant
  * [DICTIONARY_SCHEMA_FINGERPRINT] is what stops that from being a thing
  * anyone has to remember.
  */
-const val DICTIONARY_FORMAT_VERSION = 4
+const val DICTIONARY_FORMAT_VERSION = 5
 
 /**
  * Fingerprint of the schema DDL, as a guard on the counter above.

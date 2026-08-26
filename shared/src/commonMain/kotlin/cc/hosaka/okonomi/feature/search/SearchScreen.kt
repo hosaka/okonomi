@@ -55,6 +55,7 @@ import cc.hosaka.okonomi.ui.furigana.FuriganaText
 import cc.hosaka.okonomi.ui.pagingFooterItem
 import cc.hosaka.okonomi.ui.scrollIndicator
 import cc.hosaka.okonomi.ui.theme.Dimens
+import cc.hosaka.okonomi.ui.theme.atJapaneseReadingSize
 import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
 import okonomi.shared.generated.resources.Res
 import okonomi.shared.generated.resources.entry_back
@@ -289,6 +290,22 @@ private fun SearchResultsList(
  * in the dynamic primary colour, and a muted `‹ rule, rule` breadcrumb
  * beside the title for a deinflected hit. What is highlighted, and how
  * finely, comes from the pure [titleFurigana].
+ *
+ * The headword is set at [atJapaneseReadingSize], the same size the
+ * Phrases tab reads its sentences at, and the two are meant to stay
+ * equal — that is why the size lives in one place named for the
+ * language rather than for either screen. The English below it does
+ * not move: the sizes say which of the two lines is the word and which
+ * explains it, and enlarging both would say neither.
+ *
+ * A long headword at that size can take the whole row, and the order it
+ * takes it in is deliberate. `Row` measures its unweighted children
+ * first and in order, so the title claims what it needs, the chip takes
+ * what is left, and the breadcrumb — the only weighted child, and the
+ * only one that is an explanation rather than a fact — gives way first.
+ * A title with nowhere left to go wraps rather than clipping, so the
+ * word itself is never the thing that is lost. That was already the
+ * rule; the larger size only reaches it sooner.
  */
 @Composable
 private fun SearchResultRow(
@@ -316,7 +333,7 @@ private fun SearchResultRow(
             // row that must be readable — behind an explanation of it.
             FuriganaText(
                 segments = remember(hit) { titleFurigana(hit.titleSegments) },
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium.atJapaneseReadingSize(),
                 highlightStyle = SpanStyle(
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Medium,

@@ -12,12 +12,23 @@ import java.util.Properties
  */
 const val GLOSS_POSITION_FACTOR = 1000
 
+/**
+ * How much of the breakdown must be findable in its own sentences before
+ * generation is allowed to succeed. See `checkWordsAreLocatable`.
+ */
+const val MINIMUM_LOCATED_PERCENT = 90.0
+
+/** Fewer stored words than this is a fixture, not a corpus. */
+const val MINIMUM_LOCATED_SAMPLE = 1_000L
+
 class DbWriter(target: File) : AutoCloseable {
     private val driver: JdbcSqliteDriver
     private val db: OkonomiDb
     private var senseId = 0L
     private var tatoeba: TatoebaStats? = null
     private var rejectedWords = 0L
+    private var storedWords = 0L
+    private var locatedWords = 0L
 
     init {
         target.parentFile?.mkdirs()
@@ -124,6 +135,12 @@ class DbWriter(target: File) : AutoCloseable {
                 // Resolved once per word: the entry id the breakdown
                 // stores is the same one the link is built from.
                 val stored = words.tokens.map { index.storedWord(it) }
+                // Counted before the row is written: the app finds a
+                // word in the sentence by scanning for its surface, and
+                // a format or source change that broke that would leave
+                // every sentence on screen bare with nothing failing.
+                storedWords += stored.size
+                locatedWords += StoredBreakdown.locate(sentence.japanese, stored)
                 // The B-line is rewritten rather than stored: every
                 // kanji word leaves here with a reading, taken from the
                 // entry it resolved to where the source states none.
@@ -196,6 +213,41 @@ class DbWriter(target: File) : AutoCloseable {
             throw PipelineException(
                 "Resolved ${stats.pairs} sentence pairs but linked none of them to an entry. " +
                     "The B-line grammar or the entry index is broken, not the sources.",
+            )
+        }
+        checkWordsAreLocatable()
+    }
+
+    /**
+     * Fails generation when the stored words stop being findable in the
+     * sentences they belong to.
+     *
+     * Every reading and every tap target on the Phrases tab hangs off
+     * that scan, and it degrades per word by design, so a source that
+     * stopped stating surfaces — or a stored format that stopped
+     * carrying them — would ship a database whose sentences render as
+     * bare text, with the schema fingerprint unmoved and every other
+     * check green. The shipped data locates 99.996% of its words; the
+     * floor is far below that because this is a broken-pipeline alarm,
+     * not a quality gate.
+     *
+     * Silent below [MINIMUM_LOCATED_SAMPLE] words, and that is not a
+     * loophole: a hand-built fixture of two words says nothing about a
+     * pipeline, and an alarm that cries wolf on every unit test is an
+     * alarm someone deletes. A real run is three orders of magnitude
+     * above the bound.
+     */
+    private fun checkWordsAreLocatable() {
+        if (storedWords < MINIMUM_LOCATED_SAMPLE) return
+        val located = locatedWords * 100.0 / storedWords
+        if (located < MINIMUM_LOCATED_PERCENT) {
+            throw PipelineException(
+                "Only %.2f%% of the %,d stored breakdown words can be found in their own sentences ".format(
+                    located,
+                    storedWords,
+                ) + "(expected above $MINIMUM_LOCATED_PERCENT%). The Phrases tab locates a word by " +
+                    "scanning the sentence for its surface form, so it would render these sentences " +
+                    "with no readings and nothing to tap.",
             )
         }
     }
@@ -318,6 +370,11 @@ class DbWriter(target: File) : AutoCloseable {
         // number that moves is the first sign a source changed shape.
         "skipped" to (tatoeba?.skipped ?: 0L),
         "rejected" to rejectedWords,
+        // The Phrases tab's own quiet failure: a stored word the app
+        // cannot find in its sentence contributes no reading and no tap.
+        // Near zero in the shipped sources, so a number that moves is
+        // the first sign the surfaces stopped arriving.
+        "unplaced" to (storedWords - locatedWords),
     )
 
     override fun close() {

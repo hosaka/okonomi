@@ -1,14 +1,26 @@
 -- Tatoeba example sentences, one row per usable Japanese/English pair.
 --
--- breakdown is the word-by-word reading aid the Phrases tab renders:
--- space-separated `headword(reading)#entryId` words, written by dictgen
--- from Tatoeba's B-line. Every word with kanji in it carries a reading,
--- taken from the entry it resolved to wherever the source states none
--- (the source states one for only 28% of them). The entry id is what
--- decides whether a word is tappable: the app looks the linked entry's
--- part of speech up and leaves grammar words inert. It is not where a
--- tap goes — the link can be wrong (Tatoeba sends は to 葉), so a tap
--- opens a search the reader can correct.
+-- breakdown is the word index the Phrases tab sets its readings from:
+-- space-separated `headword(reading){surface}#entryId` words, written
+-- by dictgen from Tatoeba's B-line, with each of the three annotations
+-- present only where there is one.
+--
+-- headword is the dictionary form. Every word with kanji in it carries
+-- a reading, taken from the entry it resolved to wherever the source
+-- states none (the source states one for only 28% of them).
+--
+-- surface is how THIS sentence writes the word, and is absent when the
+-- sentence writes the headword unchanged. It is what locates the word:
+-- japanese is rendered verbatim with the readings over it, never
+-- rebuilt out of the headwords here, so 食べる has to be found in the
+-- sentence as 食べない before its reading can be carried onto it. A word
+-- the scan cannot find contributes nothing and costs the sentence
+-- nothing.
+--
+-- The entry id is what decides whether a word is tappable: the app
+-- looks the linked entry's part of speech up and leaves grammar words
+-- inert. It is not where a tap goes — the link can be wrong (Tatoeba
+-- sends は to 葉), so a tap opens a search the reader can correct.
 --
 -- One column rather than per-token rows: the sentence table costs
 -- 22.4 MB and the links with their two indexes 5.3 MB more, against

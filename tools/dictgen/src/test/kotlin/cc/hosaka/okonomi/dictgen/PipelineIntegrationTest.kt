@@ -225,8 +225,9 @@ class PipelineIntegrationTest {
         // version to itself and would pass at any value. Both counters
         // started at 1 pre-release; the schema version only moves with
         // the DDL (the read-only database is regenerated, never
-        // migrated), so the tag_label increment, the sentence tables and
-        // the raised sentence cap each moved the format version alone.
+        // migrated), so the tag_label increment, the sentence tables,
+        // the raised sentence cap and the surface forms in the breakdown
+        // column each moved the format version alone.
         //
         // The schema version is PINNED AT 1 and is expected to stay
         // there for the life of the project. SQLDelight derives it from
@@ -239,7 +240,7 @@ class PipelineIntegrationTest {
         // of the sidecar that can move, and therefore the only thing
         // that makes a provisioned device re-copy.
         assertEquals(1L, OkonomiDb.Schema.version)
-        assertEquals(4, DICTIONARY_FORMAT_VERSION)
+        assertEquals(5, DICTIONARY_FORMAT_VERSION)
     }
 
     @Test
@@ -267,7 +268,7 @@ class PipelineIntegrationTest {
         assertTrue(sidecar.isFile, "sidecar should be written next to the database")
         // Literals on purpose: the sidecar is the only thing that makes
         // a device re-copy, so a silent version regression must fail here.
-        assertEquals("${Fixtures.JMDICT_DATE}:1:4", sidecar.readText())
+        assertEquals("${Fixtures.JMDICT_DATE}:1:5", sidecar.readText())
         assertEquals(
             "${Fixtures.JMDICT_DATE}:${OkonomiDb.Schema.version}:$DICTIONARY_FORMAT_VERSION",
             sidecar.readText(),

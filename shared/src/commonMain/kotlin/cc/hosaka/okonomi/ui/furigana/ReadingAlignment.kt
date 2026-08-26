@@ -51,6 +51,109 @@ fun alignReading(word: String, reading: String): List<FuriganaSegment> {
     return alignRuns(runs, reading) ?: wholeWord(word, reading)
 }
 
+/**
+ * [surface] — one written form of [word], as some sentence spells it —
+ * with as much of [word]'s [reading] carried onto it as the two
+ * spellings agree on.
+ *
+ * The readings are never invented for the surface and never aligned
+ * against it: a reading is a claim the dictionary made about the
+ * *headword*, so [alignReading] divides the headword, and only the
+ * leading runs that the surface repeats character for character come
+ * across. 食べる/たべる divides as 食=た + べる, and 食べない opens with
+ * 食, so 食 keeps た and べない is left plain. Nothing is carried across
+ * a run the surface does not repeat, which is what stops はたち from
+ * being spread over ２０歳 and じゅっぷん over 10分.
+ *
+ * Whole runs only, never part of one: half of an undivided 相殺/そうさい
+ * would be exactly the split [alignReading] declined to make.
+ *
+ * **Repeating a run is not on its own enough**, and that is what
+ * [carryHolds] is for. [alignReading] divided the reading by matching
+ * the headword's okurigana against it, so a surface that spells its
+ * okurigana differently pulls the division out from under the carry:
+ * 見積り/みつもり divides as 見積=みつも + り, and carrying みつも onto
+ * 見積もり reads みつも+もり — the も twice. The same shape produces
+ * 現われる as あらわ+われる and 話し as はなし+し. A carry the boundary
+ * cannot support is refused and the surface is drawn plain.
+ *
+ * What this cannot see is a word whose stem *reading* shifts as it
+ * inflects — 来る/くる divides as 来=く, but 来ない reads こない. Nothing
+ * in a pair of spellings says so; it takes the paradigm, which is why
+ * `feature/phrases/SentenceFurigana.kt` asks the conjugator first and
+ * only falls back here.
+ *
+ * Measured by occurrence over the 283,352 words of the regenerated
+ * database whose surface differs from their headword — that population
+ * and no other: 180,647 (63.75%) are written in kana and have no
+ * reading to carry at all, 94,486 (33.35%) are given one, and 8,219
+ * (2.90%) are given none. The last group is what the rules above and
+ * the paradigm together refuse: 二十歳→２０歳, 十分→10分,
+ * バカが移る→馬鹿が移る, 見積り→見積もり, 来る→来.
+ */
+fun transferReading(word: String, reading: String, surface: String): List<FuriganaSegment> {
+    if (surface.isEmpty()) return emptyList()
+    if (surface == word) return alignReading(word, reading)
+    val segments = alignReading(word, reading)
+    var matched = 0
+    var carried = 0
+    for (segment in segments) {
+        val text = segment.text
+        if (matched + text.length > surface.length) break
+        if (!surface.regionMatches(matched, text, 0, text.length)) break
+        matched += text.length
+        carried++
+    }
+    val head = segments.take(carried)
+    // A prefix of bare okurigana is not a transfer: it claims nothing,
+    // and rebuilding the surface out of segments that say nothing only
+    // makes the caller's job harder than one plain run would.
+    if (head.none { it.reading != null }) return listOf(FuriganaSegment(surface))
+    val rest = surface.substring(matched)
+    if (!carryHolds(head.last(), segments.getOrNull(carried), rest)) return listOf(FuriganaSegment(surface))
+    if (rest.isEmpty()) return head
+    return head + FuriganaSegment(rest)
+}
+
+/**
+ * Whether the reading on [carried] still belongs to it once [rest] —
+ * whatever the surface writes after it — is taken into account.
+ * [next] is the run the *headword* had there, or null when [carried]
+ * ended the word.
+ *
+ * Two ways a carry that matched can still be wrong, and both of them
+ * are the surface respelling the okurigana the division was made
+ * against — never the characters carried, which matched exactly:
+ *
+ * - **The surface writes okurigana the reading already spent.** 見積り
+ *   reads みつもり and divides as 見積=みつも + り; 見積もり writes も where
+ *   the headword wrote nothing, so carrying みつも reads the も twice.
+ *   現われる is あらわ+われる by the same error, and 話/はなし written 話し
+ *   is it with a one-run word.
+ * - **The surface drops okurigana the headword had.** 分かる/わかる gives
+ *   分=わ only because かる was there to match; 分る drops the か, and 分
+ *   reads わか there rather than わ. Anything left of what the headword
+ *   wrote is a run the kanji has absorbed.
+ *
+ * What is deliberately NOT refused is okurigana that merely *differs*.
+ * Inflection rewrites it constantly and harmlessly — 飲む written 飲み,
+ * 持つ written 持っている, 高い written 高く — and refusing those costs
+ * some seventeen thousand correct readings to catch nothing. A surface
+ * continuing into kanji (私たち/わたしたち written 私達) is not an
+ * okurigana disagreement either: 達 says nothing about how 私 reads.
+ *
+ * The one shape neither test can see is a stem whose *reading* shifts
+ * as it inflects — 来る/くる written 来ない, where 来 reads こ. That takes
+ * the paradigm, and it is asked first; see the caller.
+ */
+private fun carryHolds(carried: FuriganaSegment, next: FuriganaSegment?, rest: String): Boolean {
+    val reading = carried.reading ?: return true
+    if (rest.isEmpty()) return true
+    if (rest[0] == reading.last()) return false
+    val okurigana = next?.text ?: return true
+    return !(rest.length < okurigana.length && okurigana.endsWith(rest))
+}
+
 private fun wholeWord(word: String, reading: String) = listOf(FuriganaSegment(word, reading))
 
 /**

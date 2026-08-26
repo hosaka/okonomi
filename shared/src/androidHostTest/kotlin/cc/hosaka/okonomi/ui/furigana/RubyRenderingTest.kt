@@ -9,9 +9,15 @@ import androidx.compose.ui.test.SemanticsNodeInteractionsProvider
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.compose.runtime.Composable
+import cc.hosaka.okonomi.db.BreakdownWord
 import cc.hosaka.okonomi.db.EntryForm
 import cc.hosaka.okonomi.db.EntryReading
+import cc.hosaka.okonomi.db.ExampleSentence
 import cc.hosaka.okonomi.feature.forms.FormsTab
+import cc.hosaka.okonomi.feature.phrases.PhrasesTabContent
+import cc.hosaka.okonomi.feature.phrases.PhrasesTabContentState
+import cc.hosaka.okonomi.feature.phrases.PhrasesTabState
 import cc.hosaka.okonomi.feature.word.WordTab
 import cc.hosaka.okonomi.ui.test.ScreenHost
 import cc.hosaka.okonomi.ui.test.entryDetail
@@ -42,6 +48,16 @@ import org.robolectric.annotation.Config
  * font sizes and bounds say nothing here, while the shape of the unit —
  * the word drawn directly in it, the reading inside the box that lifts
  * it above the line — is exactly the arrangement being asserted.
+ *
+ * The distinction is worth stating exactly, because it is what the
+ * suite kept losing. Swapping a unit's base and its ruby DOES fail
+ * three assertions at the ordinary SDK, since the tree carries the base
+ * characters and would carry the wrong ones. Deleting the ruby
+ * ALTOGETHER fails nothing there, since what is left is the same base
+ * characters — `appendInlineContent(id, segment.text)` puts them in the
+ * tree whether or not anything is drawn above them. So: a wrong reading
+ * is caught anywhere; a missing reading is caught only here. Every site
+ * that draws ruby needs a case in this file.
  *
  * What stays unassertable, on any SDK, is where that box is *put*: the
  * offset comes from a `graphicsLayer` translation over font metrics, and
@@ -204,6 +220,95 @@ class RubyRenderingTest {
         assertTrue(drawnTexts().contains("出来る"), "the potential is drawn whole: ${drawnTexts()}")
     }
 
+    /**
+     * The Phrases tab is the third site, and it was in exactly the
+     * state the two above were rescued from: collapsing every piece of
+     * the sentence to one plain segment — every reading on the tab
+     * gone — left the whole suite green, because the base characters
+     * reach the tree either way and they are all the tree can see.
+     */
+    @Test
+    fun `a sentence carries the readings of its words`() = runComposeUiTest {
+        setContent {
+            PhrasesUnderTest(
+                japanese = "学校で勉強する。",
+                words = listOf(
+                    BreakdownWord("学校", "がっこう"),
+                    BreakdownWord("で", null),
+                    BreakdownWord("勉強", "べんきょう"),
+                ),
+            )
+        }
+
+        assertEquals(listOf("学校" to "がっこう", "勉強" to "べんきょう"), rubyUnits())
+    }
+
+    /**
+     * `transferReading`'s output, across the render boundary: the stem
+     * takes the ruby and the inflected tail is drawn plain beside it,
+     * on the line rather than above it.
+     */
+    @Test
+    fun `an inflected word sets its reading over the stem alone`() = runComposeUiTest {
+        setContent {
+            PhrasesUnderTest(
+                japanese = "父は食べない。",
+                words = listOf(
+                    BreakdownWord("父", "ちち"),
+                    BreakdownWord("は", null),
+                    BreakdownWord("食べる", "たべる", surface = "食べない"),
+                ),
+            )
+        }
+
+        assertEquals(listOf("父" to "ちち", "食" to "た"), rubyUnits())
+        // The piece's own line carries all four characters — the ruby
+        // box holds a second copy of 食 alone — so べない is on the line
+        // rather than above it.
+        assertTrue(drawnTexts().contains("食べない"), "the surface is drawn whole: ${drawnTexts()}")
+    }
+
+    /** A refused transfer draws the surface and no ruby at all. */
+    @Test
+    fun `a word whose reading will not transfer draws no ruby`() = runComposeUiTest {
+        setContent {
+            PhrasesUnderTest(
+                japanese = "彼は２０歳です。",
+                words = listOf(
+                    BreakdownWord("彼", "かれ"),
+                    BreakdownWord("は", null),
+                    BreakdownWord("二十歳", "はたち", surface = "２０歳"),
+                ),
+            )
+        }
+
+        assertEquals(listOf("彼" to "かれ"), rubyUnits(), "はたち belongs to 二十歳, not to ２０歳")
+        assertTrue(drawnTexts().contains("２０歳"), "the characters are still drawn: ${drawnTexts()}")
+    }
+
+    /**
+     * The conjugated path: 来る reads くる and 来ない reads こない, so the
+     * ruby over 来 here must be こ. Carrying the dictionary form's own
+     * reading — which is what a spelling comparison does — puts く there
+     * and teaches a reading that does not exist.
+     */
+    @Test
+    fun `an irregular verb draws the reading of the form on screen`() = runComposeUiTest {
+        setContent {
+            PhrasesUnderTest(
+                japanese = "彼は来ない。",
+                words = listOf(
+                    BreakdownWord("彼", "かれ"),
+                    BreakdownWord("は", null),
+                    BreakdownWord("来る", "くる", surface = "来ない", entryId = 1L),
+                ),
+                entryPos = mapOf(1L to listOf("vk")),
+            )
+        }
+
+        assertEquals(listOf("彼" to "かれ", "来" to "こ"), rubyUnits())
+    }
+
     @Test
     fun `a table whose stem never shifts carries no ruby`() = runComposeUiTest {
         setContent {
@@ -222,6 +327,28 @@ class RubyRenderingTest {
 
         assertEquals(emptyList(), rubyUnits(), "食 reads た on every row and needs no ruby saying so")
         assertTrue(drawnTexts().contains("食べる"), "the table still draws its forms")
+    }
+}
+
+/** One example sentence through the real tab, with nothing else on it. */
+@Composable
+private fun PhrasesUnderTest(
+    japanese: String,
+    words: List<BreakdownWord>,
+    entryPos: Map<Long, List<String>> = emptyMap(),
+) {
+    ScreenHost {
+        PhrasesTabContent(
+            state = PhrasesTabState(
+                content = PhrasesTabContentState.Ready(
+                    sentences = listOf(
+                        ExampleSentence(id = 1L, japanese = japanese, english = "translation", words = words),
+                    ),
+                    entryPos = entryPos,
+                ),
+            ),
+            contentPadding = PaddingValues(),
+        )
     }
 }
 

@@ -166,12 +166,13 @@ class EntryIndexTest {
         headword: String,
         reading: String? = null,
         entrySeq: Long? = null,
+        surface: String? = null,
     ) = BLineToken(
         headword = headword,
         reading = reading,
         entrySeq = entrySeq,
         senseIndex = null,
-        surface = null,
+        surface = surface,
         checked = false,
     )
 
@@ -296,6 +297,25 @@ class EntryIndexTest {
     }
 
     @Test
+    fun `the surface the sentence writes comes across with the word`() {
+        // Without it nothing says where 食べる sits in a sentence that
+        // writes 食べない, and the reading has nowhere to go.
+        val word = index.storedWord(token("食べる", surface = "食べない"))
+
+        assertEquals("食べる", word.headword)
+        assertEquals("たべる", word.reading, "the reading is the headword's, never the surface's")
+        assertEquals("食べない", word.surface)
+    }
+
+    @Test
+    fun `a surface equal to the headword is dropped rather than repeated`() {
+        // Most of the shipped index states one; carrying it would double
+        // the commonest word shape in the column for no information.
+        assertNull(index.storedWord(token("食べる", surface = "食べる")).surface)
+        assertNull(index.storedWord(token("食べる")).surface)
+    }
+
+    @Test
     fun `a kanji word resolving to nothing stays bare rather than being dropped`() {
         val word = index.storedWord(token("三日間"))
 
@@ -326,23 +346,26 @@ class StoredBreakdownTest {
         /**
          * Every shape the column carries: a kanji word with a reading
          * and an entry, a kana word with an entry and no reading, a
-         * kanji word the source gave a reading but no entry matched,
-         * and a kanji word with neither.
+         * kanji word the source gave a reading but no entry matched, a
+         * kanji word with neither, a word the sentence inflects, and one
+         * the sentence spells differently without inflecting it.
          */
         const val CANONICAL =
-            "学校(がっこう)#1301230 で#2028980 どんな#1009040 三日間(みっかかん) 早く 食べる(たべる)#1358280"
+            "学校(がっこう)#1301230 で#2028980 どんな#1009040 三日間(みっかかん) 早く " +
+                "食べる(たべる){食べない}#1358280 のです{んです}#2681000"
     }
 
     @Test
     fun `encodes the canonical line the app parses back`() {
         val encoded = StoredBreakdown.encode(
             listOf(
-                StoredBreakdownWord("学校", "がっこう", 1301230L),
-                StoredBreakdownWord("で", null, 2028980L),
-                StoredBreakdownWord("どんな", null, 1009040L),
-                StoredBreakdownWord("三日間", "みっかかん", null),
-                StoredBreakdownWord("早く", null, null),
-                StoredBreakdownWord("食べる", "たべる", 1358280L),
+                StoredBreakdownWord("学校", "がっこう", null, 1301230L),
+                StoredBreakdownWord("で", null, null, 2028980L),
+                StoredBreakdownWord("どんな", null, null, 1009040L),
+                StoredBreakdownWord("三日間", "みっかかん", null, null),
+                StoredBreakdownWord("早く", null, null, null),
+                StoredBreakdownWord("食べる", "たべる", "食べない", 1358280L),
+                StoredBreakdownWord("のです", null, "んです", 2681000L),
             ),
         )
 
@@ -357,22 +380,72 @@ class StoredBreakdownTest {
     @Test
     fun `a blank reading is written as no reading at all`() {
         // `語()` would reach the reader as a bare `語 ()`.
-        assertEquals("語#1", StoredBreakdown.encode(listOf(StoredBreakdownWord("語", "", 1L))))
-        assertEquals("語#1", StoredBreakdown.encode(listOf(StoredBreakdownWord("語", " ", 1L))))
+        assertEquals("語#1", StoredBreakdown.encode(listOf(StoredBreakdownWord("語", "", null, 1L))))
+        assertEquals("語#1", StoredBreakdown.encode(listOf(StoredBreakdownWord("語", " ", null, 1L))))
+    }
+
+    @Test
+    fun `a surface the sentence spells like the headword is not written`() {
+        // It would locate the same characters either way and cost the
+        // column a copy of every uninflected word in the corpus.
+        assertEquals("語#1", StoredBreakdown.encode(listOf(StoredBreakdownWord("語", null, "語", 1L))))
+        assertEquals("語#1", StoredBreakdown.encode(listOf(StoredBreakdownWord("語", null, "", 1L))))
+    }
+
+    /**
+     * The generator's own copy of the app's scan, which is the only
+     * place the "every word is findable in its sentence" property can be
+     * checked against the 978,002 words that ship: the app has the data
+     * and no way to assert over it, and a CI test has neither.
+     */
+    @Test
+    fun `counts the words a sentence can be scanned for`() {
+        val words = listOf(
+            StoredBreakdownWord("水", "みず", null, 1L),
+            StoredBreakdownWord("を", null, null, 2L),
+            StoredBreakdownWord("食べる", "たべる", "食べた", 3L),
+        )
+
+        assertEquals(3, StoredBreakdown.locate("水を食べた。", words))
+        // 犬 is in no part of this sentence, and its absence costs the
+        // words around it nothing.
+        assertEquals(
+            2,
+            StoredBreakdown.locate(
+                "水を飲んだ。",
+                listOf(words[0], words[1], StoredBreakdownWord("犬", "いぬ", null, 4L)),
+            ),
+        )
+    }
+
+    @Test
+    fun `a full-width surface is found in a half-width sentence`() {
+        // The index writes ２月 where the sentence writes 2月. Unfolded
+        // the word is lost AND its characters are left for a later
+        // one-character word to claim.
+        assertEquals(
+            1,
+            StoredBreakdown.locate("2月に生まれた。", listOf(StoredBreakdownWord("二月", "にがつ", "２月", 1L))),
+        )
     }
 
     @Test
     fun `a delimiter inside a word fails generation rather than corrupting the column`() {
-        // The encoding has no escape. No shipped headword or reading
-        // contains one of these, and this is what makes a future source
-        // that broke that property fail loudly instead of silently.
+        // The encoding has no escape. No shipped headword, reading or
+        // surface contains one of these, and this is what makes a future
+        // source that broke that property fail loudly instead of
+        // silently.
         listOf(
-            StoredBreakdownWord("a b", null, 1L),
-            StoredBreakdownWord("a(b", null, 1L),
-            StoredBreakdownWord("a)b", null, 1L),
-            StoredBreakdownWord("a#b", null, 1L),
-            StoredBreakdownWord("語", "a b", 1L),
-            StoredBreakdownWord("語", "a#b", 1L),
+            StoredBreakdownWord("a b", null, null, 1L),
+            StoredBreakdownWord("a(b", null, null, 1L),
+            StoredBreakdownWord("a)b", null, null, 1L),
+            StoredBreakdownWord("a{b", null, null, 1L),
+            StoredBreakdownWord("a}b", null, null, 1L),
+            StoredBreakdownWord("a#b", null, null, 1L),
+            StoredBreakdownWord("語", "a b", null, 1L),
+            StoredBreakdownWord("語", "a#b", null, 1L),
+            StoredBreakdownWord("語", null, "a}b", 1L),
+            StoredBreakdownWord("語", null, "a b", 1L),
         ).forEach { word ->
             val e = assertFailsWith<PipelineException>("$word should not encode") {
                 StoredBreakdown.encode(listOf(word))

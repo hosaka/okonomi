@@ -6,31 +6,6 @@ import cc.hosaka.okonomi.db.BreakdownWord
 import cc.hosaka.okonomi.db.ExampleSentence
 import cc.hosaka.okonomi.ui.PagingFooterState
 
-private const val WORD_PLACEHOLDER = "%1\$s"
-
-private const val READING_PLACEHOLDER = "%2\$s"
-
-/**
- * One word of the breakdown as the reader sees it: the word alone when
- * it reads as itself, or the word followed by its reading.
- *
- * Pure and stated here rather than inline in the tab, on the precedent
- * of the search's `titleFurigana`. This is the only place the readings
- * resolved at build time become visible to anyone, so a rendering that
- * dropped them would undo the feature end to end with every other test
- * still green.
- *
- * [readingFormat] is the caller's `%1$s (%2$s)` template: bracketing a
- * reading is a typographic convention that belongs in `strings.xml`
- * beside the rest of the wording, not in the code.
- */
-internal fun breakdownWordLabel(word: BreakdownWord, readingFormat: String): String {
-    val reading = word.reading ?: return word.text
-    return readingFormat
-        .replace(WORD_PLACEHOLDER, word.text)
-        .replace(READING_PLACEHOLDER, reading)
-}
-
 /**
  * The JMdict part-of-speech codes that make a word part of the
  * sentence's machinery rather than of what it says. An entry tagged
@@ -82,9 +57,14 @@ internal val breakdownGrammaticalTextPos = setOf("prt", "cop")
  *   would correct it; the error is in a separately maintained source.
  *
  * A word that resolved to no entry (0.4% of the corpus) is decided by
- * the text clause alone. Pure, and stated here rather than inline in
- * the tab, on the precedent of [breakdownWordLabel]: what a reader can
- * tap is a rule worth testing without composing anything.
+ * the text clause alone. The word's dictionary form is what is asked
+ * about, never the surface the sentence spells it with: 食べない is
+ * 食べる's business, and asking about the inflected form would find
+ * nothing at all.
+ *
+ * Pure, and stated here rather than inline in the tab, on the precedent
+ * of the search's `titleFurigana`: what a reader can tap is a rule
+ * worth testing without composing anything.
  */
 internal fun isBreakdownWordTappable(word: BreakdownWord, pos: BreakdownPos): Boolean {
     val entryPos = word.entryId?.let { pos.byEntryId[it] }.orEmpty()
@@ -143,10 +123,30 @@ sealed interface PhrasesTabContentState {
          *
          * A set of words rather than a flag on each word: what a word
          * is is the dictionary's business, and whether it can be tapped
-         * is this screen's. Two occurrences of one word are one member,
-         * which is exactly what a value-equal set gives.
+         * is this screen's. Membership is by value, so two occurrences
+         * of one word are one member — one word inflected two ways is
+         * two, because the surface is part of the word's value, and the
+         * rule reads only the dictionary form and the entry id, so both
+         * get the same answer.
          */
         val tappableWords: Set<BreakdownWord> = emptySet(),
+        /**
+         * The part-of-speech codes of the entries the words were linked
+         * to, keyed by entry id — the same answer [isBreakdownWordTappable]
+         * is decided from, carried on rather than thrown away.
+         *
+         * The second reader is the furigana. Whether 来 may be given
+         * the reading its dictionary form states is a question only the
+         * paradigm can answer, and the paradigm is selected by these
+         * codes; see `SentenceFurigana.kt`. Raw JMdict codes reach the
+         * screen for the same reason [BreakdownPos] does not stop at
+         * the producer: what a word is is the dictionary's business,
+         * and both rules that read it are this screen's.
+         *
+         * Empty when the part-of-speech query failed, which is the same
+         * run in which nothing is tappable.
+         */
+        val entryPos: Map<Long, List<String>> = emptyMap(),
         val onShowMore: (() -> Unit)? = null,
         val footer: PagingFooterState = PagingFooterState.None,
     ) : PhrasesTabContentState
