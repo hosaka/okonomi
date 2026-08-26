@@ -29,7 +29,9 @@ data class HomeNavigationItem(
 
 val homeSearchItem = HomeNavigationItem(
     key = "search",
-    route = SearchRoute,
+    // No query: the tab's root is the empty search, which is also what
+    // reselecting the tab pops back to.
+    route = SearchRoute(),
     icon = Icons.Outlined.Search,
     iconSelected = Icons.Filled.Search,
     label = Res.string.home_search_label,

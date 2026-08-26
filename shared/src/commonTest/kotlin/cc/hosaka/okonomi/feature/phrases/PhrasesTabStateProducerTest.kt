@@ -1,5 +1,6 @@
 package cc.hosaka.okonomi.feature.phrases
 
+import cc.hosaka.okonomi.db.BreakdownPos
 import cc.hosaka.okonomi.db.BreakdownWord
 import cc.hosaka.okonomi.db.ExampleSentence
 import cc.hosaka.okonomi.feature.navigation.state.FakeScreenStateScope
@@ -31,6 +32,15 @@ class PhrasesTabStateProducerTest {
         sentence.copy(id = index.toLong(), japanese = "例文$index。")
     }
 
+    /**
+     * The tappable-word rule's lookup, stubbed out: these tests are
+     * about paging and failure, and every one of them would otherwise
+     * reach for a dictionary a host test has no file for. The rule
+     * itself is pinned by [BreakdownWordTappableTest], and the wiring
+     * that feeds it by the last test here.
+     */
+    private val noPos: suspend (List<BreakdownWord>) -> BreakdownPos = { BreakdownPos() }
+
     private val neverInvalidate: suspend () -> Unit = {
         throw AssertionError("the dictionary handle must not be dropped for this failure")
     }
@@ -56,7 +66,12 @@ class PhrasesTabStateProducerTest {
         }
 
         val states = collectStates(
-            scope.phrasesTabStateProducer(entryId = 1358280L, load = load, invalidate = neverInvalidate),
+            scope.phrasesTabStateProducer(
+                entryId = 1358280L,
+                load = load,
+                loadPos = noPos,
+                invalidate = neverInvalidate,
+            ),
         )
 
         assertEquals(1358280L, asked)
@@ -67,7 +82,12 @@ class PhrasesTabStateProducerTest {
         // A later run of the producer (the tab came back on screen)
         // reuses the persisted sentences instead of querying again.
         collectStates(
-            scope.phrasesTabStateProducer(entryId = 1358280L, load = load, invalidate = neverInvalidate),
+            scope.phrasesTabStateProducer(
+                entryId = 1358280L,
+                load = load,
+                loadPos = noPos,
+                invalidate = neverInvalidate,
+            ),
         )
         assertEquals(1, loads)
     }
@@ -81,6 +101,7 @@ class PhrasesTabStateProducerTest {
             scope.phrasesTabStateProducer(
                 entryId = 1L,
                 load = { stored },
+                loadPos = noPos,
                 invalidate = neverInvalidate,
             ),
         )
@@ -99,6 +120,7 @@ class PhrasesTabStateProducerTest {
             scope.phrasesTabStateProducer(
                 entryId = 1L,
                 load = { stored },
+                loadPos = noPos,
                 invalidate = neverInvalidate,
             ),
         )
@@ -124,6 +146,7 @@ class PhrasesTabStateProducerTest {
             scope.phrasesTabStateProducer(
                 entryId = 1L,
                 load = { stored },
+                loadPos = noPos,
                 invalidate = neverInvalidate,
             ),
         )
@@ -147,6 +170,7 @@ class PhrasesTabStateProducerTest {
             scope.phrasesTabStateProducer(
                 entryId = 1L,
                 load = { sentences(2) },
+                loadPos = noPos,
                 invalidate = neverInvalidate,
             ),
         )
@@ -164,6 +188,7 @@ class PhrasesTabStateProducerTest {
             scope.phrasesTabStateProducer(
                 entryId = 1L,
                 load = { emptyList() },
+                loadPos = noPos,
                 invalidate = neverInvalidate,
             ),
         )
@@ -181,6 +206,7 @@ class PhrasesTabStateProducerTest {
             scope.phrasesTabStateProducer(
                 entryId = 1L,
                 load = { throw RuntimeException("database gone") },
+                loadPos = noPos,
                 invalidate = {},
             ),
         )
@@ -197,6 +223,7 @@ class PhrasesTabStateProducerTest {
             scope.phrasesTabStateProducer(
                 entryId = 1L,
                 load = { throw RuntimeException("database gone") },
+                loadPos = noPos,
                 invalidate = {},
             ),
         )
@@ -218,7 +245,12 @@ class PhrasesTabStateProducerTest {
         }
 
         val states = collectStates(
-            scope.phrasesTabStateProducer(entryId = 1L, load = load, invalidate = {}),
+            scope.phrasesTabStateProducer(
+                entryId = 1L,
+                load = load,
+                loadPos = noPos,
+                invalidate = {},
+            ),
         )
         val error = assertIs<PhrasesTabContentState.Error>(states.last().content)
 
@@ -242,12 +274,97 @@ class PhrasesTabStateProducerTest {
             scope.phrasesTabStateProducer(
                 entryId = 1L,
                 load = { throw RuntimeException("database gone") },
+                loadPos = noPos,
                 invalidate = { invalidations++ },
             ),
         )
 
         assertIs<PhrasesTabContentState.Error>(states.last().content)
         assertEquals(1, invalidations)
+    }
+
+    /**
+     * The wiring between the loaded sentences, the part-of-speech
+     * lookup and the rule. Every piece is tested on its own; this is
+     * the only thing that fails if they stop being joined up, and its
+     * symptom on screen is a breakdown where nothing can be tapped.
+     */
+    @Test
+    fun `the words the rule accepts reach the state as tappable`() = runTest {
+        val scope = FakeScreenStateScope()
+        val particle = BreakdownWord("を", null, entryId = 2_029_010L)
+        val verb = BreakdownWord("食べる", "たべる", entryId = 1_358_280L)
+        var asked: List<BreakdownWord>? = null
+
+        val states = collectStates(
+            scope.phrasesTabStateProducer(
+                entryId = 1L,
+                load = {
+                    listOf(sentence.copy(words = listOf(particle, verb)))
+                },
+                loadPos = { words ->
+                    asked = words
+                    BreakdownPos(
+                        byEntryId = mapOf(
+                            2_029_010L to listOf("prt"),
+                            1_358_280L to listOf("v1", "vt"),
+                        ),
+                        byText = mapOf("を" to listOf("prt"), "食べる" to listOf("v1", "vt")),
+                    )
+                },
+                invalidate = neverInvalidate,
+            ),
+        )
+
+        // Asked once, for the whole stored set, rather than per word.
+        assertEquals(listOf(particle, verb), asked)
+        val ready = assertIs<PhrasesTabContentState.Ready>(states.last().content)
+        assertEquals(setOf(verb), ready.tappableWords)
+    }
+
+    /**
+     * A decoration failing must not cost the reader the thing they came
+     * for. The sentences are loaded and readable; that the colouring
+     * could not be worked out is a reason to colour nothing, not a
+     * reason to hide them behind an error and a retry button.
+     */
+    @Test
+    fun `a part of speech failure leaves the sentences on screen with nothing tappable`() = runTest {
+        val scope = FakeScreenStateScope()
+        var invalidations = 0
+
+        val states = collectStates(
+            scope.phrasesTabStateProducer(
+                entryId = 1L,
+                load = { listOf(sentence) },
+                loadPos = { throw RuntimeException("database gone") },
+                // A real database failure still gets the project's
+                // standard heal, even though the reader never sees it.
+                invalidate = { invalidations++ },
+            ),
+        )
+
+        val ready = assertIs<PhrasesTabContentState.Ready>(
+            states.last().content,
+            "the examples loaded; only the colouring did not",
+        )
+        assertEquals(listOf(sentence), ready.sentences)
+        assertTrue(ready.tappableWords.isEmpty(), "nothing may be tappable on evidence never obtained")
+        assertEquals(1, invalidations)
+    }
+
+    @Test
+    fun `an entry the corpus never uses asks the dictionary nothing further`() = runTest {
+        val scope = FakeScreenStateScope()
+
+        collectStates(
+            scope.phrasesTabStateProducer(
+                entryId = 1L,
+                load = { emptyList() },
+                loadPos = { throw AssertionError("nothing to look a part of speech up for") },
+                invalidate = neverInvalidate,
+            ),
+        )
     }
 
     @Test
@@ -261,6 +378,7 @@ class PhrasesTabStateProducerTest {
                 // the handle away would turn one bug into a
                 // reprovisioning storm.
                 load = { throw IllegalStateException("bad invariant") },
+                loadPos = noPos,
                 invalidate = neverInvalidate,
             ),
         )

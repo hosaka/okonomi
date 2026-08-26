@@ -23,23 +23,46 @@ import kotlinx.coroutines.flow.transformLatest
 
 internal val searchDebounce = 200.milliseconds
 
+/**
+ * [initialQuery] is the route's query (see `SearchRoute`): the word a
+ * sentence breakdown was tapped on, or null for the Search tab's root.
+ * It seeds the state the screen is first shown with as well as the
+ * query sink, so a pushed search draws its field already filled rather
+ * than blank for a frame.
+ */
 @Composable
-fun produceSearchScreenState(): State<SearchState> = produceScreenState(
+fun produceSearchScreenState(initialQuery: String? = null): State<SearchState> = produceScreenState(
     key = "search",
-    initial = SearchState(),
+    initial = SearchState(query = initialQuery.orEmpty()),
 ) {
-    searchScreenStateProducer()
+    searchScreenStateProducer(initialQuery = initialQuery)
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
 suspend fun ScreenStateScope.searchScreenStateProducer(
+    initialQuery: String? = null,
     search: suspend (String, Int) -> SearchResults = { query, limit -> searchEntries(query, limit) },
     invalidate: suspend () -> Unit = { invalidateDictionary() },
 ): Flow<SearchState> {
+    // Only the *initial* value: mutablePersistedFlow hands back the
+    // same flow on every later run of the producer, so a reader who
+    // edited the seeded query keeps their edit when the screen comes
+    // back rather than having the tapped word pushed at them again.
+    //
+    // Nothing here takes focus. The field is filled and the search
+    // runs, but the keyboard stays down so the results the tap asked
+    // for are the first thing on screen; SearchFieldFocusEffect only
+    // focuses on a tab reselect, which a pushed screen never sees.
     val querySink = mutablePersistedFlow(
         key = "query",
-        initial = "",
+        initial = initialQuery.orEmpty(),
     )
+    // A route with no query is a section root — that is how
+    // `homeSearchItem` defines the Search tab, and a breakdown tap is
+    // the only thing that ever pushes a SearchRoute, always with the
+    // word in it. One instance rather than one per emission, so two
+    // otherwise equal states stay equal.
+    val onBack: (() -> Unit)? = if (initialQuery == null) null else { -> navigation.pop() }
     // How many hits the current query is asking for. Paging is a larger
     // limit on the same search rather than an offset into a previous
     // one: the ranking is deterministic, so page two is the first
@@ -141,6 +164,7 @@ suspend fun ScreenStateScope.searchScreenStateProducer(
                 limitSink.value = SEARCH_RESULT_LIMIT
                 querySink.value = ""
             }.takeIf { query.isNotEmpty() },
+            onBack = onBack,
             // Idle under a non-blank query means no search has landed
             // for this screen yet — the debounce window, or a query
             // restored into a fresh screen, which would otherwise show

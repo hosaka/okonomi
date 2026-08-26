@@ -222,6 +222,37 @@ FROM sense
 WHERE entry_id IN :ids
 ORDER BY entry_id, ord;
 
+-- The three queries below serve the Phrases tab's tappable-word rule,
+-- which asks about a breakdown word two ways: what the entry it was
+-- linked to is tagged as, and what any entry written or read exactly
+-- like it is tagged as. The second question is what catches the
+-- particles Tatoeba's index mislinks to homographic content words (は to
+-- 葉, に to 二); see PhrasesTabState's rule for why it must be narrower
+-- than the first.
+--
+-- Both are keyed lookups over a few hundred distinct words rather than
+-- a scan: filtering a full read of sense in Kotlin would mean carrying
+-- the whole part-of-speech table into memory to decide a screenful.
+posForEntries:
+SELECT entry_id, pos
+FROM sense
+WHERE entry_id IN :ids;
+
+-- Reading and kanji form are asked separately rather than in one
+-- compound select: each goes straight through its own (text, entry_id)
+-- index, and the caller merges the codes of both into one set per word.
+posForReadingText:
+SELECT r.text, s.pos
+FROM reading r
+JOIN sense s ON s.entry_id = r.entry_id
+WHERE r.text IN :texts;
+
+posForKanjiFormText:
+SELECT k.text, s.pos
+FROM kanji_form k
+JOIN sense s ON s.entry_id = k.entry_id
+WHERE k.text IN :texts;
+
 -- The entry view needs every code and note a sense carries, which the
 -- search's pool-sized sensesForEntries deliberately does not select.
 sensesForEntry:

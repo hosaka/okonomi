@@ -13,12 +13,21 @@ internal class FakeScreenStateScope : ScreenStateScope {
 
     val navigated = mutableListOf<Route>()
 
+    var pops = 0
+        private set
+
     override val navigation: NavigationController = object : NavigationController {
         override fun navigate(route: Route) {
             navigated += route
         }
 
-        override fun pop(): Boolean = false
+        override fun pop(): Boolean {
+            pops += 1
+            // Still false: no fake stack stands behind this, and a
+            // producer that branched on the return value would be
+            // reading a decision this double cannot make.
+            return false
+        }
     }
 
     @Suppress("UNCHECKED_CAST")

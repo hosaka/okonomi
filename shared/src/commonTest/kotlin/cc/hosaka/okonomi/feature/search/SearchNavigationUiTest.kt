@@ -3,6 +3,7 @@ package cc.hosaka.okonomi.feature.search
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
@@ -15,6 +16,9 @@ import cc.hosaka.okonomi.ui.test.ComposeUiTestBase
 import cc.hosaka.okonomi.ui.test.RecordingNavigationController
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import okonomi.shared.generated.resources.Res
+import okonomi.shared.generated.resources.entry_back
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Forward navigation out of search lives inside a composable, so no producer
@@ -59,6 +63,39 @@ class SearchNavigationUiTest : ComposeUiTestBase() {
         }
 
         assertEquals<List<Route>>(emptyList(), navigation.navigated)
+    }
+
+    /**
+     * The Search tab's own root draws no back control — it is what
+     * would be gone back to — and a search pushed above an entry draws
+     * one, because the navigation bar is hidden at that depth and iOS
+     * has no system back button.
+     */
+    @Test
+    fun `the tab's root search draws no back control`() = runComposeUiTest {
+        lateinit var back: String
+        setContent {
+            back = stringResource(Res.string.entry_back)
+            SearchUnderTest(state = searchState())
+        }
+        waitForIdle()
+
+        onNodeWithContentDescription(back).assertDoesNotExist()
+    }
+
+    @Test
+    fun `a pushed search draws a back control that leaves it`() = runComposeUiTest {
+        var backs = 0
+        lateinit var back: String
+        setContent {
+            back = stringResource(Res.string.entry_back)
+            SearchUnderTest(state = searchState().copy(onBack = { backs++ }))
+        }
+        waitForIdle()
+
+        onNodeWithContentDescription(back).performClick()
+
+        assertEquals(1, backs)
     }
 }
 

@@ -15,10 +15,10 @@ import kotlin.test.assertTrue
  * twice, deliberately, in the spirit of `FormRowLabelsTest`.
  *
  * Without that pairing the format is defined twice and held together by
- * nothing: renaming `ENTRY_ID_PREFIX` — which is exactly what a
- * tappable-words increment would reach for — would leave the writer and
- * the reader disagreeing, every breakdown parsing to nothing, the line
- * quietly absent from the screen, and every test on both sides green.
+ * nothing: renaming `ENTRY_ID_PREFIX` on one side alone would leave the
+ * writer and the reader disagreeing, every breakdown parsing to
+ * nothing, the line quietly absent from the screen, and every test on
+ * both sides green.
  */
 class BreakdownTest {
 
@@ -45,6 +45,10 @@ class BreakdownTest {
             listOf("がっこう", null, null, "みっかかん", null, "たべる"),
             words.map { it.reading },
         )
+        assertEquals(
+            listOf(1301230L, 2028980L, 1009040L, null, null, 1358280L),
+            words.map { it.entryId },
+        )
     }
 
     @Test
@@ -53,6 +57,9 @@ class BreakdownTest {
 
         assertEquals("食べる", word.text)
         assertNull(word.reading)
+        // Read rather than discarded: it is what decides whether the
+        // word can be tapped.
+        assertEquals(1358280L, word.entryId)
     }
 
     @Test
@@ -64,6 +71,7 @@ class BreakdownTest {
 
         assertEquals("語", word.text)
         assertNull(word.reading)
+        assertEquals(1L, word.entryId)
     }
 
     @Test

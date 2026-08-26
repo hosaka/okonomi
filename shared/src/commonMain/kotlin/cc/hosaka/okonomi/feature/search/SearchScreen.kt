@@ -17,7 +17,11 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -53,6 +57,7 @@ import cc.hosaka.okonomi.ui.scrollIndicator
 import cc.hosaka.okonomi.ui.theme.Dimens
 import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
 import okonomi.shared.generated.resources.Res
+import okonomi.shared.generated.resources.entry_back
 import okonomi.shared.generated.resources.search_error
 import okonomi.shared.generated.resources.search_no_results
 import okonomi.shared.generated.resources.search_placeholder
@@ -77,18 +82,63 @@ fun SearchScreen(
         ) {
             val focusRequester = remember { FocusRequester() }
             SearchFieldFocusEffect(focusRequester)
+            SearchField(
+                state = state,
+                focusRequester = focusRequester,
+            )
+            SearchResultsContent(
+                state = state,
+            )
+        }
+    }
+}
+
+/**
+ * The query field, with a back control in front of it when this search
+ * is not its section's root.
+ *
+ * The root case composes exactly the field it always did — no Row
+ * around it, no leading space held for a control that is not there — so
+ * the Search tab is untouched by this.
+ */
+@Composable
+private fun SearchField(
+    state: SearchState,
+    focusRequester: FocusRequester,
+) {
+    val onBack = state.onBack
+    if (onBack == null) {
+        SearchTextField(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = Dimens.verticalPaddingHalf),
+            text = state.query,
+            placeholder = stringResource(Res.string.search_placeholder),
+            onTextChange = state.onQueryChange,
+            onClear = state.onClear,
+            focusRequester = focusRequester,
+        )
+    } else {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = Dimens.verticalPaddingHalf),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = stringResource(Res.string.entry_back),
+                )
+            }
             SearchTextField(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = Dimens.verticalPaddingHalf),
+                    .weight(1f),
                 text = state.query,
                 placeholder = stringResource(Res.string.search_placeholder),
                 onTextChange = state.onQueryChange,
                 onClear = state.onClear,
                 focusRequester = focusRequester,
-            )
-            SearchResultsContent(
-                state = state,
             )
         }
     }

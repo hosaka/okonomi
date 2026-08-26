@@ -3,6 +3,7 @@ package cc.hosaka.okonomi.feature.navigation
 import androidx.navigation3.runtime.NavKey
 import cc.hosaka.okonomi.feature.home.navigation.homeNavigationItems
 import cc.hosaka.okonomi.feature.libraries.LibrariesRoute
+import cc.hosaka.okonomi.feature.search.SearchRoute
 import cc.hosaka.okonomi.feature.word.EntryRoute
 import kotlin.test.Test
 import kotlin.test.assertNotNull
@@ -23,7 +24,13 @@ class NavigationGraphTest {
     fun `every pushed detail route is registered for saved state`() {
         // Hand-maintained: every new pushed detail route MUST be added
         // to this list when it is registered in the navigation graph.
-        listOf(LibrariesRoute, EntryRoute(entryId = 1)).forEach { route ->
+        listOf(
+            LibrariesRoute,
+            EntryRoute(entryId = 1),
+            // Search is both a section root and a pushed screen: a
+            // breakdown word taps into one carrying its own query.
+            SearchRoute(query = "為る"),
+        ).forEach { route ->
             assertNotNull(
                 navigationSavedStateConfiguration.serializersModule
                     .getPolymorphic(NavKey::class, route),

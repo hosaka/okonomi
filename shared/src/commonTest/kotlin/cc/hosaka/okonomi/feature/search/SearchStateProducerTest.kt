@@ -120,6 +120,101 @@ class SearchStateProducerTest {
         assertSame(persisted, scope.mutablePersistedFlow("query", "other"))
     }
 
+    /**
+     * A search pushed from a tapped breakdown word arrives with the
+     * word already in it and results already on the way: the reader
+     * sees hits, not an empty field they have to type into.
+     */
+    @Test
+    fun `a query carried by the route seeds the field and runs`() = runTest {
+        val scope = FakeScreenStateScope()
+        var searched: String? = null
+        val states = collectStates(
+            scope.searchScreenStateProducer(
+                initialQuery = "為る",
+                search = { query, limit ->
+                    searched = query
+                    assertEquals(SEARCH_RESULT_LIMIT, limit, "a pushed search starts at one page")
+                    SearchResults(listOf(hit(1)))
+                },
+            ),
+        )
+        settle()
+
+        assertEquals("為る", states.last().query)
+        assertEquals("為る", searched)
+        val results = assertIs<SearchResultsState.Results>(states.last().results)
+        assertEquals(listOf(1L), results.hits.map { it.entryId })
+        assertNotNull(states.last().onClear, "a seeded query is still the reader's to clear")
+    }
+
+    /**
+     * The route's query is an initial value, not a standing one: the
+     * producer restarts whenever the screen has been off-screen for a
+     * while, and re-seeding then would undo the reader's own editing.
+     */
+    @Test
+    fun `a later run of the producer does not push the route's query back`() = runTest {
+        val scope = FakeScreenStateScope()
+        val search: suspend (String, Int) -> SearchResults = { _, _ -> SearchResults(emptyList()) }
+
+        val states = collectStates(
+            scope.searchScreenStateProducer(initialQuery = "為る", search = search),
+        )
+        states.last().onQueryChange!!.invoke("為さる")
+        settle()
+
+        val restarted = collectStates(
+            scope.searchScreenStateProducer(initialQuery = "為る", search = search),
+        )
+        settle()
+
+        assertEquals("為さる", restarted.last().query)
+    }
+
+    @Test
+    fun `no route query is the empty field the tab's own root shows`() = runTest {
+        val scope = FakeScreenStateScope()
+
+        val states = collectStates(scope.searchScreenStateProducer(search = noSearch))
+        settle()
+
+        assertEquals("", states.last().query)
+    }
+
+    /**
+     * A search pushed above an entry needs a way out that is not the
+     * system gesture: the navigation bar hides itself once a section is
+     * deeper than its root, and iOS has no system back button.
+     */
+    @Test
+    fun `a pushed search offers a way back and the tab's root does not`() = runTest {
+        val scope = FakeScreenStateScope()
+
+        val pushed = collectStates(
+            // A seeded query runs a search, so this one cannot use
+            // [noSearch]; what it returns is beside the point here.
+            scope.searchScreenStateProducer(
+                initialQuery = "為る",
+                search = { _, _ -> SearchResults(emptyList()) },
+            ),
+        )
+        settle()
+        assertNotNull(pushed.last().onBack, "a pushed search must be leavable without a gesture")
+
+        pushed.last().onBack!!.invoke()
+        assertEquals(1, scope.pops, "back leaves this search for whatever is under it")
+
+        val root = collectStates(
+            FakeScreenStateScope().searchScreenStateProducer(search = noSearch),
+        )
+        settle()
+        assertNull(
+            root.last().onBack,
+            "the Search tab's own root has nothing under it and must look exactly as it did",
+        )
+    }
+
     @Test
     fun `a blank query stays idle and never searches`() = runTest {
         val scope = FakeScreenStateScope()

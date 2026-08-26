@@ -12,6 +12,17 @@ data class SearchState(
     val query: String = "",
     val onQueryChange: ((String) -> Unit)? = null,
     val onClear: (() -> Unit)? = null,
+    /**
+     * Leaves this search for whatever is under it, or null when this
+     * search *is* its section's root and there is nothing under it.
+     *
+     * The tab's own search must look exactly as it always has, so the
+     * back control is not drawn at all rather than drawn disabled. A
+     * search pushed above an entry needs one: the navigation bar hides
+     * itself at depth greater than one, and iOS has no system back
+     * button, so without this the only way out is the edge swipe.
+     */
+    val onBack: (() -> Unit)? = null,
     val results: SearchResultsState = SearchResultsState.Idle,
 )
 

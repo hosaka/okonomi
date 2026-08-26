@@ -6,16 +6,23 @@ import kotlinx.coroutines.withContext
 
 /**
  * One word of a sentence's breakdown line: the word as the dictionary
- * writes it, and how it reads here.
+ * writes it, how it reads here, and the entry dictgen resolved it to.
  *
  * A null [reading] means the word is written in kana already and reads
  * as itself. Every word with kanji in it carries a reading, resolved at
  * build time — that is what the breakdown exists for.
+ *
+ * A null [entryId] means the word resolved to no entry (0.4% of the
+ * corpus's words). The id is what the tappable-word rule asks the
+ * dictionary about; it is deliberately *not* where a tap goes, because
+ * the link itself can be wrong — Tatoeba's index sends は to 葉 — and a
+ * search lets the reader correct it. See [BreakdownPos].
  */
 @Immutable
 data class BreakdownWord(
     val text: String,
     val reading: String?,
+    val entryId: Long? = null,
 )
 
 /**
@@ -43,14 +50,15 @@ data class ExampleSentence(
  * share the code, so each keeps the format in one documented place of
  * its own and both are tested against the same shapes.
  *
- * Only the headword and the reading reach the reader. The entry id is
- * parsed off and discarded: it is stored for the increment that makes
- * the words tappable, and reading it before that exists would be a
- * field nothing uses.
+ * The headword and the reading reach the reader; the entry id does
+ * not, but the tappable-word rule reads it to ask the dictionary what
+ * part of speech the word was linked as.
  */
 internal object Breakdown {
 
-    private val WORD = Regex("""^([^(#]+)(?:\(([^)]*)\))?(?:#\d+)?$""")
+    // No anchors: every use goes through matchEntire, which anchors
+    // both ends itself.
+    private val WORD = Regex("""([^(#]+)(?:\(([^)]*)\))?(?:#(\d+))?""")
 
     /**
      * The words of one stored breakdown, in sentence order. A word the
@@ -72,6 +80,10 @@ internal object Breakdown {
             // empty group rendered as a reading would put a bare `()`
             // beside the word.
             reading = match.groups[2]?.value?.takeIf { it.isNotBlank() },
+            // toLongOrNull rather than toLong: the group is digits by
+            // construction, but a word linked to an id wider than a
+            // Long must read as unlinked rather than fail the word.
+            entryId = match.groups[3]?.value?.toLongOrNull(),
         )
     }
 }

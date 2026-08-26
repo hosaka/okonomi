@@ -154,9 +154,10 @@ data class StoredBreakdownWord(
  *   sentence above it already shows the surface. Dropping them pays for
  *   most of what the injected readings and entry ids cost.
  *
- * The entry id is kept although nothing reads it today: every word is
- * already resolved here, and carrying the id is what will let a later
- * increment make the words tappable without regenerating the database.
+ * The entry id is kept although the reader never sees it: every word is
+ * already resolved here, and carrying the id is what lets the app ask
+ * what part of speech a word was linked as and leave the sentence's
+ * grammar words inert.
  *
  * `SentenceDetail.kt` reads this format back on the app side. The two
  * are separate modules and cannot share the code, so

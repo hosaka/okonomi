@@ -12,6 +12,16 @@ package cc.hosaka.okonomi.dictgen
  * links, plus the sentence text those links keep alive — which is the
  * price of the tab no longer stopping at ten on the words a learner
  * looks up most.
+ *
+ * Raising it again has a limit nothing in either module would warn
+ * about. The app's `loadBreakdownPos` asks the dictionary about a whole
+ * entry's breakdown in one `IN (...)`, one bind variable per distinct
+ * word, and SQLite's default `SQLITE_MAX_VARIABLE_NUMBER` is 32,766.
+ * The widest entry in the shipped corpus (2076730, "ばかり") spends 361
+ * of them, so there is roughly 90x headroom and no chunking is needed —
+ * but a cap raised past about 4,500 sentences per entry would turn that
+ * into a runtime "too many SQL variables" on one screen, with nothing
+ * failing at build time to say so.
  */
 const val SENTENCES_PER_ENTRY = 50
 

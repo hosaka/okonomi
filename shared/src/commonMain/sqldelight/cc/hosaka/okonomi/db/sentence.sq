@@ -4,9 +4,11 @@
 -- space-separated `headword(reading)#entryId` words, written by dictgen
 -- from Tatoeba's B-line. Every word with kanji in it carries a reading,
 -- taken from the entry it resolved to wherever the source states none
--- (the source states one for only 28% of them). The entry id is stored
--- although nothing reads it yet: it is what future tappable words need,
--- and it costs nothing to keep now against a regeneration later.
+-- (the source states one for only 28% of them). The entry id is what
+-- decides whether a word is tappable: the app looks the linked entry's
+-- part of speech up and leaves grammar words inert. It is not where a
+-- tap goes — the link can be wrong (Tatoeba sends は to 葉), so a tap
+-- opens a search the reader can correct.
 --
 -- One column rather than per-token rows: the sentence table costs
 -- 22.4 MB and the links with their two indexes 5.3 MB more, against
@@ -60,8 +62,8 @@ entrySentenceCount:
 SELECT COUNT(*) FROM entry_sentence;
 
 -- The sentence id comes along as the row's stable identity: the list
--- keys on it, and it is the handle a tappable-word increment would pair
--- with the entry ids already stored in the breakdown.
+-- keys on it, because two entries can show the same sentence and one
+-- entry two sentences that read almost alike.
 sentencesForEntry:
 SELECT s.id, s.japanese, s.english, s.breakdown
 FROM entry_sentence es

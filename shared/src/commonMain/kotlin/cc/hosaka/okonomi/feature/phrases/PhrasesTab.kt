@@ -1,5 +1,6 @@
 package cc.hosaka.okonomi.feature.phrases
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -18,11 +19,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import cc.hosaka.okonomi.db.BreakdownWord
 import cc.hosaka.okonomi.db.EntryDetail
 import cc.hosaka.okonomi.db.ExampleSentence
+import cc.hosaka.okonomi.feature.navigation.LocalNavigationController
+import cc.hosaka.okonomi.feature.search.SearchRoute
 import cc.hosaka.okonomi.ui.CenteredBox
 import cc.hosaka.okonomi.ui.CenteredMessage
 import cc.hosaka.okonomi.ui.LoadMoreEffect
@@ -110,6 +114,7 @@ internal fun PhrasesTabContent(
 
         is PhrasesTabContentState.Ready -> SentenceList(
             sentences = content.sentences,
+            tappableWords = content.tappableWords,
             onShowMore = content.onShowMore,
             footer = content.footer,
             contentPadding = contentPadding,
@@ -121,6 +126,7 @@ internal fun PhrasesTabContent(
 @Composable
 private fun SentenceList(
     sentences: List<ExampleSentence>,
+    tappableWords: Set<BreakdownWord>,
     onShowMore: (() -> Unit)?,
     footer: PagingFooterState,
     contentPadding: PaddingValues,
@@ -157,7 +163,11 @@ private fun SentenceList(
                             .padding(horizontal = Dimens.contentPadding),
                     )
                 }
-                SentenceBlock(sentence = sentence, readingFormat = readingFormat)
+                SentenceBlock(
+                    sentence = sentence,
+                    tappableWords = tappableWords,
+                    readingFormat = readingFormat,
+                )
             }
             pagingFooterItem(footer)
         }
@@ -165,7 +175,11 @@ private fun SentenceList(
 }
 
 @Composable
-private fun SentenceBlock(sentence: ExampleSentence, readingFormat: String) {
+private fun SentenceBlock(
+    sentence: ExampleSentence,
+    tappableWords: Set<BreakdownWord>,
+    readingFormat: String,
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -184,7 +198,11 @@ private fun SentenceBlock(sentence: ExampleSentence, readingFormat: String) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (sentence.words.isNotEmpty()) {
-            BreakdownRow(words = sentence.words, readingFormat = readingFormat)
+            BreakdownRow(
+                words = sentence.words,
+                tappableWords = tappableWords,
+                readingFormat = readingFormat,
+            )
         }
     }
 }
@@ -198,27 +216,94 @@ private fun SentenceBlock(sentence: ExampleSentence, readingFormat: String) {
  * One `Text` per word rather than one joined string: a 47-word sentence
  * — the corpus has them — reads as an undelimited paragraph otherwise,
  * with a reading in the middle of a line looking like the next word's.
+ * It is also what makes a word a tap target of its own.
+ *
+ * A content word opens a search for itself, *above* this entry, so
+ * system back returns the reader to the sentence and several words can
+ * be looked up from one line. The search term is the word's own text,
+ * which is already the dictionary form the breakdown resolved — no
+ * deinflection is involved. The search rather than the linked entry
+ * because the link can be wrong; see [isBreakdownWordTappable].
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun BreakdownRow(words: List<BreakdownWord>, readingFormat: String) {
-    // Up to 47 substitutions per row, and the row recomposes whenever
-    // anything above it in the item does. Derived once per sentence
-    // instead: the words and the template are both fixed for its life.
-    val labels = remember(words, readingFormat) {
-        words.map { word -> breakdownWordLabel(word, readingFormat) }
+private fun BreakdownRow(
+    words: List<BreakdownWord>,
+    tappableWords: Set<BreakdownWord>,
+    readingFormat: String,
+) {
+    val navigation = LocalNavigationController.current
+    // Up to 47 substitutions and 47 tap lambdas per row, and the row
+    // recomposes whenever anything above it in the item does. Derived
+    // once per sentence instead: the words, the template, the tappable
+    // set and the controller are all fixed for its life.
+    val rendered = remember(words, tappableWords, readingFormat, navigation) {
+        words.map { word ->
+            RenderedBreakdownWord(
+                label = breakdownWordLabel(word, readingFormat),
+                onTap = if (word in tappableWords) {
+                    { navigation.navigate(SearchRoute(word.text)) }
+                } else {
+                    null
+                },
+            )
+        }
     }
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(Dimens.horizontalPaddingHalf),
         modifier = Modifier
             .padding(top = Dimens.verticalPaddingHalf),
     ) {
-        labels.forEach { label ->
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        rendered.forEach { word ->
+            BreakdownWordText(label = word.label, onTap = word.onTap)
         }
     }
+}
+
+/**
+ * One word of the breakdown as the row draws it: the text to show and,
+ * for a content word, what tapping it does. A null [onTap] is an inert
+ * word, following the project's "null callback is a disabled action"
+ * rule.
+ */
+@Immutable
+private data class RenderedBreakdownWord(
+    val label: String,
+    val onTap: (() -> Unit)?,
+)
+
+/**
+ * One word of the breakdown. A tappable one is drawn in the dynamic
+ * primary colour and nothing else: no underline, no background, and no
+ * ripple — roughly two words in three carry the affordance, which any
+ * heavier treatment would turn into a wall.
+ *
+ * Tap target sizes are deliberately left alone. The breakdown is due to
+ * be reworked around furigana, where the tappable text is larger and
+ * the English sits under it; sizing it twice is work thrown away.
+ */
+@Composable
+private fun BreakdownWordText(label: String, onTap: (() -> Unit)?) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.bodySmall,
+        color = if (onTap != null) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        modifier = if (onTap == null) {
+            Modifier
+        } else {
+            // A null interaction source rather than a remembered one:
+            // with no indication to drive there is nothing to collect
+            // interactions for, and clickable allocates one lazily only
+            // if something later asks.
+            Modifier.clickable(
+                interactionSource = null,
+                indication = null,
+                onClick = onTap,
+            )
+        },
+    )
 }
