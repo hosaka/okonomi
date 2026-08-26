@@ -1,23 +1,34 @@
 package cc.hosaka.okonomi.feature.search
 
+import cc.hosaka.okonomi.db.NameHit
+import cc.hosaka.okonomi.db.NameResults
 import cc.hosaka.okonomi.db.SEARCH_MAX_RESULTS
 import cc.hosaka.okonomi.db.SEARCH_RESULT_LIMIT
 import cc.hosaka.okonomi.db.SearchHit
 import cc.hosaka.okonomi.db.SearchResults
 import cc.hosaka.okonomi.db.TitleSegment
+import cc.hosaka.okonomi.db.invalidateDictionary
 import cc.hosaka.okonomi.feature.navigation.state.FakeScreenStateScope
+import cc.hosaka.okonomi.feature.navigation.state.ScreenStateScope
+import cc.hosaka.okonomi.prefs.FakePreferenceStore
+import cc.hosaka.okonomi.prefs.PreferenceStore
 import cc.hosaka.okonomi.ui.PagingFooterState
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -36,8 +47,26 @@ class SearchStateProducerTest {
         isCommon = true,
     )
 
+    private fun name(reading: String, kanji: String? = null) = NameHit(
+        id = reading.hashCode().toLong(),
+        kanji = kanji,
+        reading = reading,
+        types = listOf("surname"),
+        romanisation = reading,
+    )
+
     private val noSearch: suspend (String, Int) -> SearchResults = { _, _ ->
         throw AssertionError("search must not run for this scenario")
+    }
+
+    /**
+     * The assertion behind "off means the query never runs". A lambda
+     * that throws is the only way to tell "not issued" apart from
+     * "issued and discarded", and the difference is the whole toggle:
+     * search runs on every keystroke and こう matches 4,302 names.
+     */
+    private val noNameSearch: suspend (String, Int, Int) -> NameResults = { _, _, _ ->
+        throw AssertionError("no name query may be issued while names are off")
     }
 
     private fun TestScope.collectStates(flow: Flow<SearchState>): List<SearchState> {
@@ -62,7 +91,7 @@ class SearchStateProducerTest {
     fun `the initial state is an empty query with no clear action and idle results`() = runTest {
         val scope = FakeScreenStateScope()
 
-        val states = collectStates(scope.searchScreenStateProducer(search = noSearch))
+        val states = collectStates(scope.producerUnderTest(search = noSearch))
         settle()
 
         val state = states.last()
@@ -76,7 +105,7 @@ class SearchStateProducerTest {
     fun `typing updates the query and enables clear`() = runTest {
         val scope = FakeScreenStateScope()
         val states = collectStates(
-            scope.searchScreenStateProducer(search = { _, _ -> SearchResults(listOf(hit(1))) }),
+            scope.producerUnderTest(search = { _, _ -> SearchResults(listOf(hit(1))) }),
         )
 
         states.last().onQueryChange!!.invoke("こんにちは")
@@ -91,7 +120,7 @@ class SearchStateProducerTest {
     fun `clear empties the query and returns to idle with the clear action hidden`() = runTest {
         val scope = FakeScreenStateScope()
         val states = collectStates(
-            scope.searchScreenStateProducer(search = { _, _ -> SearchResults(listOf(hit(1))) }),
+            scope.producerUnderTest(search = { _, _ -> SearchResults(listOf(hit(1))) }),
         )
 
         states.last().onQueryChange!!.invoke("こんにちは")
@@ -109,7 +138,7 @@ class SearchStateProducerTest {
     fun `query is kept in the persisted flow`() = runTest {
         val scope = FakeScreenStateScope()
         val states = collectStates(
-            scope.searchScreenStateProducer(search = { _, _ -> SearchResults(emptyList()) }),
+            scope.producerUnderTest(search = { _, _ -> SearchResults(emptyList()) }),
         )
 
         states.last().onQueryChange!!.invoke("辞書")
@@ -130,7 +159,7 @@ class SearchStateProducerTest {
         val scope = FakeScreenStateScope()
         var searched: String? = null
         val states = collectStates(
-            scope.searchScreenStateProducer(
+            scope.producerUnderTest(
                 initialQuery = "為る",
                 search = { query, limit ->
                     searched = query
@@ -159,13 +188,13 @@ class SearchStateProducerTest {
         val search: suspend (String, Int) -> SearchResults = { _, _ -> SearchResults(emptyList()) }
 
         val states = collectStates(
-            scope.searchScreenStateProducer(initialQuery = "為る", search = search),
+            scope.producerUnderTest(initialQuery = "為る", search = search),
         )
         states.last().onQueryChange!!.invoke("為さる")
         settle()
 
         val restarted = collectStates(
-            scope.searchScreenStateProducer(initialQuery = "為る", search = search),
+            scope.producerUnderTest(initialQuery = "為る", search = search),
         )
         settle()
 
@@ -176,7 +205,7 @@ class SearchStateProducerTest {
     fun `no route query is the empty field the tab's own root shows`() = runTest {
         val scope = FakeScreenStateScope()
 
-        val states = collectStates(scope.searchScreenStateProducer(search = noSearch))
+        val states = collectStates(scope.producerUnderTest(search = noSearch))
         settle()
 
         assertEquals("", states.last().query)
@@ -194,7 +223,7 @@ class SearchStateProducerTest {
         val pushed = collectStates(
             // A seeded query runs a search, so this one cannot use
             // [noSearch]; what it returns is beside the point here.
-            scope.searchScreenStateProducer(
+            scope.producerUnderTest(
                 initialQuery = "為る",
                 search = { _, _ -> SearchResults(emptyList()) },
             ),
@@ -206,7 +235,7 @@ class SearchStateProducerTest {
         assertEquals(1, scope.pops, "back leaves this search for whatever is under it")
 
         val root = collectStates(
-            FakeScreenStateScope().searchScreenStateProducer(search = noSearch),
+            FakeScreenStateScope().producerUnderTest(search = noSearch),
         )
         settle()
         assertNull(
@@ -218,7 +247,7 @@ class SearchStateProducerTest {
     @Test
     fun `a blank query stays idle and never searches`() = runTest {
         val scope = FakeScreenStateScope()
-        val states = collectStates(scope.searchScreenStateProducer(search = noSearch))
+        val states = collectStates(scope.producerUnderTest(search = noSearch))
 
         states.last().onQueryChange!!.invoke("   ")
         settle()
@@ -231,7 +260,7 @@ class SearchStateProducerTest {
         val scope = FakeScreenStateScope()
         val searched = mutableListOf<String>()
         val states = collectStates(
-            scope.searchScreenStateProducer(
+            scope.producerUnderTest(
                 search = { query, _ ->
                     searched += query
                     SearchResults(listOf(hit(1)))
@@ -256,7 +285,7 @@ class SearchStateProducerTest {
         val scope = FakeScreenStateScope()
         val searched = mutableListOf<String>()
         val states = collectStates(
-            scope.searchScreenStateProducer(
+            scope.producerUnderTest(
                 search = { query, _ ->
                     searched += query
                     SearchResults(listOf(hit(query.length.toLong())))
@@ -278,7 +307,7 @@ class SearchStateProducerTest {
     fun `a stale slow search never overwrites newer results`() = runTest {
         val scope = FakeScreenStateScope()
         val states = collectStates(
-            scope.searchScreenStateProducer(
+            scope.producerUnderTest(
                 search = { query, _ ->
                     if (query == "たべ") {
                         // Slow stale search: cancelled by the newer query.
@@ -307,7 +336,7 @@ class SearchStateProducerTest {
         val scope = FakeScreenStateScope()
         var fail = true
         val states = collectStates(
-            scope.searchScreenStateProducer(
+            scope.producerUnderTest(
                 search = { _, _ ->
                     if (fail) error("boom")
                     SearchResults(listOf(hit(1)))
@@ -329,7 +358,7 @@ class SearchStateProducerTest {
     fun `previous results stay current while a newer query is in flight`() = runTest {
         val scope = FakeScreenStateScope()
         val states = collectStates(
-            scope.searchScreenStateProducer(
+            scope.producerUnderTest(
                 search = { query, _ -> SearchResults(listOf(hit(query.length.toLong()))) },
             ),
         )
@@ -359,7 +388,7 @@ class SearchStateProducerTest {
     fun `the gloss tokens reach the state so english results can highlight`() = runTest {
         val scope = FakeScreenStateScope()
         val states = collectStates(
-            scope.searchScreenStateProducer(
+            scope.producerUnderTest(
                 search = { _, _ -> SearchResults(listOf(hit(1)), glossTokens = listOf("to", "eat")) },
             ),
         )
@@ -380,7 +409,7 @@ class SearchStateProducerTest {
         scope.mutablePersistedFlow("query", "").value = "たべ"
 
         val states = collectStates(
-            scope.searchScreenStateProducer(search = { _, _ -> SearchResults(listOf(hit(1))) }),
+            scope.producerUnderTest(search = { _, _ -> SearchResults(listOf(hit(1))) }),
         )
 
         // Before the debounce elapses the screen must say it is working,
@@ -394,7 +423,7 @@ class SearchStateProducerTest {
     fun `a programming error does not drop the shared handle`() = runTest {
         val scope = FakeScreenStateScope()
         val states = collectStates(
-            scope.searchScreenStateProducer(
+            scope.producerUnderTest(
                 search = { _, _ -> throw IllegalArgumentException("limit must be positive") },
                 invalidate = { throw AssertionError("the handle must survive a programming error") },
             ),
@@ -413,7 +442,7 @@ class SearchStateProducerTest {
         val scope = FakeScreenStateScope()
         var invalidations = 0
         val states = collectStates(
-            scope.searchScreenStateProducer(
+            scope.producerUnderTest(
                 search = { _, _ -> throw RuntimeException("database gone") },
                 invalidate = { invalidations++ },
             ),
@@ -430,7 +459,7 @@ class SearchStateProducerTest {
     fun `results with nothing more behind them offer no way to show more`() = runTest {
         val scope = FakeScreenStateScope()
         val states = collectStates(
-            scope.searchScreenStateProducer(
+            scope.producerUnderTest(
                 search = { _, _ -> SearchResults(listOf(hit(1)), hasMore = false) },
             ),
         )
@@ -447,7 +476,7 @@ class SearchStateProducerTest {
         val scope = FakeScreenStateScope()
         val limits = mutableListOf<Int>()
         val states = collectStates(
-            scope.searchScreenStateProducer(
+            scope.producerUnderTest(
                 search = { _, limit ->
                     limits += limit
                     // Deterministic ranking: a longer limit is a longer
@@ -480,7 +509,7 @@ class SearchStateProducerTest {
         val scope = FakeScreenStateScope()
         val limits = mutableListOf<Int>()
         val states = collectStates(
-            scope.searchScreenStateProducer(
+            scope.producerUnderTest(
                 search = { _, limit ->
                     limits += limit
                     SearchResults((1..limit).map { hit(it.toLong()) }, hasMore = true)
@@ -505,7 +534,7 @@ class SearchStateProducerTest {
     fun `paging stops at the ranking pool rather than growing it`() = runTest {
         val scope = FakeScreenStateScope()
         val states = collectStates(
-            scope.searchScreenStateProducer(
+            scope.producerUnderTest(
                 // hasMore stays true forever: a match set larger than the
                 // pool always has more behind it, and stopping is the
                 // producer's decision rather than the search's.
@@ -535,7 +564,7 @@ class SearchStateProducerTest {
         val scope = FakeScreenStateScope()
         val limits = mutableListOf<Int>()
         val states = collectStates(
-            scope.searchScreenStateProducer(
+            scope.producerUnderTest(
                 search = { _, limit ->
                     limits += limit
                     SearchResults((1..limit).map { hit(it.toLong()) }, hasMore = true)
@@ -561,7 +590,7 @@ class SearchStateProducerTest {
     fun `a failed extension leaves the rows already on screen standing`() = runTest {
         val scope = FakeScreenStateScope()
         val states = collectStates(
-            scope.searchScreenStateProducer(
+            scope.producerUnderTest(
                 search = { _, limit ->
                     if (limit > SEARCH_RESULT_LIMIT) error("database gone")
                     SearchResults((1..limit).map { hit(it.toLong()) }, hasMore = true)
@@ -600,7 +629,7 @@ class SearchStateProducerTest {
         val limits = mutableListOf<Int>()
         var failExtensions = true
         val states = collectStates(
-            scope.searchScreenStateProducer(
+            scope.producerUnderTest(
                 search = { _, limit ->
                     limits += limit
                     if (limit > SEARCH_RESULT_LIMIT && failExtensions) error("database gone")
@@ -642,7 +671,7 @@ class SearchStateProducerTest {
     fun `an extension in flight puts a loading footer under the standing rows`() = runTest {
         val scope = FakeScreenStateScope()
         val states = collectStates(
-            scope.searchScreenStateProducer(
+            scope.producerUnderTest(
                 search = { _, limit ->
                     if (limit > SEARCH_RESULT_LIMIT) delay(1_000)
                     SearchResults((1..limit).map { hit(it.toLong()) }, hasMore = true)
@@ -676,7 +705,7 @@ class SearchStateProducerTest {
         val scope = FakeScreenStateScope()
         val limits = mutableListOf<Int>()
         val states = collectStates(
-            scope.searchScreenStateProducer(
+            scope.producerUnderTest(
                 search = { _, limit ->
                     limits += limit
                     if (limit > SEARCH_RESULT_LIMIT) error("database gone")
@@ -705,10 +734,419 @@ class SearchStateProducerTest {
     }
 
     @Test
+    fun `names are off on a fresh install and no name query is issued`() = runTest {
+        val scope = FakeScreenStateScope()
+        val states = collectStates(
+            scope.producerUnderTest(
+                search = { _, _ -> SearchResults(listOf(hit(1))) },
+                nameSearch = noNameSearch,
+                preferences = FakePreferenceStore(),
+            ),
+        )
+
+        states.last().onQueryChange!!.invoke("たなか")
+        settle()
+
+        assertFalse(states.last().namesEnabled)
+        val results = assertIs<SearchResultsState.Results>(states.last().results)
+        assertEquals(listOf(1L), results.hits.map { it.entryId }, "the words are exactly today's")
+        assertTrue(results.names.isEmpty())
+    }
+
+    @Test
+    fun `turning names on runs the name query and puts the names below the words`() = runTest {
+        val scope = FakeScreenStateScope()
+        val preferences = FakePreferenceStore()
+        val nameQueries = mutableListOf<String>()
+        val states = collectStates(
+            scope.producerUnderTest(
+                search = { _, _ -> SearchResults(listOf(hit(1))) },
+                nameSearch = { query, _, _ ->
+                    nameQueries += query
+                    NameResults(listOf(name("たなか", "田中")))
+                },
+                preferences = preferences,
+            ),
+        )
+
+        states.last().onQueryChange!!.invoke("たなか")
+        settle()
+        assertTrue(nameQueries.isEmpty(), "off is off until the reader says otherwise")
+
+        states.last().onNamesEnabledChange!!.invoke(true)
+        settle()
+
+        assertTrue(states.last().namesEnabled)
+        assertEquals(listOf("たなか"), nameQueries)
+        val results = assertIs<SearchResultsState.Results>(states.last().results)
+        assertEquals(listOf(1L), results.hits.map { it.entryId })
+        assertEquals(listOf("田中"), results.names.map { it.kanji })
+        assertEquals(
+            listOf(NAMES_IN_SEARCH_PREFERENCE to true),
+            preferences.writes,
+            "the toggle must reach storage, or it cannot survive a relaunch",
+        )
+    }
+
+    /**
+     * The matrix's "toggle persists" row. A later run of the producer is
+     * what a relaunch looks like from here: the store outlives it, the
+     * producer does not.
+     */
+    @Test
+    fun `the names toggle survives a restart of the producer`() = runTest {
+        val scope = FakeScreenStateScope()
+        val preferences = FakePreferenceStore()
+        val search: suspend (String, Int) -> SearchResults = { _, _ -> SearchResults(emptyList()) }
+        val nameSearch: suspend (String, Int, Int) -> NameResults = { _, _, _ -> NameResults(emptyList()) }
+
+        val first = collectStates(
+            scope.producerUnderTest(search = search, nameSearch = nameSearch, preferences = preferences),
+        )
+        settle()
+        first.last().onNamesEnabledChange!!.invoke(true)
+        settle()
+
+        val restarted = collectStates(
+            scope.producerUnderTest(search = search, nameSearch = nameSearch, preferences = preferences),
+        )
+        settle()
+
+        assertTrue(restarted.last().namesEnabled, "a stored toggle must come back on")
+    }
+
+    @Test
+    fun `turning names off again stops the name query`() = runTest {
+        val scope = FakeScreenStateScope()
+        val preferences = FakePreferenceStore(mapOf(NAMES_IN_SEARCH_PREFERENCE to true))
+        var namesOn = true
+        val states = collectStates(
+            scope.producerUnderTest(
+                search = { _, _ -> SearchResults(listOf(hit(1))) },
+                nameSearch = { _, _, _ ->
+                    if (!namesOn) throw AssertionError("no name query may be issued while names are off")
+                    NameResults(listOf(name("たなか", "田中")))
+                },
+                preferences = preferences,
+            ),
+        )
+
+        states.last().onQueryChange!!.invoke("たなか")
+        settle()
+        assertTrue(assertIs<SearchResultsState.Results>(states.last().results).names.isNotEmpty())
+
+        namesOn = false
+        states.last().onNamesEnabledChange!!.invoke(false)
+        settle()
+
+        val results = assertIs<SearchResultsState.Results>(states.last().results)
+        assertTrue(results.names.isEmpty(), "the rows go with the query that fetched them")
+        assertEquals(listOf(1L), results.hits.map { it.entryId }, "the words are untouched by the toggle")
+    }
+
+    /**
+     * The matrix's "words absent" row: a reading no word uses is still a
+     * name, and the screen has to treat that as a result rather than as
+     * an empty search.
+     */
+    @Test
+    fun `names alone are a result even with no words above them`() = runTest {
+        val scope = FakeScreenStateScope()
+        val states = collectStates(
+            scope.producerUnderTest(
+                search = { _, _ -> SearchResults(emptyList()) },
+                nameSearch = { _, _, _ -> NameResults(listOf(name("たなか", "田中"))) },
+                preferences = FakePreferenceStore(mapOf(NAMES_IN_SEARCH_PREFERENCE to true)),
+            ),
+        )
+
+        states.last().onQueryChange!!.invoke("たなか")
+        settle()
+
+        val results = assertIs<SearchResultsState.Results>(states.last().results)
+        assertTrue(results.hits.isEmpty())
+        assertEquals(listOf("田中"), results.names.map { it.kanji })
+    }
+
+    /**
+     * こう matches 4,302 names and a handful of words. One limit and one
+     * pager serve both halves of the list, so the names having more is
+     * enough to keep paging alive after the words have run out.
+     */
+    @Test
+    fun `names with more behind them keep the list pageable after the words run out`() = runTest {
+        val scope = FakeScreenStateScope()
+        val names = FakeNames(size = 500)
+        val states = collectStates(
+            scope.producerUnderTest(
+                search = { _, _ -> SearchResults(listOf(hit(1)), hasMore = false) },
+                nameSearch = names::page,
+                preferences = FakePreferenceStore(mapOf(NAMES_IN_SEARCH_PREFERENCE to true)),
+            ),
+        )
+
+        states.last().onQueryChange!!.invoke("こう")
+        settle()
+
+        val results = assertIs<SearchResultsState.Results>(states.last().results)
+        assertNotNull(results.onShowMore, "the names below still have pages behind them")
+
+        results.onShowMore!!.invoke()
+        settle()
+
+        val extended = assertIs<SearchResultsState.Results>(states.last().results)
+        assertEquals(SEARCH_RESULT_LIMIT * 2, extended.names.size)
+        assertEquals(listOf(1L), extended.hits.map { it.entryId }, "the words never move")
+    }
+
+    /**
+     * Alex renegotiated "uncapped" on 2026-08-26 — "Cap at 400 like
+     * words" — so one ceiling now binds both lists. The version this
+     * replaces let names page without bound, which for あ meant holding
+     * all 22,831 of its matches.
+     */
+    @Test
+    fun `both lists stop at the same ceiling`() = runTest {
+        val scope = FakeScreenStateScope()
+        val names = FakeNames(size = SEARCH_MAX_RESULTS * 2)
+        val states = collectStates(
+            scope.producerUnderTest(
+                search = { _, limit -> SearchResults((1..limit).map { hit(it.toLong()) }, hasMore = true) },
+                nameSearch = names::page,
+                preferences = FakePreferenceStore(mapOf(NAMES_IN_SEARCH_PREFERENCE to true)),
+            ),
+        )
+
+        states.last().onQueryChange!!.invoke("こう")
+        settle()
+        var results = assertIs<SearchResultsState.Results>(states.last().results)
+        var pages = 0
+        while (results.onShowMore != null) {
+            pages++
+            assertTrue(pages < 100, "paging must terminate")
+            results.onShowMore!!.invoke()
+            settle()
+            results = assertIs<SearchResultsState.Results>(states.last().results)
+        }
+
+        assertEquals(SEARCH_MAX_RESULTS, results.hits.size, "the words stop at the pool")
+        assertEquals(SEARCH_MAX_RESULTS, results.names.size, "and the names stop with them")
+        assertTrue(
+            names.calls.all { (offset, limit) -> offset + limit <= SEARCH_MAX_RESULTS },
+            "nothing may be fetched past the ceiling: ${names.calls}",
+        )
+    }
+
+    /**
+     * Paging grows one limit that both lists share, so without a memory
+     * of what has already been fetched every name page re-ran the word
+     * search — up to eight English FTS pool-and-hydrate passes for a
+     * result set that could not change — and re-read every name row
+     * already on screen.
+     */
+    @Test
+    fun `a name page asks only for what is new and does not run the word search again`() = runTest {
+        val scope = FakeScreenStateScope()
+        val wordLimits = mutableListOf<Int>()
+        val names = FakeNames(size = 500)
+        val states = collectStates(
+            scope.producerUnderTest(
+                search = { _, limit ->
+                    wordLimits += limit
+                    // Exhausted at the first page: nothing a longer limit
+                    // could add.
+                    SearchResults(listOf(hit(1)), hasMore = false)
+                },
+                nameSearch = names::page,
+                preferences = FakePreferenceStore(mapOf(NAMES_IN_SEARCH_PREFERENCE to true)),
+            ),
+        )
+
+        states.last().onQueryChange!!.invoke("こう")
+        settle()
+        assertIs<SearchResultsState.Results>(states.last().results).onShowMore!!.invoke()
+        settle()
+        assertIs<SearchResultsState.Results>(states.last().results).onShowMore!!.invoke()
+        settle()
+
+        val results = assertIs<SearchResultsState.Results>(states.last().results)
+        assertEquals(SEARCH_RESULT_LIMIT * 3, results.names.size)
+        assertEquals(
+            listOf(0 to SEARCH_RESULT_LIMIT, SEARCH_RESULT_LIMIT to SEARCH_RESULT_LIMIT, 100 to SEARCH_RESULT_LIMIT),
+            names.calls,
+            "each page must fetch its own rows and no others",
+        )
+        assertEquals(
+            listOf(SEARCH_RESULT_LIMIT),
+            wordLimits,
+            "the word search ran once; the two name pages must not have re-run it",
+        )
+    }
+
+    /**
+     * Names decorate a word result and must never hide one. The name
+     * search used to sit inside the same try as the word search, so a
+     * name query failing discarded results that had already arrived and
+     * put an error on screen — the defect the Phrases tab had once.
+     */
+    @Test
+    fun `a failing name search leaves the words on screen`() = runTest {
+        val scope = FakeScreenStateScope()
+        var namesFail = true
+        val states = collectStates(
+            scope.producerUnderTest(
+                search = { _, _ -> SearchResults(listOf(hit(1))) },
+                nameSearch = { _, _, _ ->
+                    if (namesFail) error("names gone")
+                    NameResults(listOf(name("たなか", "田中")))
+                },
+                preferences = FakePreferenceStore(mapOf(NAMES_IN_SEARCH_PREFERENCE to true)),
+                invalidate = { throw AssertionError("a name failure must not drop the shared handle") },
+            ),
+        )
+
+        states.last().onQueryChange!!.invoke("たなか")
+        settle()
+
+        val results = assertIs<SearchResultsState.Results>(states.last().results)
+        assertEquals(listOf(1L), results.hits.map { it.entryId }, "the words were fetched and must stand")
+        assertTrue(results.names.isEmpty())
+
+        // And the failure is not sticky: the next query gets names again.
+        namesFail = false
+        states.last().onQueryChange!!.invoke("たなかa")
+        settle()
+        assertEquals(
+            listOf("田中"),
+            assertIs<SearchResultsState.Results>(states.last().results).names.map { it.kanji },
+        )
+    }
+
+    /**
+     * The toggle is seeded with its default so the screen never waits
+     * on storage, and the stored value then replaces it — a second pass
+     * through the whole pipeline whenever a reader has names on.
+     *
+     * That pass must not cost a second search. The store here answers at
+     * 300 ms, past the 200 ms debounce, so the first pass has already
+     * queried by the time the real value lands: what stops the second
+     * from querying again is [SearchMemory] recognising the same query
+     * at the same limit. Without it this is two full searches — and on
+     * the English path, two FTS pool-and-hydrate passes.
+     */
+    @Test
+    fun `a restored search with names already on runs the word search once`() = runTest {
+        val scope = FakeScreenStateScope()
+        scope.mutablePersistedFlow("query", "").value = "たなか"
+        val wordSearches = mutableListOf<String>()
+        val nameSearches = mutableListOf<String>()
+        val states = collectStates(
+            scope.producerUnderTest(
+                search = { query, _ ->
+                    wordSearches += query
+                    SearchResults(listOf(hit(1)))
+                },
+                nameSearch = { query, _, _ ->
+                    nameSearches += query
+                    NameResults(listOf(name("たなか", "田中")))
+                },
+                preferences = SlowPreferenceStore(
+                    answerAfter = 300.milliseconds,
+                    values = mapOf(NAMES_IN_SEARCH_PREFERENCE to true),
+                ),
+            ),
+        )
+        advanceTimeBy(2_000.milliseconds)
+        runCurrent()
+
+        assertEquals(listOf("たなか"), wordSearches, "the seed must not have cost a second search")
+        assertEquals(listOf("たなか"), nameSearches)
+        assertTrue(states.last().namesEnabled)
+    }
+
+    /**
+     * The switch on the field and the rows under it come from one
+     * collection of one flow, so they cannot report different answers.
+     * Two collections could settle a beat apart and did.
+     */
+    @Test
+    fun `the toggle and the rows under it never disagree`() = runTest {
+        val scope = FakeScreenStateScope()
+        val states = collectStates(
+            scope.producerUnderTest(
+                search = { _, _ -> SearchResults(listOf(hit(1))) },
+                nameSearch = { _, _, _ -> NameResults(listOf(name("たなか", "田中"))) },
+                preferences = FakePreferenceStore(),
+            ),
+        )
+
+        states.last().onQueryChange!!.invoke("たなか")
+        settle()
+        states.last().onNamesEnabledChange!!.invoke(true)
+        settle()
+
+        assertTrue(states.last().namesEnabled)
+        states.forEach { state ->
+            val results = state.results
+            if (results is SearchResultsState.Results && results.names.isNotEmpty()) {
+                assertTrue(
+                    state.namesEnabled,
+                    "a state showing name rows must also report the toggle as on",
+                )
+            }
+        }
+    }
+
+    /**
+     * The matrix's "falls back to off if storage fails" row, at the seam
+     * the producer sees: a store that reports nothing at all must not
+     * leave the screen waiting on it.
+     */
+    @Test
+    fun `a preference store that never answers leaves names off rather than the screen blank`() = runTest {
+        val scope = FakeScreenStateScope()
+        val states = collectStates(
+            scope.producerUnderTest(
+                search = { _, _ -> SearchResults(listOf(hit(1))) },
+                nameSearch = noNameSearch,
+                preferences = SilentPreferenceStore(),
+            ),
+        )
+
+        states.last().onQueryChange!!.invoke("たなか")
+        settle()
+
+        assertFalse(states.last().namesEnabled)
+        assertIs<SearchResultsState.Results>(states.last().results)
+    }
+
+    /**
+     * The harder half of the same promise: a store that neither answers
+     * nor fails, which an empty flow does not model because it completes.
+     * The seed has to arrive on a timer for the screen to come up at all.
+     */
+    @Test
+    fun `a preference store that hangs still lets the screen come up`() = runTest {
+        val scope = FakeScreenStateScope()
+        val states = collectStates(
+            scope.producerUnderTest(
+                search = { _, _ -> SearchResults(listOf(hit(1))) },
+                nameSearch = noNameSearch,
+                preferences = HangingPreferenceStore(),
+            ),
+        )
+        states.last().onQueryChange!!.invoke("たなか")
+        settle()
+
+        assertFalse(states.last().namesEnabled)
+        assertIs<SearchResultsState.Results>(states.last().results)
+    }
+
+    @Test
     fun `the fallback flag reaches the state`() = runTest {
         val scope = FakeScreenStateScope()
         val states = collectStates(
-            scope.searchScreenStateProducer(
+            scope.producerUnderTest(
                 search = { _, _ -> SearchResults(listOf(hit(1)), isFallback = true) },
             ),
         )
@@ -718,5 +1156,79 @@ class SearchStateProducerTest {
 
         val results = assertIs<SearchResultsState.Results>(states.last().results)
         assertTrue(results.isFallback)
+    }
+}
+
+/**
+ * [searchScreenStateProducer] with a preference store the test owns.
+ *
+ * The production default is `appPreferences()`, which opens a real
+ * DataStore over a real file: it answers on a real dispatcher, so a test
+ * driving virtual time cannot say when. Every case here injects a map
+ * instead, and the two cases that are *about* storage inject something
+ * deliberately broken. Every other argument keeps the production
+ * default, so a signature change still has to be dealt with here.
+ */
+private suspend fun ScreenStateScope.producerUnderTest(
+    initialQuery: String? = null,
+    search: suspend (String, Int) -> SearchResults,
+    nameSearch: suspend (String, Int, Int) -> NameResults = { _, _, _ -> NameResults(emptyList()) },
+    preferences: PreferenceStore = FakePreferenceStore(),
+    invalidate: suspend () -> Unit = { invalidateDictionary() },
+): Flow<SearchState> = searchScreenStateProducer(
+    initialQuery = initialQuery,
+    search = search,
+    nameSearch = nameSearch,
+    preferences = preferences,
+    invalidate = invalidate,
+)
+
+/** A store whose reads complete without ever producing a value. */
+private class SilentPreferenceStore : PreferenceStore {
+    override fun booleanFlow(key: String, default: Boolean): Flow<Boolean> = emptyFlow()
+
+    override fun setBoolean(key: String, value: Boolean) = Unit
+}
+
+/** A store whose reads neither answer nor fail — a wedged file. */
+private class HangingPreferenceStore : PreferenceStore {
+    override fun booleanFlow(key: String, default: Boolean): Flow<Boolean> = flow { awaitCancellation() }
+
+    override fun setBoolean(key: String, value: Boolean) = Unit
+}
+
+/** A store that answers, but only after [answerAfter] — a cold file read. */
+private class SlowPreferenceStore(
+    private val answerAfter: Duration,
+    private val values: Map<String, Boolean>,
+) : PreferenceStore {
+    override fun booleanFlow(key: String, default: Boolean): Flow<Boolean> = flow {
+        delay(answerAfter)
+        emit(values[key] ?: default)
+    }
+
+    override fun setBoolean(key: String, value: Boolean) = Unit
+}
+
+/**
+ * A name corpus that pages the way the database does: by offset, over a
+ * total order, so a page is the rows after the previous one rather than
+ * the previous one fetched again.
+ */
+private class FakeNames(private val size: Int) {
+    /** Every (offset, limit) asked for, in order. */
+    val calls = mutableListOf<Pair<Int, Int>>()
+
+    fun page(query: String, offset: Int, limit: Int): NameResults {
+        calls += offset to limit
+        val end = minOf(offset + limit, size)
+        val rows = if (offset >= size) {
+            emptyList()
+        } else {
+            (offset until end).map {
+                NameHit(id = it.toLong(), kanji = null, reading = "$query$it", types = listOf("surname"), romanisation = "n$it")
+            }
+        }
+        return NameResults(rows, hasMore = end < size)
     }
 }

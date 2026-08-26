@@ -7,6 +7,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -61,6 +62,11 @@ import org.jetbrains.compose.resources.stringResource
  * Focus arriving on a field that already holds text puts the caret at
  * the end of it, so reselecting the Search tab leaves the reader ready
  * to refine the query rather than to type in front of it.
+ *
+ * [trailing] is drawn at the trailing edge, after the clear action rather
+ * than in place of it: clear is the action the reader reaches for while
+ * typing and it keeps the position it has always had. A caller that
+ * passes nothing gets exactly the field it always got.
  */
 @Composable
 fun SearchTextField(
@@ -71,6 +77,7 @@ fun SearchTextField(
     onClear: (() -> Unit)? = onTextChange?.let { { it("") } },
     onSearch: (() -> Unit)? = null,
     focusRequester: FocusRequester? = null,
+    trailing: @Composable RowScope.() -> Unit = {},
 ) {
     val focusManager = LocalFocusManager.current
     val contentColor = MaterialTheme.colorScheme.onSurface
@@ -224,5 +231,6 @@ fun SearchTextField(
                 )
             }
         }
+        trailing()
     }
 }

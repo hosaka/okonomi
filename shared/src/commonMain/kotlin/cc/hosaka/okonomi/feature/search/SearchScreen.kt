@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -41,6 +42,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import cc.hosaka.okonomi.db.NameHit
 import cc.hosaka.okonomi.db.SearchHit
 import cc.hosaka.okonomi.feature.home.navigation.LocalHomeReselect
 import cc.hosaka.okonomi.feature.home.navigation.resolveHomeReselect
@@ -51,6 +53,7 @@ import cc.hosaka.okonomi.ui.CommonWordChip
 import cc.hosaka.okonomi.ui.LoadMoreEffect
 import cc.hosaka.okonomi.ui.PagingFooterState
 import cc.hosaka.okonomi.ui.SearchTextField
+import cc.hosaka.okonomi.ui.TagChip
 import cc.hosaka.okonomi.ui.furigana.FuriganaText
 import cc.hosaka.okonomi.ui.pagingFooterItem
 import cc.hosaka.okonomi.ui.scrollIndicator
@@ -59,6 +62,10 @@ import cc.hosaka.okonomi.ui.theme.atJapaneseReadingSize
 import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
 import okonomi.shared.generated.resources.Res
 import okonomi.shared.generated.resources.entry_back
+import okonomi.shared.generated.resources.name_type_fem
+import okonomi.shared.generated.resources.name_type_given
+import okonomi.shared.generated.resources.name_type_masc
+import okonomi.shared.generated.resources.name_type_surname
 import okonomi.shared.generated.resources.search_error
 import okonomi.shared.generated.resources.search_no_results
 import okonomi.shared.generated.resources.search_placeholder
@@ -105,11 +112,14 @@ fun SearchScreen(
 
 /**
  * The query field, with a back control in front of it when this search
- * is not its section's root.
+ * is not its section's root, and the overflow menu at its trailing edge
+ * in both cases.
  *
- * The root case composes exactly the field it always did — no Row
- * around it, no leading space held for a control that is not there — so
- * the Search tab is untouched by this.
+ * What the root case still does not get is the Row and the leading space
+ * a back control would need — that is the part the pushed case adds and
+ * the tab's own search does without. The menu is not part of that split:
+ * the Names toggle belongs to searching, not to how this screen was
+ * reached, so both branches carry it.
  */
 @Composable
 private fun SearchField(
@@ -117,6 +127,12 @@ private fun SearchField(
     focusRequester: FocusRequester,
 ) {
     val onBack = state.onBack
+    val overflow: @Composable RowScope.() -> Unit = {
+        SearchOverflowMenu(
+            namesEnabled = state.namesEnabled,
+            onNamesEnabledChange = state.onNamesEnabledChange,
+        )
+    }
     if (onBack == null) {
         SearchTextField(
             modifier = Modifier
@@ -127,6 +143,7 @@ private fun SearchField(
             onTextChange = state.onQueryChange,
             onClear = state.onClear,
             focusRequester = focusRequester,
+            trailing = overflow,
         )
     } else {
         Row(
@@ -149,6 +166,7 @@ private fun SearchField(
                 onTextChange = state.onQueryChange,
                 onClear = state.onClear,
                 focusRequester = focusRequester,
+                trailing = overflow,
             )
         }
     }
@@ -207,8 +225,12 @@ private fun SearchResultsContent(
             // visible; a spinner only when there is nothing to show.
             val refining = results.query != state.query
             when {
-                results.hits.isNotEmpty() -> SearchResultsList(
+                // Names count as results: a reading no word uses can
+                // still be a name, and with the toggle on that is a list
+                // rather than an empty state.
+                results.hits.isNotEmpty() || results.names.isNotEmpty() -> SearchResultsList(
                     hits = results.hits,
+                    names = results.names,
                     isFallback = results.isFallback,
                     resultsQuery = results.query,
                     glossTokens = results.glossTokens,
@@ -235,6 +257,7 @@ private fun SearchResultsContent(
 @Composable
 private fun SearchResultsList(
     hits: List<SearchHit>,
+    names: List<NameHit>,
     isFallback: Boolean,
     resultsQuery: String,
     glossTokens: List<String>,
@@ -279,6 +302,15 @@ private fun SearchResultsList(
                     navigation.navigate(EntryRoute(hit.entryId))
                 },
             )
+        }
+        // Below every word, in the same list: one scroll and one pager
+        // serve both, and a word result can never be pushed off the top
+        // by a name however many of them match.
+        items(
+            items = names,
+            key = { it.key },
+        ) { name ->
+            NameResultRow(name = name)
         }
         pagingFooterItem(footer)
     }
@@ -374,6 +406,69 @@ private fun SearchResultRow(
             )
         }
     }
+}
+
+/**
+ * A name row: everything JMnedict says about a name, and nothing more.
+ *
+ * The headword is set the way a word row's is — the written form with its
+ * reading over the kanji, at the same size — so the two read as one list.
+ * What is different is what a name has: no senses and no part of speech,
+ * so the line below the headword is the romanisation rather than glosses,
+ * and the chips say which kind of name it is.
+ *
+ * Deliberately not clickable (Alex's ruling). The Entry View is built out
+ * of senses, forms and a kanji breakdown, none of which a name has, and a
+ * screen made for one could only repeat this row back.
+ */
+@Composable
+private fun NameResultRow(
+    name: NameHit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                horizontal = Dimens.contentPadding,
+                vertical = Dimens.verticalPaddingHalf,
+            ),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            FuriganaText(
+                segments = remember(name) { nameFurigana(name.kanji, name.reading) },
+                style = MaterialTheme.typography.titleMedium.atJapaneseReadingSize(),
+            )
+            name.types.forEach { code ->
+                Spacer(
+                    modifier = Modifier
+                        .width(ROW_GAP),
+                )
+                TagChip(text = nameTypeLabel(code))
+            }
+        }
+        Text(
+            text = name.romanisation,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * The short label a person-name code is shown as. A code with no label of
+ * its own is shown verbatim, the way the entry view shows an unknown
+ * sense code: dictgen only ever writes the four, so this is the branch
+ * for a source that grew a fifth rather than a case anyone will see.
+ */
+@Composable
+private fun nameTypeLabel(code: String): String = when (code) {
+    "surname" -> stringResource(Res.string.name_type_surname)
+    "given" -> stringResource(Res.string.name_type_given)
+    "fem" -> stringResource(Res.string.name_type_fem)
+    "masc" -> stringResource(Res.string.name_type_masc)
+    else -> code
 }
 
 /**

@@ -82,6 +82,8 @@ kotlin {
             implementation(libs.androidx.sqlite)
             implementation(libs.androidx.sqlite.bundled)
             implementation(libs.sqldelight.androidx.driver)
+            // The app's only preference storage; see cc.hosaka.okonomi.prefs.
+            implementation(libs.androidx.datastore.preferencesCore)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

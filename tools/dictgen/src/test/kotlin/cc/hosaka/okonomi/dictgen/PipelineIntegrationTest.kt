@@ -30,9 +30,12 @@ class PipelineIntegrationTest {
         assertEquals(2L, summary.counts["glosses"])
         assertEquals(1L, summary.counts["kanji"])
         assertEquals(2L, summary.counts["radicals"])
-        assertEquals(1L, summary.counts["names"])
-        // Five JMdict entities plus JMnedict's one.
-        assertEquals(6L, summary.counts["tags"])
+        // Two of the fixture's four name entries are person names; see
+        // keepsOnlyPersonNames.
+        assertEquals(2L, summary.counts["names"])
+        assertEquals(2L, summary.counts["nonperson"])
+        // Five JMdict entities plus JMnedict's four.
+        assertEquals(9L, summary.counts["tags"])
         // Four of the six index rows resolve to a pair, and the one
         // whose words are in no entry is pruned again.
         assertEquals(3L, summary.counts["sentences"])
@@ -118,13 +121,58 @@ class PipelineIntegrationTest {
     @Test
     fun persistsNameRows() {
         withDb(generate()) { db ->
-            val name = db.nameQueries.searchNamePrefix("しめえ", 10).executeAsList().single()
+            val name = db.nameQueries
+                .searchNamePrefix("しめえ", "しめえ￿", "シメエ", "シメエ￿", limit = 10, offset = 0)
+                .executeAsList()
+                .single()
             assertEquals(5000002L, name.id)
             assertEquals("〆ヱ", name.kanji)
             assertEquals("しめえ", name.reading)
             assertEquals("fem", name.name_type)
             assertEquals("Shimee", name.translation)
+
+            assertEquals(
+                listOf(5000002L),
+                db.nameQueries
+                    .searchNamePrefix("〆", "〆￿", "〆", "〆￿", limit = 10, offset = 0)
+                    .executeAsList()
+                    .map { it.id },
+                "the kanji column is searched by the same query, through its own index",
+            )
         }
+    }
+
+    /**
+     * The filter is the whole reason the app reads JMnedict at all: the
+     * fixture's place and famous-person rows are two thirds of what the
+     * source offers and none of what a reader wants, and dropping them
+     * takes the shipped database from 209 MB to roughly 172 MB.
+     */
+    @Test
+    fun keepsOnlyPersonNames() {
+        withDb(generate()) { db ->
+            val kept = db.nameQueries
+                .searchNamePrefix("", "￿", "", "￿", limit = 100, offset = 0)
+                .executeAsList()
+            assertEquals(
+                listOf("しめえ" to "fem", "たなか" to "surname,person"),
+                kept.map { it.reading to it.name_type }.sortedBy { it.first },
+                "surname/given/fem/masc survive, including beside person; place and pure person do not",
+            )
+        }
+    }
+
+    @Test
+    fun reportsWhatTheNameFilterDropped() {
+        val dataDir = tempDir()
+        Fixtures.writeDataDir(dataDir)
+        val summary = Pipeline(dataDir, File(tempDir(), "okonomi.db")).run()
+
+        assertEquals(2L, summary.counts["names"])
+        // A drop count that fell to zero would mean the type codes stopped
+        // arriving and every place name shipped again in silence.
+        assertEquals(2L, summary.counts["nonperson"])
+        assertTrue("nonperson" in summary.report(), "the summary must state what was dropped")
     }
 
     @Test
@@ -149,7 +197,7 @@ class PipelineIntegrationTest {
                 labels,
                 "entity expansions should be stored verbatim, unknown codes absent",
             )
-            assertEquals(6L, db.tagQueries.tagLabelCount().executeAsOne())
+            assertEquals(9L, db.tagQueries.tagLabelCount().executeAsOne())
         }
     }
 
@@ -240,7 +288,7 @@ class PipelineIntegrationTest {
         // of the sidecar that can move, and therefore the only thing
         // that makes a provisioned device re-copy.
         assertEquals(1L, OkonomiDb.Schema.version)
-        assertEquals(5, DICTIONARY_FORMAT_VERSION)
+        assertEquals(6, DICTIONARY_FORMAT_VERSION)
     }
 
     @Test
@@ -268,7 +316,7 @@ class PipelineIntegrationTest {
         assertTrue(sidecar.isFile, "sidecar should be written next to the database")
         // Literals on purpose: the sidecar is the only thing that makes
         // a device re-copy, so a silent version regression must fail here.
-        assertEquals("${Fixtures.JMDICT_DATE}:1:5", sidecar.readText())
+        assertEquals("${Fixtures.JMDICT_DATE}:1:6", sidecar.readText())
         assertEquals(
             "${Fixtures.JMDICT_DATE}:${OkonomiDb.Schema.version}:$DICTIONARY_FORMAT_VERSION",
             sidecar.readText(),

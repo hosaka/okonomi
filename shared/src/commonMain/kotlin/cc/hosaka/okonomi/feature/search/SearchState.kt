@@ -1,6 +1,7 @@
 package cc.hosaka.okonomi.feature.search
 
 import androidx.compose.runtime.Immutable
+import cc.hosaka.okonomi.db.NameHit
 import cc.hosaka.okonomi.db.SearchHit
 import cc.hosaka.okonomi.db.TitleSegment
 import cc.hosaka.okonomi.db.forEachWord
@@ -25,6 +26,21 @@ data class SearchState(
      * button, so without this the only way out is the edge swipe.
      */
     val onBack: (() -> Unit)? = null,
+    /**
+     * Whether person-name results are shown under the words. Off until
+     * the reader asks for it, and persisted once they do.
+     *
+     * Off is not merely a filter on what is drawn: the producer issues no
+     * name query at all while this is false, so the default search costs
+     * exactly what it always did. See `searchScreenStateProducer`.
+     *
+     * The default is [NAMES_IN_SEARCH_DEFAULT] rather than a literal, so
+     * "off until asked for" is one fact in one place: a second `false`
+     * here could be changed on its own and quietly disagree with what
+     * the producer reads out of storage.
+     */
+    val namesEnabled: Boolean = NAMES_IN_SEARCH_DEFAULT,
+    val onNamesEnabledChange: ((Boolean) -> Unit)? = null,
     val results: SearchResultsState = SearchResultsState.Idle,
 )
 
@@ -59,6 +75,21 @@ sealed interface SearchResultsState {
         val query: String,
         val hits: List<SearchHit>,
         val isFallback: Boolean,
+        /**
+         * Person names matching the query, drawn below every word result
+         * and never mixed into them (Alex's ruling).
+         *
+         * Below rather than interleaved because names outnumber
+         * dictionary entries several times over and collide with real
+         * readings in their tens of thousands: under any ranking that
+         * mixed them, ordinary lookups would become mostly names. Kept
+         * apart, an ordinary lookup reads exactly as it did and every
+         * name is still reachable by scrolling.
+         *
+         * Always empty while the toggle is off, because no name query
+         * ran.
+         */
+        val names: List<NameHit> = emptyList(),
         /**
          * Query tokens to highlight in the sense lines (English
          * results only); see [glossHighlights].
@@ -145,6 +176,22 @@ fun titleFurigana(segments: List<TitleSegment>): List<FuriganaSegment> {
     }
     return title
 }
+
+/**
+ * A name row's headword as furigana, set the way a word row's is: the
+ * written form with its reading over the kanji.
+ *
+ * A name has one written form and one reading and never a highlight —
+ * every character of the query is a character of the prefix that matched,
+ * so there is nothing a highlight would tell the reader that the row does
+ * not already say. A kana-only name is drawn as itself, with no ruby.
+ */
+fun nameFurigana(kanji: String?, reading: String): List<FuriganaSegment> =
+    if (kanji.isNullOrEmpty()) {
+        listOf(FuriganaSegment(reading))
+    } else {
+        alignReading(kanji, reading)
+    }
 
 /** What separates two title segments that could not be paired. */
 private const val TITLE_SEPARATOR = ", "

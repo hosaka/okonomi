@@ -62,10 +62,20 @@ object Fixtures {
         </JMdict>
     """.trimIndent()
 
+    /**
+     * Two person names and two of what the type filter drops: a place and
+     * a famous individual typed `person` alone. 田中 carries `person`
+     * beside `surname`, which is the case the filter must keep — the
+     * surname half says it is an ordinary name and the person half only
+     * adds that somebody notable has it.
+     */
     val jmnedict = """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE JMnedict [
         <!ENTITY fem "female given name or forename">
+        <!ENTITY surname "family or surname">
+        <!ENTITY person "full name of a particular person">
+        <!ENTITY place "place name">
         ]>
         <JMnedict>
         <entry>
@@ -79,6 +89,46 @@ object Fixtures {
         <trans>
         <name_type>&fem;</name_type>
         <trans_det>Shimee</trans_det>
+        </trans>
+        </entry>
+        <entry>
+        <ent_seq>5000003</ent_seq>
+        <k_ele>
+        <keb>田中</keb>
+        </k_ele>
+        <r_ele>
+        <reb>たなか</reb>
+        </r_ele>
+        <trans>
+        <name_type>&surname;</name_type>
+        <name_type>&person;</name_type>
+        <trans_det>Tanaka</trans_det>
+        </trans>
+        </entry>
+        <entry>
+        <ent_seq>5000004</ent_seq>
+        <k_ele>
+        <keb>東京</keb>
+        </k_ele>
+        <r_ele>
+        <reb>とうきょう</reb>
+        </r_ele>
+        <trans>
+        <name_type>&place;</name_type>
+        <trans_det>Tokyo</trans_det>
+        </trans>
+        </entry>
+        <entry>
+        <ent_seq>5000005</ent_seq>
+        <k_ele>
+        <keb>紫式部</keb>
+        </k_ele>
+        <r_ele>
+        <reb>むらさきしきぶ</reb>
+        </r_ele>
+        <trans>
+        <name_type>&person;</name_type>
+        <trans_det>Murasaki Shikibu</trans_det>
         </trans>
         </entry>
         </JMnedict>

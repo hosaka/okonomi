@@ -19,7 +19,7 @@ import java.time.Instant
  * old rankings forever.
  *
  * What a bump costs, which is the other half of the decision: the app
- * re-copies the whole bundled database, currently 213 MB, on every
+ * re-copies the whole bundled database, currently 176 MB, on every
  * device that already has one — decompressing and writing it out again
  * before the dictionary can be used. That is not a migration cost that
  * scales with what changed; it is the same for a new column and for a
@@ -55,6 +55,14 @@ import java.time.Instant
  * locate off the headword alone — but it loses the 29% that carry a
  * surface, which is every inflected verb in the corpus.
  *
+ * 6: `name_entry` keeps person names only — `surname`, `given`, `fem`,
+ * `masc` and any combination containing one of them — and drops the
+ * places, stations, companies, products, works and famous people that
+ * were two thirds of the file's rows and a third of its bytes. Rows were
+ * filtered; no DDL moved, so [DICTIONARY_SCHEMA_FINGERPRINT] must not
+ * have moved either. A device left on version 5 keeps a database whose
+ * name rows are mostly places, which the new search would happily return.
+ *
  * THIS COUNTER IS THE ONLY RE-COPY SIGNAL. Bump it for a schema change
  * too, not only for a data change.
  *
@@ -80,7 +88,7 @@ import java.time.Instant
  * [DICTIONARY_SCHEMA_FINGERPRINT] is what stops that from being a thing
  * anyone has to remember.
  */
-const val DICTIONARY_FORMAT_VERSION = 5
+const val DICTIONARY_FORMAT_VERSION = 6
 
 /**
  * Fingerprint of the schema DDL, as a guard on the counter above.

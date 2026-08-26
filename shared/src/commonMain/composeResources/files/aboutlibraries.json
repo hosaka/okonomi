@@ -861,6 +861,131 @@
             ]
         },
         {
+            "uniqueId": "androidx.datastore:datastore-core-android",
+            "artifactVersion": "1.2.1",
+            "name": "DataStore Core",
+            "description": "Android DataStore Core - contains the underlying store used by each serialization method",
+            "website": "https://developer.android.com/jetpack/androidx/releases/datastore#1.2.1",
+            "developers": [
+                {
+                    "name": "The Android Open Source Project"
+                }
+            ],
+            "organization": {
+                "name": "The Android Open Source Project"
+            },
+            "scm": {
+                "connection": "scm:git:https://android.googlesource.com/platform/frameworks/support",
+                "url": "https://cs.android.com/androidx/platform/frameworks/support"
+            },
+            "licenses": [
+                "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "androidx.datastore:datastore-core-okio-jvm",
+            "artifactVersion": "1.2.1",
+            "name": "DataStore Core Okio",
+            "description": "Android DataStore Core Okio- contains APIs to use datastore-core in multiplatform via okio",
+            "website": "https://developer.android.com/jetpack/androidx/releases/datastore#1.2.1",
+            "developers": [
+                {
+                    "name": "The Android Open Source Project"
+                }
+            ],
+            "organization": {
+                "name": "The Android Open Source Project"
+            },
+            "scm": {
+                "connection": "scm:git:https://android.googlesource.com/platform/frameworks/support",
+                "url": "https://cs.android.com/androidx/platform/frameworks/support"
+            },
+            "licenses": [
+                "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "androidx.datastore:datastore-preferences-core-android",
+            "artifactVersion": "1.2.1",
+            "name": "Preferences DataStore Core",
+            "description": "Android Preferences DataStore without the Android Dependencies",
+            "website": "https://developer.android.com/jetpack/androidx/releases/datastore#1.2.1",
+            "developers": [
+                {
+                    "name": "The Android Open Source Project"
+                }
+            ],
+            "organization": {
+                "name": "The Android Open Source Project"
+            },
+            "scm": {
+                "connection": "scm:git:https://android.googlesource.com/platform/frameworks/support",
+                "url": "https://cs.android.com/androidx/platform/frameworks/support"
+            },
+            "licenses": [
+                "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "androidx.datastore:datastore-preferences-external-protobuf",
+            "artifactVersion": "1.2.1",
+            "name": "Preferences External Protobuf",
+            "description": "Repackaged proto-lite dependency for use by datastore preferences",
+            "website": "https://developer.android.com/jetpack/androidx/releases/datastore#1.2.1",
+            "developers": [
+                {
+                    "name": "The Android Open Source Project"
+                }
+            ],
+            "organization": {
+                "name": "The Android Open Source Project"
+            },
+            "scm": {
+                "connection": "scm:git:https://android.googlesource.com/platform/frameworks/support",
+                "url": "https://cs.android.com/androidx/platform/frameworks/support"
+            },
+            "licenses": [
+                "BSD-3-Clause"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "androidx.datastore:datastore-preferences-proto",
+            "artifactVersion": "1.2.1",
+            "name": "Preferences DataStore Proto",
+            "description": "Jarjar the generated proto for use by datastore-preferences.",
+            "website": "https://developer.android.com/jetpack/androidx/releases/datastore#1.2.1",
+            "developers": [
+                {
+                    "name": "The Android Open Source Project"
+                }
+            ],
+            "organization": {
+                "name": "The Android Open Source Project"
+            },
+            "scm": {
+                "connection": "scm:git:https://android.googlesource.com/platform/frameworks/support",
+                "url": "https://cs.android.com/androidx/platform/frameworks/support"
+            },
+            "licenses": [
+                "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
             "uniqueId": "androidx.documentfile:documentfile",
             "artifactVersion": "1.0.0",
             "name": "Support Document File",
@@ -2015,6 +2140,29 @@
             ]
         },
         {
+            "uniqueId": "com.squareup.okio:okio-jvm",
+            "artifactVersion": "3.9.1",
+            "name": "okio",
+            "description": "A modern I/O library for Android, Java, and Kotlin Multiplatform.",
+            "website": "https://github.com/square/okio/",
+            "developers": [
+                {
+                    "name": "Square, Inc."
+                }
+            ],
+            "scm": {
+                "connection": "scm:git:git://github.com/square/okio.git",
+                "developerConnection": "scm:git:ssh://git@github.com/square/okio.git",
+                "url": "https://github.com/square/okio/"
+            },
+            "licenses": [
+                "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
             "uniqueId": "org.jetbrains.androidx.lifecycle:lifecycle-common",
             "artifactVersion": "2.11.0-beta01",
             "name": "Lifecycle-Common",
@@ -3077,6 +3225,28 @@
             ]
         },
         {
+            "uniqueId": "org.jetbrains.kotlinx:kotlinx-serialization-protobuf",
+            "artifactVersion": "1.7.3",
+            "name": "kotlinx-serialization-protobuf",
+            "description": "Kotlin multiplatform serialization runtime library",
+            "website": "https://github.com/Kotlin/kotlinx.serialization",
+            "developers": [
+                {
+                    "name": "JetBrains Team",
+                    "organisationUrl": "https://www.jetbrains.com"
+                }
+            ],
+            "scm": {
+                "url": "https://github.com/Kotlin/kotlinx.serialization"
+            },
+            "licenses": [
+                "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
             "uniqueId": "org.jetbrains.skiko:skiko",
             "artifactVersion": "0.144.6",
             "name": "Skiko KMP",
@@ -3156,6 +3326,14 @@
             "internalHash": "Apache-2.0",
             "spdxId": "Apache-2.0",
             "hash": "Apache-2.0"
+        },
+        "BSD-3-Clause": {
+            "name": "BSD 3-Clause \"New\" or \"Revised\" License",
+            "url": "https://spdx.org/licenses/BSD-3-Clause.html",
+            "content": "Copyright (c) <<var;name=copyright;original= <year> <owner>;match=.+>>. All rights reserved. \n\nRedistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:\n\n1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer. \n\n2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution. \n\n3. Neither the name of <<var;name=organizationClause3;original=the copyright holder;match=.+>> nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY <<var;name=copyrightHolderAsIs;original=THE COPYRIGHT HOLDERS AND CONTRIBUTORS;match=.+>> \"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL <<var;name=copyrightHolderLiability;original=THE COPYRIGHT HOLDER OR CONTRIBUTORS;match=.+>> BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. ",
+            "internalHash": "BSD-3-Clause",
+            "spdxId": "BSD-3-Clause",
+            "hash": "BSD-3-Clause"
         },
         "MIT": {
             "name": "MIT License",

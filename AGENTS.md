@@ -26,6 +26,7 @@
 - Shared chrome (`ui/`): `ScaffoldColumn`/`ScaffoldLazyColumn` (Material `Scaffold` wrappers that forward inner padding to the content), `toolbar/LargeToolbar` (`LargeFlexibleTopAppBar`) with `toolbar/util/ToolbarBehavior`/`ToolbarColors`, and `SearchTextField` (pill shaped search box with clear action).
 - Screen state (`feature/navigation/state/ProduceScreenState.kt`): `produceScreenState(key, initial) { ... }` runs a producer inside a `ScreenStateScope` (`navigation: NavigationController`, `mutablePersistedFlow(key, initial)`) and shares the resulting flow through a `ViewModel` scoped to the back stack entry (in-memory only, no disk persistence).
 - Features live in `shared/src/commonMain/kotlin/cc/hosaka/okonomi/feature/*`; user-visible strings live in `shared/src/commonMain/composeResources/values/strings.xml` and are read via `Res.string.*`.
+- Persisted settings (`prefs/`): `PreferenceStore` is the seam every screen uses; `appPreferences()` is the app-lifetime instance over `androidx.datastore` (one per process — DataStore rejects two over one file). Reads that fail yield the default and writes that fail are dropped, so a broken store can never take a screen down. Tests inject `FakePreferenceStore`.
 
 Practical rule: for new screens, follow the same split (see `feature/search/`):
 
@@ -57,6 +58,45 @@ shape and its ranking rules, so a regression there changes search results while 
 - Do not modify signing, notarization, release packaging, or deployment workflow files unless explicitly requested.
 - Do not change build type behavior (release variants) unless required by the task.
 - Avoid cross-module moves/renames in first-pass changes; prefer local modifications.
+
+## Tests That Cannot Fail
+
+Every increment in this project so far has shipped at least one test that could not
+fail for the reason its name gives. Reviewers keep finding them by mutation. They
+share one shape: **the assertion observes a proxy for the behaviour rather than the
+behaviour.** Before trusting a test, break the thing it names and watch it go red.
+
+Real examples from this repo, each found only after it had shipped:
+
+- A test asserting a part-of-speech rule using `cop-da`, a code carried by **zero**
+  rows in the dictionary. It passed, and would have kept passing with the real codes
+  deleted from the rule.
+- Two tests with no assertion at all, ending in a comment saying so. They could fail
+  only by throwing.
+- Three headline behaviours — conjugation furigana, headword ruby, base/ruby order —
+  each deletable with the whole suite green, because ruby draws through an
+  `AndroidView` that never reaches the semantics tree at the default SDK.
+- A test named for catching a full table scan that passed when the scan was
+  reintroduced: it ran `EXPLAIN QUERY PLAN` over SQL the test typed itself, never over
+  the query the code runs.
+- A guard test relying on a closed database driver throwing. It does not; the empty
+  result came from the data, so the guard could be deleted unnoticed.
+- A "write failure is swallowed" test whose write ran on a scope the test did not own,
+  so it passed with the `try/catch` removed — on Android that catch is load-bearing.
+
+Practical rules that follow:
+
+- **Assert the thing, not a stand-in.** If the claim is "no query runs", count queries.
+  If it is "this index is used", plan the query the code actually issues.
+- **A test with no assertion is not a test.** Neither is one whose expected value
+  equals the default it would get anyway.
+- **Check what the harness can actually see.** Robolectric lays every glyph out to
+  zero width and shadows Android APIs without using its regex or font engines, so
+  layout, ruby positioning and ICU behaviour are invisible here. Where something is
+  genuinely unobservable, say so in the KDoc — do not write an assertion that passes
+  either way.
+- **Prove new guards by mutation.** Break it, see it red, restore it. Say so in the
+  report.
 
 ## Code Standards
 

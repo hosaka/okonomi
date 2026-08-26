@@ -7,6 +7,27 @@
     <string name="search_placeholder">Search</string>
     <string name="search_clear">Clear</string>
     <string name="search_no_results">No results</string>
+    <!-- The overflow menu on the search field, and the one setting in
+         it. "Names" rather than "Person names": the database holds
+         nothing else, since dictgen drops the places and companies. -->
+    <string name="search_options">Search options</string>
+    <string name="search_names_toggle">Names</string>
+    <!-- Chips on a name row. JMnedict's own DTD expansions ("family or
+         surname", "given name or forename, gender not specified") are
+         sentences rather than labels, so the four person-name codes get
+         short forms of their own here; the sense chips elsewhere still
+         resolve through tag_label.
+         All four are noun phrases on purpose. The spec named these
+         chips "surname / given name / fem / masc", but shipping two
+         English words beside two raw JMnedict codes reads as an
+         oversight on the row; "female name" and "male name" say the
+         same thing in the same register. A fem row usually carries no
+         "given name" chip beside it, so "female" alone would not say
+         what kind of thing it is. -->
+    <string name="name_type_surname">surname</string>
+    <string name="name_type_given">given name</string>
+    <string name="name_type_fem">female name</string>
+    <string name="name_type_masc">male name</string>
     <string name="search_results_fallback">No exact matches — showing the closest entries</string>
     <string name="search_error">Search is unavailable right now. Keep typing to retry.</string>
     <!-- The footer under the last row of a list that pages: shown while

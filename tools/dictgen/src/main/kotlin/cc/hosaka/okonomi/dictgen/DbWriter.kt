@@ -29,6 +29,7 @@ class DbWriter(target: File) : AutoCloseable {
     private var rejectedWords = 0L
     private var storedWords = 0L
     private var locatedWords = 0L
+    private var droppedNames = 0L
 
     init {
         target.parentFile?.mkdirs()
@@ -310,10 +311,22 @@ class DbWriter(target: File) : AutoCloseable {
         }
     }
 
+    /**
+     * Writes the JMnedict rows the app can use, which is the person names
+     * alone: see [isPersonNameType] for what that means and why. The
+     * dropped count is reported beside the kept one rather than discarded,
+     * because the filter is the whole point of reading this source and a
+     * drop count that collapsed to zero (a renamed entity, say) would
+     * otherwise ship a third of a gigabyte of places again in silence.
+     */
     fun writeNames(parser: JmnedictParser) {
         db.transaction {
             parser.parse { row ->
-                db.nameQueries.insertNameEntry(row.id, row.kanji, row.reading, row.nameType, row.translation)
+                if (isPersonNameType(row.nameType)) {
+                    db.nameQueries.insertNameEntry(row.id, row.kanji, row.reading, row.nameType, row.translation)
+                } else {
+                    droppedNames++
+                }
             }
         }
     }
@@ -360,7 +373,9 @@ class DbWriter(target: File) : AutoCloseable {
         "glosses" to db.entryQueries.glossCount().executeAsOne(),
         "kanji" to db.kanjiQueries.kanjiCount().executeAsOne(),
         "radicals" to db.kanjiQueries.radicalCount().executeAsOne(),
+        // Person names kept, and everything else JMnedict offered.
         "names" to db.nameQueries.nameCount().executeAsOne(),
+        "nonperson" to droppedNames,
         "tags" to db.tagQueries.tagLabelCount().executeAsOne(),
         "sentences" to db.sentenceQueries.sentenceCount().executeAsOne(),
         "links" to db.sentenceQueries.entrySentenceCount().executeAsOne(),

@@ -13,6 +13,39 @@ data class NameRow(
     val translation: String,
 )
 
+/**
+ * The `name_type` codes that make a JMnedict row a person's name, and
+ * therefore the only rows the app keeps.
+ *
+ * JMnedict is two thirds of the shipped database and almost all of it is
+ * unreachable material for a reader: places, stations, companies,
+ * products, works, and the 53,588 rows tagged only `person`, which are
+ * famous individuals rather than names anyone needs read off a form.
+ * What is wanted is the ordinary surname and given name — Alex, 2026-08-26:
+ * "the most useful thing out of JMnedict are first and last names … I
+ * highly doubt I'll look up Tokyo Tower", and "I don't need names of
+ * famous people and shit".
+ *
+ * A row's `name_type` is comma-joined, and one of these codes anywhere in
+ * it is enough. That is what keeps the 525 rows typed `fem,person` or
+ * `masc,person`: the fem/masc half says the row is an ordinary given
+ * name, and the `person` half only adds that somebody notable carries it.
+ * Pure `person`, with no given/surname code beside it, is the group that
+ * goes.
+ *
+ * The same rule keeps 16,942 rows that also carry `place` — 東京 is typed
+ * `place,surname` — and that is not a leak: JMnedict is saying the string
+ * is a surname as well as a place, and it is. Only the person-name codes
+ * become chips, so such a row reads as a surname on screen.
+ *
+ * Measured on the 2026-08-25 sources: 333,481 rows kept of 746,270.
+ */
+internal val PERSON_NAME_TYPES = setOf("surname", "given", "fem", "masc")
+
+/** Whether a comma-joined [nameType] names a person rather than a thing. */
+internal fun isPersonNameType(nameType: String): Boolean =
+    nameType.splitToSequence(StoredFormat.CODES).any { it.trim() in PERSON_NAME_TYPES }
+
 class JmnedictParser(private val file: File) {
 
     /** See [JmdictParser.entityLabels]: JMnedict's name_type codes. */

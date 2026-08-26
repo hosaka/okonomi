@@ -1,3 +1,13 @@
+-- Person names from JMnedict, flattened one row per kanji x reading x
+-- translation. dictgen writes only the rows whose name_type carries
+-- surname, given, fem or masc (see isPersonNameType); a row typed only
+-- place, station, company, work or person never reaches this table, so
+-- nothing here has to filter it out again. A row that is BOTH — 東京 is
+-- typed place,surname — is written, because it really is also a surname.
+--
+-- name_type holds comma-joined short codes that resolve through
+-- tag_label, as sense.pos does; translation is the romanisation, shown
+-- but never searched (no romaji matching).
 CREATE TABLE name_entry (
     id INTEGER NOT NULL,
     kanji TEXT,
@@ -15,8 +25,64 @@ INSERT INTO name_entry(id, kanji, reading, name_type, translation) VALUES (?, ?,
 nameCount:
 SELECT COUNT(*) FROM name_entry;
 
+-- Prefix search over a name's reading and its written form, and over
+-- nothing else: `translation` is the romanisation, shown but never
+-- matched (Alex: "i don't need to search names in romaji"), and it
+-- carries no index to match with anyway.
+--
+-- Range comparisons rather than LIKE, for the reason entry.sq's prefix
+-- queries already give: `LIKE :prefix || '%'` cannot use an index, so
+-- the query this replaced scanned all 333,481 rows on every keystroke —
+-- 43 ms against 0.6 ms here. `text >= :prefix AND text < :prefixEnd`
+-- spans exactly the same strings and goes down the index.
+--
+-- FOUR ARMS, and each one is load-bearing:
+--
+--   * Two columns, because 6,735 rows are written in kana, so a kana
+--     query can match the `kanji` column and not only `reading`.
+--   * Two scripts, because a name's reading is stored in whichever
+--     script JMnedict used — 325,371 hiragana against 8,973 containing
+--     katakana — and a range comparison is byte order, not kana
+--     equivalence. Before this, オオサカ found nothing while おおさか
+--     found eighteen of the same names. The caller folds the query both
+--     ways (see kanaPrefixes) and hands over both; when the two agree,
+--     as they do for a query with no kana in it, the extra arms are
+--     duplicates that UNION discards.
+--
+-- Accepted loss: a query that mixes hiragana and katakana is normalised
+-- to one script or the other, so a stored form mixing them the same way
+-- is found by any prefix that stops before the script changes but not by
+-- the whole string. In the same spirit as prefixRangeEnd's
+-- supplementary-plane bound.
+--
+-- UNION rather than four calls merged in Kotlin: it deduplicates the row
+-- a query matches through both columns, and — the part that matters —
+-- it puts ONE total order over the whole result, so LIMIT/OFFSET page it
+-- honestly. Merging separately-ordered lists in Kotlin cannot: each arm
+-- would hand over its own smallest rows, and page two would bring in a
+-- row sorting above ones already on screen. SQLite plans this as
+-- MERGE (UNION), taking each arm through its index and stopping at the
+-- LIMIT, so the deepest page of the worst prefix costs 4.1 ms.
+--
+-- The order is total. Names carry no rank — one is not more common than
+-- another — so every column of the row is in it, `name_type` included:
+-- without it, two rows alike but for their type would be an arbitrary
+-- pair and UNION would keep both in an undefined order.
 searchNamePrefix:
 SELECT id, kanji, reading, name_type, translation
 FROM name_entry
-WHERE reading LIKE :prefix || '%' OR kanji LIKE :prefix || '%'
-LIMIT :limit;
+WHERE reading >= :hiragana AND reading < :hiraganaEnd
+UNION
+SELECT id, kanji, reading, name_type, translation
+FROM name_entry
+WHERE reading >= :katakana AND reading < :katakanaEnd
+UNION
+SELECT id, kanji, reading, name_type, translation
+FROM name_entry
+WHERE kanji >= :hiragana AND kanji < :hiraganaEnd
+UNION
+SELECT id, kanji, reading, name_type, translation
+FROM name_entry
+WHERE kanji >= :katakana AND kanji < :katakanaEnd
+ORDER BY reading, kanji, id, name_type, translation
+LIMIT :limit OFFSET :offset;

@@ -34,6 +34,14 @@ internal const val FTS_RANKING_POOL = 400
  * re-ranking would reorder rows already on screen. Paging stops honestly
  * at the pool instead. The Japanese path has no such pool, but the same
  * ceiling applies to it: nobody reads four hundred results.
+ *
+ * It bounds the person-name rows under the words too, and there the
+ * reasoning is only the second half — names have no pool and no ranking,
+ * so their order is total at any depth and paging further would be
+ * honest. They stop here anyway because Alex chose one rule over two
+ * (2026-08-26: "Cap at 400 like words"), knowing it puts the deeper
+ * matches of a common reading out of reach. See the name-search spec's
+ * change log.
  */
 const val SEARCH_MAX_RESULTS = FTS_RANKING_POOL
 
