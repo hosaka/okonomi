@@ -1,0 +1,270 @@
+package cc.hosaka.okonomi.ui.furigana
+
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsNodeInteractionsProvider
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.v2.runComposeUiTest
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import cc.hosaka.okonomi.db.EntryForm
+import cc.hosaka.okonomi.db.EntryReading
+import cc.hosaka.okonomi.feature.forms.FormsTab
+import cc.hosaka.okonomi.feature.word.WordTab
+import cc.hosaka.okonomi.ui.test.ScreenHost
+import cc.hosaka.okonomi.ui.test.entryDetail
+import cc.hosaka.okonomi.ui.test.entrySense
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
+
+/**
+ * That a reading is drawn at all, and that it is drawn *over* the word
+ * rather than in place of it.
+ *
+ * Pinned here and nowhere else, for a structural reason.
+ * `TextSpacingRemoved` routes API 28 and up through a platform
+ * `TextView` inside an `AndroidView`, which never reaches the semantics
+ * tree — so at the suite's usual `@Config(sdk = [36])` a ruby is
+ * invisible to every assertion, and deleting one leaves the suite green.
+ * Three headline behaviours were in exactly that state: dropping the
+ * Forms tab's reading, dropping the Word headword's, and swapping base
+ * and ruby all passed the whole suite. This class runs the same
+ * composables on the pre-API-28 branch, where both halves are
+ * `BasicText` and both are therefore in the tree.
+ *
+ * Base and ruby are told apart by where they sit in it rather than by
+ * how they look: Robolectric lays every glyph out to no width at all, so
+ * font sizes and bounds say nothing here, while the shape of the unit —
+ * the word drawn directly in it, the reading inside the box that lifts
+ * it above the line — is exactly the arrangement being asserted.
+ *
+ * What stays unassertable, on any SDK, is where that box is *put*: the
+ * offset comes from a `graphicsLayer` translation over font metrics, and
+ * neither it nor the vertical rhythm it produces reaches semantics.
+ * Those want a device and Alex's eyes. Which string is the base does
+ * not.
+ */
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [27])
+@OptIn(ExperimentalTestApi::class)
+class RubyRenderingTest {
+
+    @Test
+    fun `a segment draws its reading over its text rather than instead of it`() = runComposeUiTest {
+        setContent {
+            ScreenHost {
+                FuriganaText(
+                    segments = listOf(
+                        FuriganaSegment("食", "た"),
+                        FuriganaSegment("べる"),
+                    ),
+                )
+            }
+        }
+
+        // Swap the two and this reads た to 食.
+        assertEquals(listOf("食" to "た"), rubyUnits())
+    }
+
+    /**
+     * Alex's report, at the other end from `TitleFuriganaTest`: a match
+     * on part of an undivided run must reach the ruby and stop there.
+     * The reading is drawn in two pieces so the matched kana can be
+     * styled without the rest, and the word stays in one — untouched.
+     */
+    @Test
+    fun `a match on part of a reading splits only the ruby`() = runComposeUiTest {
+        setContent {
+            ScreenHost {
+                FuriganaText(
+                    segments = listOf(
+                        FuriganaSegment(
+                            text = "相殺関税",
+                            reading = "そうさいかんぜい",
+                            highlight = FuriganaSegment.Highlight.PartOfReading(0..3),
+                        ),
+                    ),
+                )
+            }
+        }
+
+        val unit = rubyUnitShapes().single()
+        assertEquals(listOf("相殺関税"), unit.word, "the word is drawn whole and plain")
+        assertEquals(listOf("そうさい", "かんぜい"), unit.reading, "only そうさい can take the highlight")
+    }
+
+    @Test
+    fun `a match covering a whole unit leaves both halves undivided`() = runComposeUiTest {
+        setContent {
+            ScreenHost {
+                FuriganaText(
+                    segments = listOf(
+                        FuriganaSegment("食", "た", FuriganaSegment.Highlight.Whole),
+                        FuriganaSegment("べる"),
+                    ),
+                )
+            }
+        }
+
+        val unit = rubyUnitShapes().single()
+        assertEquals(listOf("食"), unit.word)
+        assertEquals(listOf("た"), unit.reading, "a whole match needs no cut, and draws as it always did")
+    }
+
+    @Test
+    fun `a segment with no reading draws no ruby`() = runComposeUiTest {
+        setContent {
+            ScreenHost {
+                FuriganaText(segments = listOf(FuriganaSegment("食べる")))
+            }
+        }
+
+        assertEquals(emptyList(), rubyUnits())
+        assertTrue(drawnTexts().contains("食べる"), "the word is still drawn: ${drawnTexts()}")
+    }
+
+    @Test
+    fun `the word headword carries its reading`() = runComposeUiTest {
+        setContent {
+            ScreenHost {
+                WordTab(
+                    entry = entryDetail(
+                        headword = "相殺",
+                        forms = listOf(EntryForm("相殺", isCommon = true)),
+                        readings = listOf(EntryReading("そうさい", emptyList(), isCommon = true)),
+                    ),
+                    contentPadding = PaddingValues(),
+                )
+            }
+        }
+
+        assertEquals(listOf("相殺" to "そうさい"), rubyUnits())
+    }
+
+    /**
+     * A reading JMdict marks `re_nokanji` belongs to no written form, so
+     * it is not the one set over the headword — 刻々 reads こくこく, and
+     * ギザギザ is a reading of the word without being a reading of those
+     * characters. It stays listed; it is simply never the ruby.
+     */
+    @Test
+    fun `a headword takes no reading the entry does not claim for it`() = runComposeUiTest {
+        setContent {
+            ScreenHost {
+                WordTab(
+                    entry = entryDetail(
+                        headword = "刻々",
+                        forms = listOf(EntryForm("刻々", isCommon = true)),
+                        readings = listOf(
+                            EntryReading("ギザギザ", emptyList(), isCommon = false, noKanji = true),
+                            EntryReading("こくこく", emptyList(), isCommon = true),
+                        ),
+                    ),
+                    contentPadding = PaddingValues(),
+                )
+            }
+        }
+
+        assertEquals(listOf("刻々" to "こくこく"), rubyUnits())
+        assertTrue(drawnTexts().contains("ギザギザ"), "the reading is still listed: ${drawnTexts()}")
+    }
+
+    /**
+     * 為 reads す, し and さ across the table, which is the whole reason
+     * the Forms tab was given furigana at all. Cutting the reading out
+     * of `FormsTab` leaves every other Forms assertion green.
+     */
+    @Test
+    fun `the forms table carries the readings of a stem that shifts`() = runComposeUiTest {
+        setContent {
+            ScreenHost {
+                FormsTab(
+                    entry = entryDetail(
+                        headword = "為る",
+                        forms = listOf(EntryForm("為る", isCommon = true)),
+                        readings = listOf(EntryReading("する", emptyList(), isCommon = true)),
+                        senses = listOf(entrySense(posCodes = listOf("vs-i"), glosses = listOf("to do"))),
+                    ),
+                    contentPadding = PaddingValues(),
+                )
+            }
+        }
+
+        val units = rubyUnits()
+        assertTrue(units.isNotEmpty(), "the table sets readings over its shifting stem")
+        assertTrue(units.all { (base, _) -> base == "為" }, "only 為 shifts: $units")
+        assertEquals(setOf("す", "し", "さ"), units.map { (_, reading) -> reading }.toSet())
+        // 出来る sits in the same table and reads でき in both its rows,
+        // so it is left plain while 為 around it is not.
+        assertTrue(drawnTexts().contains("出来る"), "the potential is drawn whole: ${drawnTexts()}")
+    }
+
+    @Test
+    fun `a table whose stem never shifts carries no ruby`() = runComposeUiTest {
+        setContent {
+            ScreenHost {
+                FormsTab(
+                    entry = entryDetail(
+                        headword = "食べる",
+                        forms = listOf(EntryForm("食べる", isCommon = true)),
+                        readings = listOf(EntryReading("たべる", emptyList(), isCommon = true)),
+                        senses = listOf(entrySense(posCodes = listOf("v1"), glosses = listOf("to eat"))),
+                    ),
+                    contentPadding = PaddingValues(),
+                )
+            }
+        }
+
+        assertEquals(emptyList(), rubyUnits(), "食 reads た on every row and needs no ruby saying so")
+        assertTrue(drawnTexts().contains("食べる"), "the table still draws its forms")
+    }
+}
+
+/**
+ * One kanji-with-ruby box on screen: the word drawn on the line, and
+ * the reading floated above it — each as the pieces it was drawn in,
+ * because a highlight covering part of a half cuts that half in two.
+ */
+private class RubyUnitShape(val word: List<String>, val reading: List<String>) {
+    val pair: Pair<String, String> get() = word.joinToString("") to reading.joinToString("")
+}
+
+/**
+ * Every ruby unit on screen, as the word paired with its reading.
+ *
+ * The unit is found by the semantics it clears — [RubyUnit] clears its
+ * own, so the ruby is never announced as a word of its own — and under
+ * it the word is the first child and the reading the second. That
+ * arrangement is what is being asserted: the word is what the line
+ * reads, the reading is what floats above it.
+ */
+private fun SemanticsNodeInteractionsProvider.rubyUnits(): List<Pair<String, String>> =
+    rubyUnitShapes().map { it.pair }
+
+private fun SemanticsNodeInteractionsProvider.rubyUnitShapes(): List<RubyUnitShape> =
+    onRoot(useUnmergedTree = true).fetchSemanticsNode().rubyUnitShapes()
+
+private fun SemanticsNode.rubyUnitShapes(): List<RubyUnitShape> = buildList {
+    val cleared = config.isClearingSemantics
+    if (cleared && children.size == 2) {
+        add(RubyUnitShape(word = children[0].texts(), reading = children[1].texts()))
+    }
+    children.forEach { addAll(it.rubyUnitShapes()) }
+}
+
+/** Every string drawn anywhere on screen. */
+private fun SemanticsNodeInteractionsProvider.drawnTexts(): List<String> =
+    onRoot(useUnmergedTree = true).fetchSemanticsNode().texts()
+
+private fun SemanticsNode.texts(): List<String> = buildList {
+    ownText?.let { add(it) }
+    children.forEach { addAll(it.texts()) }
+}
+
+private val SemanticsNode.ownText: String?
+    get() = config.getOrNull(SemanticsProperties.Text)?.singleOrNull()?.text

@@ -10,7 +10,8 @@ import kotlin.test.assertTrue
 /**
  * Guards the credits manifest: the licence obligations it discharges
  * (EDRDG attribution, Yomitan derivation, Tatoeba and Tanaka Corpus
- * CC-BY attribution) must not silently regress.
+ * CC-BY attribution, Furiganable's Apache-2.0 notice) must not silently
+ * regress.
  */
 class CreditsTest {
     private val stringsPath = "src/commonMain/composeResources/values/strings.xml"
@@ -47,11 +48,38 @@ class CreditsTest {
     }
 
     @Test
-    fun `the manifest contains the four EDRDG sources, Yomitan and the sentence sources`() {
+    fun `the manifest contains the four EDRDG sources, Yomitan, the sentence sources and Furiganable`() {
         assertEquals(
-            listOf("JMdict", "JMnedict", "KANJIDIC2", "RADKFILE", "Yomitan", "Tatoeba (Tanaka Corpus)"),
+            listOf(
+                "JMdict",
+                "JMnedict",
+                "KANJIDIC2",
+                "RADKFILE",
+                "Yomitan",
+                "Tatoeba (Tanaka Corpus)",
+                "Furiganable",
+            ),
             creditEntries.map { it.name },
         )
+    }
+
+    /**
+     * Furigana rendering is vendored source rather than a Gradle
+     * dependency, so AboutLibraries cannot see it and this entry is the
+     * only notice it gets. Its licence link is the Apache text itself
+     * and not the repository on purpose: the repository carries no
+     * LICENSE file, and Apache-2.0 is stated only in the
+     * gradle.properties its published artifacts are built from.
+     */
+    @Test
+    fun `the vendored furigana renderer carries its Apache notice and says where it came from`() {
+        val furiganable = creditEntries.single { it.name == "Furiganable" }
+        assertEquals("Apache-2.0", furiganable.licence)
+        assertEquals("https://www.apache.org/licenses/LICENSE-2.0.txt", furiganable.licenceUrl)
+        val detail = furiganable.detail
+        assertNotNull(detail, "a copy of someone's work has to say which copy")
+        assertTrue(detail.contains("turtlekazu/Furiganable"), detail)
+        assertTrue(detail.contains("v0.3.1"), detail)
     }
 
     @Test

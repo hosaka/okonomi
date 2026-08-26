@@ -112,6 +112,7 @@
     <string name="settings_credit_usage_radkfile">Kanji radical decomposition data</string>
     <string name="settings_credit_usage_yomitan">Deinflection engine and rule data</string>
     <string name="settings_credit_usage_tatoeba">Example sentences and their translations</string>
+    <string name="settings_credit_usage_furiganable">Furigana text rendering</string>
     <string name="settings_libraries_open">Open libraries list</string>
     <string name="libraries_title">Open source libraries</string>
     <string name="libraries_back">Back</string>

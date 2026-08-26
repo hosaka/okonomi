@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -24,6 +25,8 @@ import cc.hosaka.okonomi.db.EntryReading
 import cc.hosaka.okonomi.db.EntrySense
 import cc.hosaka.okonomi.ui.CommonWordChip
 import cc.hosaka.okonomi.ui.TagChip
+import cc.hosaka.okonomi.ui.furigana.FuriganaText
+import cc.hosaka.okonomi.ui.furigana.alignReading
 import cc.hosaka.okonomi.ui.theme.Dimens
 import cc.hosaka.okonomi.ui.theme.horizontalPaddingFourth
 import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
@@ -44,8 +47,9 @@ private const val RESTRICTION_JOIN = ", "
 private val SENSE_NUMBER_WIDTH = 28.dp
 
 /**
- * The word's own reading: every kana reading with its romaji, and every
- * sense with its labels, glosses and notes.
+ * The word's own reading: the headword with its reading set above it,
+ * the readings that one does not cover, and every sense with its
+ * labels, glosses and notes.
  */
 @Composable
 fun WordTab(
@@ -61,12 +65,13 @@ fun WordTab(
         item(key = "headword") {
             Headword(entry)
         }
-        if (entry.readings.isNotEmpty()) {
+        val otherReadings = entry.otherReadings
+        if (otherReadings.isNotEmpty()) {
             item(key = "reading-header") {
                 SectionHeader(stringResource(Res.string.entry_section_reading))
             }
             itemsIndexed(
-                items = entry.readings,
+                items = otherReadings,
                 key = { index, _ -> "reading-$index" },
             ) { _, reading ->
                 ReadingRow(reading)
@@ -103,8 +108,11 @@ private fun Headword(entry: EntryDetail) {
                 vertical = Dimens.verticalPaddingHalf,
             ),
     ) {
-        Text(
-            text = entry.headword,
+        val reading = entry.headwordReading?.text
+        FuriganaText(
+            segments = remember(entry.headword, reading) {
+                alignReading(entry.headword, reading ?: entry.headword)
+            },
             style = MaterialTheme.typography.displayMedium,
         )
         val alternates = entry.alternateForms
@@ -152,11 +160,6 @@ private fun ReadingRow(reading: EntryReading) {
         Text(
             text = reading.text,
             style = MaterialTheme.typography.titleMedium,
-        )
-        Text(
-            text = reading.romaji,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         RestrictionNote(reading.restrictions)
     }

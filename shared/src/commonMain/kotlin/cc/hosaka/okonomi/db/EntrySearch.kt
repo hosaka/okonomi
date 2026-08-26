@@ -55,6 +55,15 @@ private const val GLOSS_POSITION_FACTOR = 1000L
 data class TitleSegment(
     val text: String,
     val highlight: IntRange? = null,
+    /**
+     * True when this segment is a reading *of the segment before it*
+     * and belongs over it as furigana. False for a written form, for a
+     * kana entry's own reading, and — the case that makes this a stated
+     * fact rather than a position in the list — for a reading the entry
+     * does not claim for the form beside it, which is shown next to it
+     * instead of over it. See [readingAppliesTo].
+     */
+    val readsPreviousSegment: Boolean = false,
 )
 
 /**
@@ -622,7 +631,8 @@ private suspend fun DictionaryDatabase.buildHits(
         val entryReadings = readings[match.entryId].orEmpty()
         val entryContent = content[match.entryId]
 
-        val matchedIsReading = entryReadings.any { it.text == match.matchedText }
+        val matchedReading = entryReadings.firstOrNull { it.text == match.matchedText }
+        val matchedIsReading = matchedReading != null
         // Show the matched kanji form when the match came through one,
         // so the highlight lands on visible text; the primary (first)
         // form otherwise.
@@ -631,11 +641,19 @@ private suspend fun DictionaryDatabase.buildHits(
         } else {
             entryForms.firstOrNull()?.text
         }
-        val readingText = if (matchedIsReading) {
-            match.matchedText
-        } else {
-            entryReadings.firstOrNull()?.text
-        }
+        // The reading shown beside the form is the matched one, or the
+        // first the entry states *for that form* — not simply the first
+        // it lists. Pairing 叢立ち with 総立ち's そうだち, or 空オケ with
+        // the re_nokanji カラオケ, sets a reading over kanji the entry
+        // denies it to. Where nothing applies the first reading is still
+        // shown, beside the form rather than over it.
+        val reading = matchedReading
+            ?: entryReadings.firstOrNull { readingApplies(it.restrictions, it.no_kanji, formText) }
+            ?: entryReadings.firstOrNull()
+        val readingText = reading?.text
+        val readsForm = formText != null &&
+            reading != null &&
+            readingApplies(reading.restrictions, reading.no_kanji, formText)
 
         val segments = buildList {
             if (formText != null) {
@@ -651,6 +669,7 @@ private suspend fun DictionaryDatabase.buildHits(
                     TitleSegment(
                         text = readingText,
                         highlight = highlightRange(match, matchedText = readingText, matched = matchedIsReading),
+                        readsPreviousSegment = readsForm,
                     ),
                 )
             }
@@ -694,6 +713,13 @@ private fun senseLines(senses: List<SenseContent>, matchedSenseOrd: Long?): List
         lines
     }
 }
+
+/**
+ * [readingAppliesTo] over the stored columns, which is how the reading
+ * rows arrive here.
+ */
+private fun readingApplies(restrictions: String?, noKanji: Long, form: String?): Boolean =
+    readingAppliesTo(form, StoredValues.restrictions(restrictions), noKanji != 0L)
 
 private fun highlightRange(match: RankedMatch, matchedText: String, matched: Boolean): IntRange? {
     val length = match.highlightLength ?: return null

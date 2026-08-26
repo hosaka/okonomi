@@ -210,8 +210,13 @@ FROM kanji_form
 WHERE entry_id IN :ids
 ORDER BY entry_id, ord;
 
+-- no_kanji and restrictions come along for the same reason allReadings
+-- carries them: a result row pairs a written form with a reading, and a
+-- re_nokanji reading is not a reading of the kanji at all while a
+-- restricted one belongs only to the forms it names. Without them 叢立ち
+-- was titled with 総立ち's そうだち.
 readingsForEntries:
-SELECT entry_id, ord, text, common_rank, is_common
+SELECT entry_id, ord, text, no_kanji, common_rank, restrictions, is_common
 FROM reading
 WHERE entry_id IN :ids
 ORDER BY entry_id, ord;

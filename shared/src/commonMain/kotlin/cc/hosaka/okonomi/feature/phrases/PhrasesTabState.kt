@@ -15,7 +15,7 @@ private const val READING_PLACEHOLDER = "%2\$s"
  * it reads as itself, or the word followed by its reading.
  *
  * Pure and stated here rather than inline in the tab, on the precedent
- * of the search's `titleLine`. This is the only place the readings
+ * of the search's `titleFurigana`. This is the only place the readings
  * resolved at build time become visible to anyone, so a rendering that
  * dropped them would undo the feature end to end with every other test
  * still green.

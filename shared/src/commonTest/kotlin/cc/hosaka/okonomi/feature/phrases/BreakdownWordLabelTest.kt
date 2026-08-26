@@ -13,7 +13,7 @@ import kotlin.test.assertEquals
  * has no other test: the pipeline would still write the readings, the
  * loader would still parse them, and nothing but a reader would notice
  * they had stopped appearing. So the rule lives in a pure function and
- * is stated here, on the precedent of `titleLine`/`TitleLineTest`.
+ * is stated here, on the precedent of `titleFurigana`/`TitleFuriganaTest`.
  */
 class BreakdownWordLabelTest {
 

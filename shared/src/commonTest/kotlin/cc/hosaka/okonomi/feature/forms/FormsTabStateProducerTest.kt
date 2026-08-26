@@ -2,6 +2,7 @@ package cc.hosaka.okonomi.feature.forms
 
 import cc.hosaka.okonomi.feature.navigation.state.FakeScreenStateScope
 import cc.hosaka.okonomi.lang.FormId
+import cc.hosaka.okonomi.ui.furigana.plainText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -48,6 +49,7 @@ class FormsTabStateProducerTest {
         val states = collectStates(
             scope.formsTabStateProducer(
                 base = "食べる",
+                reading = "たべる",
                 posCodes = listOf("v1", "vt"),
                 load = { codes ->
                     loads++
@@ -61,13 +63,21 @@ class FormsTabStateProducerTest {
         assertEquals(listOf("v1"), asked)
         val table = tablesOf(states.last()).single()
         assertEquals("Ichidan verb", table.className)
-        assertEquals("食べる" to "食べない", table.forms.first().let { it.affirmative to it.negative })
-        assertEquals(FormId.entries, table.forms.map { it.id })
+        assertEquals(
+            "食べる" to "食べない",
+            table.rows.first().let { it.affirmative.plainText() to it.negative?.plainText() },
+        )
+        assertEquals(FormId.entries, table.rows.map { it.id })
 
         // A later run of the producer (the tab came back on screen)
         // reuses the persisted labels instead of querying again.
         collectStates(
-            scope.formsTabStateProducer(base = "食べる", posCodes = listOf("v1", "vt"), load = { labels }),
+            scope.formsTabStateProducer(
+                base = "食べる",
+                reading = "たべる",
+                posCodes = listOf("v1", "vt"),
+                load = { labels },
+            ),
         )
         assertEquals(1, loads)
     }
@@ -82,12 +92,12 @@ class FormsTabStateProducerTest {
         val scope = FakeScreenStateScope()
 
         val states = collectStates(
-            scope.formsTabStateProducer(base = "食べる", posCodes = listOf("v1"), load = { labels }),
+            scope.formsTabStateProducer(base = "食べる", reading = "たべる", posCodes = listOf("v1"), load = { labels }),
         )
 
         val headings = states.map { tablesOf(it).single().className }
         // Every emission carries the finished table; only the heading moves.
-        assertTrue(states.all { tablesOf(it).single().forms.size == FormId.entries.size })
+        assertTrue(states.all { tablesOf(it).single().rows.size == FormId.entries.size })
         assertEquals(listOf("v1", "Ichidan verb"), headings)
     }
 
@@ -96,7 +106,12 @@ class FormsTabStateProducerTest {
         val scope = FakeScreenStateScope()
 
         val states = collectStates(
-            scope.formsTabStateProducer(base = "厭う", posCodes = listOf("v5u", "v5u-s", "vt"), load = { labels }),
+            scope.formsTabStateProducer(
+                base = "厭う",
+                reading = "いとう",
+                posCodes = listOf("v5u", "v5u-s", "vt"),
+                load = { labels },
+            ),
         )
 
         assertEquals(
@@ -112,7 +127,7 @@ class FormsTabStateProducerTest {
         // The dictionary can be generated without tag_label rows; a
         // table headed by "v1" beats one headed by nothing.
         val states = collectStates(
-            scope.formsTabStateProducer(base = "食べる", posCodes = listOf("v1"), load = { emptyMap() }),
+            scope.formsTabStateProducer(base = "食べる", reading = "たべる", posCodes = listOf("v1"), load = { emptyMap() }),
         )
 
         assertEquals("v1", tablesOf(states.last()).single().className)
@@ -130,6 +145,7 @@ class FormsTabStateProducerTest {
         val states = collectStates(
             scope.formsTabStateProducer(
                 base = "食べる",
+                reading = "たべる",
                 posCodes = listOf("v1"),
                 load = { throw RuntimeException("database gone") },
             ),
@@ -137,7 +153,7 @@ class FormsTabStateProducerTest {
 
         val table = tablesOf(states.last()).single()
         assertEquals("v1", table.className)
-        assertEquals(FormId.entries, table.forms.map { it.id })
+        assertEquals(FormId.entries, table.rows.map { it.id })
     }
 
     @Test
@@ -145,7 +161,7 @@ class FormsTabStateProducerTest {
         val scope = FakeScreenStateScope()
 
         val states = collectStates(
-            scope.formsTabStateProducer(base = "勉強", posCodes = listOf("n", "vs"), load = neverLoad),
+            scope.formsTabStateProducer(base = "勉強", reading = "べんきょう", posCodes = listOf("n", "vs"), load = neverLoad),
         )
 
         assertEquals(FormsTabContentState.NotConjugable(takesSuru = true), states.last().content)
@@ -156,7 +172,7 @@ class FormsTabStateProducerTest {
         val scope = FakeScreenStateScope()
 
         val states = collectStates(
-            scope.formsTabStateProducer(base = "本", posCodes = listOf("n"), load = neverLoad),
+            scope.formsTabStateProducer(base = "本", reading = "ほん", posCodes = listOf("n"), load = neverLoad),
         )
 
         assertEquals(FormsTabContentState.NotConjugable(takesSuru = false), states.last().content)
@@ -172,6 +188,7 @@ class FormsTabStateProducerTest {
             val states = collectStates(
                 scope.formsTabStateProducer(
                     base = base,
+                    reading = null,
                     posCodes = listOf(if (base == "食") "v1" else "v5s"),
                     load = neverLoad,
                 ),

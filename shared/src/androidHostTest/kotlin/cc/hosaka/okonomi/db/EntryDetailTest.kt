@@ -76,7 +76,7 @@ class EntryDetailTest {
     }
 
     @Test
-    fun `hydrates forms, readings with romaji and senses with resolved labels`() = runTest {
+    fun `hydrates forms, readings with restrictions and senses with resolved labels`() = runTest {
         val entry = seededDatabase().loadEntryDetail(1)
 
         requireNotNull(entry)
@@ -87,7 +87,6 @@ class EntryDetailTest {
         assertEquals(125, entry.commonRank)
 
         assertEquals(listOf("たべる", "タベル"), entry.readings.map { it.text })
-        assertEquals(listOf("taberu", "taberu"), entry.readings.map { it.romaji })
         assertEquals(emptyList(), entry.readings[0].restrictions)
         // Two re_restr values, semicolon joined by the generator.
         assertEquals(listOf("食べる", "喰べる"), entry.readings[1].restrictions)
@@ -137,7 +136,7 @@ class EntryDetailTest {
         assertEquals("ラーメン", entry.headword)
         assertTrue(entry.forms.isEmpty())
         assertTrue(entry.alternateForms.isEmpty())
-        assertEquals("raamen", entry.readings.single().romaji)
+        assertEquals("ラーメン", entry.readings.single().text)
         assertFalse(entry.isCommon)
         assertEquals(
             listOf("n", "word usually written using kana alone"),

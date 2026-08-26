@@ -1,7 +1,6 @@
 package cc.hosaka.okonomi.db
 
 import androidx.compose.runtime.Immutable
-import cc.hosaka.okonomi.lang.toRomaji
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -15,16 +14,42 @@ data class EntryForm(
 )
 
 /**
- * One reading of an entry, with its wapuro-Hepburn romaji and the kanji
- * forms it is restricted to (empty when it reads every form).
+ * One reading of an entry, with the kanji forms it is restricted to
+ * (empty when it reads every form) and JMdict's `re_nokanji`, which
+ * says the reading belongs to no written form at all.
  */
 @Immutable
 data class EntryReading(
     val text: String,
-    val romaji: String,
     val restrictions: List<String>,
     val isCommon: Boolean,
+    val noKanji: Boolean = false,
 )
+
+/**
+ * Whether a reading stated with these [restrictions] and [noKanji] is a
+ * reading of [form] — the rule for pairing a written form with the
+ * reading drawn over it, wherever that pairing is made.
+ *
+ * Two things in JMdict say a reading is not one of a given form, and
+ * both matter on screen because the ruby asserts a reading the entry
+ * does not state:
+ *
+ * - `re_nokanji` (779 entries) marks a reading attached to no written
+ *   form: 刻々's ギザギザ, 空オケ's カラオケ. Set over the kanji it is
+ *   simply wrong — the actual readings are ぎざぎざ and からオケ.
+ * - `re_restr` names the forms a reading does belong to. 叢立ち and
+ *   総立ち share an entry, and そうだち is 総立ち's alone.
+ *
+ * A null [form] is a word written in kana, where the reading is the
+ * headword and there is nothing to restrict it against.
+ */
+fun readingAppliesTo(form: String?, restrictions: List<String>, noKanji: Boolean): Boolean = when {
+    form == null -> true
+    noKanji -> false
+    restrictions.isEmpty() -> true
+    else -> form in restrictions
+}
 
 /**
  * One sense of an entry: its display labels (pos, misc, field and dial
@@ -73,6 +98,35 @@ data class EntryDetail(
         get() = forms.drop(1)
 
     /**
+     * The reading set over [headword] as furigana: the first reading
+     * the entry states as a reading of it (see [readingAppliesTo]), or
+     * null when it states none. For a word written in kana alone that
+     * is the headword itself.
+     */
+    val headwordReading: EntryReading?
+        get() = readings.getOrNull(headwordReadingIndex)
+
+    /**
+     * The readings the Reading section lists: every reading except the
+     * one already shown over the headword. An entry with a single
+     * reading has nothing left to list, and gets no section at all.
+     */
+    val otherReadings: List<EntryReading>
+        get() {
+            val shown = headwordReadingIndex
+            return readings.filterIndexed { index, _ -> index != shown }
+        }
+
+    private val headwordReadingIndex: Int
+        get() {
+            // A kana headword IS the first reading, so nothing about it
+            // is restricted; a kanji headword takes only a reading the
+            // entry states for it.
+            val form = if (forms.isEmpty()) null else headword
+            return readings.indexOfFirst { readingAppliesTo(form, it.restrictions, it.noKanji) }
+        }
+
+    /**
      * Every part-of-speech code the entry states, in sense order and
      * without repeats. The Forms tab reads it to decide which
      * paradigms the entry has: the first sense carrying a conjugable
@@ -108,10 +162,10 @@ suspend fun loadEntryDetail(entryId: Long): EntryDetail? {
 }
 
 /**
- * Hydrates one entry: its forms, its readings with restrictions and
- * romaji, and its senses with labels, glosses and notes. Returns null
- * for an id that is not in the dictionary — a route pushed with a stale
- * id is an error state, never a crash.
+ * Hydrates one entry: its forms, its readings with their restrictions,
+ * and its senses with labels, glosses and notes. Returns null for an id
+ * that is not in the dictionary — a route pushed with a stale id is an
+ * error state, never a crash.
  */
 suspend fun DictionaryDatabase.loadEntryDetail(entryId: Long): EntryDetail? {
     val entry = db.entryQueries.entryById(entryId).awaitOneOrNull() ?: return null
@@ -125,9 +179,9 @@ suspend fun DictionaryDatabase.loadEntryDetail(entryId: Long): EntryDetail? {
     val readings = db.entryQueries.readingsForEntry(entryId).awaitList().map { row ->
         EntryReading(
             text = row.text,
-            romaji = toRomaji(row.text),
             restrictions = StoredValues.restrictions(row.restrictions),
             isCommon = row.is_common != 0L,
+            noKanji = row.no_kanji != 0L,
         )
     }
     coroutineContext.ensureActive()

@@ -34,13 +34,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cc.hosaka.okonomi.db.SearchHit
 import cc.hosaka.okonomi.feature.home.navigation.LocalHomeReselect
@@ -52,6 +51,7 @@ import cc.hosaka.okonomi.ui.CommonWordChip
 import cc.hosaka.okonomi.ui.LoadMoreEffect
 import cc.hosaka.okonomi.ui.PagingFooterState
 import cc.hosaka.okonomi.ui.SearchTextField
+import cc.hosaka.okonomi.ui.furigana.FuriganaText
 import cc.hosaka.okonomi.ui.pagingFooterItem
 import cc.hosaka.okonomi.ui.scrollIndicator
 import cc.hosaka.okonomi.ui.theme.Dimens
@@ -63,6 +63,15 @@ import okonomi.shared.generated.resources.search_no_results
 import okonomi.shared.generated.resources.search_placeholder
 import okonomi.shared.generated.resources.search_results_fallback
 import org.jetbrains.compose.resources.stringResource
+
+/**
+ * What a deinflected hit is prefixed with: the row's title is the
+ * dictionary form, and this points back at what was typed.
+ */
+private const val TRACE_MARKER = "‹ "
+
+/** Separates the title from the breadcrumb and from the common chip. */
+private val ROW_GAP = 8.dp
 
 @Composable
 fun SearchScreen(
@@ -274,6 +283,13 @@ private fun SearchResultsList(
     }
 }
 
+/**
+ * Sally's row contract, as furigana: the written form with its matched
+ * reading over the kanji rather than spelled out beside it, the match
+ * in the dynamic primary colour, and a muted `‹ rule, rule` breadcrumb
+ * beside the title for a deinflected hit. What is highlighted, and how
+ * finely, comes from the pure [titleFurigana].
+ */
 @Composable
 private fun SearchResultRow(
     hit: SearchHit,
@@ -292,16 +308,43 @@ private fun SearchResultRow(
         Row(
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = titleText(hit),
+            // The title takes no weight and the breadcrumb takes it all:
+            // a Row measures its unweighted children first, so the word
+            // claims the width it needs and the breadcrumb explains the
+            // match in whatever is left. Weighting both split the row
+            // evenly and squeezed the headword — the one thing on the
+            // row that must be readable — behind an explanation of it.
+            FuriganaText(
+                segments = remember(hit) { titleFurigana(hit.titleSegments) },
                 style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier
-                    .weight(1f, fill = false),
+                highlightStyle = SpanStyle(
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Medium,
+                ),
             )
+            if (hit.traceLabels.isNotEmpty()) {
+                // Its own text beside the title rather than a second
+                // colour inside it: the title is now furigana, whose
+                // runs are laid out against the reading above them, and
+                // a breadcrumb is neither read nor aligned that way.
+                Spacer(
+                    modifier = Modifier
+                        .width(ROW_GAP),
+                )
+                Text(
+                    text = TRACE_MARKER + hit.traceLabels.joinToString(", "),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f, fill = false),
+                )
+            }
             if (hit.isCommon) {
                 Spacer(
                     modifier = Modifier
-                        .width(8.dp),
+                        .width(ROW_GAP),
                 )
                 CommonWordChip()
             }
@@ -312,48 +355,6 @@ private fun SearchResultRow(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
-    }
-}
-
-/**
- * Sally's row contract: `primaryForm, matchedReading` with only the
- * matched segment highlighted in the dynamic primary color; deinflected
- * hits show a muted `‹ rule, rule` breadcrumb instead of a highlight.
- * The joined text and highlight offsets come from the pure [titleLine].
- */
-@Composable
-private fun titleText(hit: SearchHit): AnnotatedString {
-    val highlightColor = MaterialTheme.colorScheme.primary
-    val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
-    return remember(hit, highlightColor, mutedColor) {
-        buildTitleText(hit, highlightColor, mutedColor)
-    }
-}
-
-private fun buildTitleText(
-    hit: SearchHit,
-    highlightColor: Color,
-    mutedColor: Color,
-): AnnotatedString {
-    val line = titleLine(hit.titleSegments)
-    return buildAnnotatedString {
-        append(line.text)
-        line.highlights.forEach { range ->
-            addStyle(
-                style = SpanStyle(
-                    color = highlightColor,
-                    fontWeight = FontWeight.Medium,
-                ),
-                start = range.first,
-                end = range.last + 1,
-            )
-        }
-        if (hit.traceLabels.isNotEmpty()) {
-            withStyle(SpanStyle(color = mutedColor)) {
-                append("  ‹ ")
-                append(hit.traceLabels.joinToString(", "))
-            }
         }
     }
 }

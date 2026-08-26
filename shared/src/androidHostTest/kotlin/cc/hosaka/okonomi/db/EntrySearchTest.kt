@@ -25,6 +25,10 @@ import kotlin.test.assertTrue
  * - 4 食べる/はむ 950, n: homograph that must fail POS validation
  * - 6 食べた口/たべたくち 105 common, n: prefix hit for the ranking row;
  *   its second gloss "café drink" pins accented-Latin routing
+ * - 7 叢立ち・総立ち/そうだち(総立ち only)・むらだち(叢立ち only) 500, n:
+ *   readings JMdict restricts to one spelling each
+ * - 8 空オケ/カラオケ(re_nokanji)・からオケ 600, n: a reading of the word
+ *   that is a reading of no spelling of it
  */
 class EntrySearchTest {
 
@@ -89,6 +93,25 @@ class EntrySearchTest {
         db.entryQueries.insertGloss(60, 0, "fictional test noun")
         db.entryQueries.insertGloss(60, 1, "café drink")
 
+        // Two spellings whose readings JMdict states separately: そうだち
+        // is 総立ち's alone, and むらだち is 叢立ち's.
+        db.entryQueries.insertEntry(7, 500, 0)
+        db.entryQueries.insertKanjiForm(7, 0, "叢立ち", 500, 0)
+        db.entryQueries.insertKanjiForm(7, 1, "総立ち", 500, 0)
+        db.entryQueries.insertReading(7, 0, "そうだち", 0, 500, "総立ち", 0)
+        db.entryQueries.insertReading(7, 1, "むらだち", 0, 500, "叢立ち", 0)
+        db.entryQueries.insertSense(70, 7, 0, "n", null, null, null, null, null)
+        db.entryQueries.insertGloss(70, 0, "rising in a body")
+
+        // A re_nokanji reading, listed first: カラオケ is a reading of
+        // the word and of no spelling of it.
+        db.entryQueries.insertEntry(8, 600, 0)
+        db.entryQueries.insertKanjiForm(8, 0, "空オケ", 600, 0)
+        db.entryQueries.insertReading(8, 0, "カラオケ", 1, 600, null, 0)
+        db.entryQueries.insertReading(8, 1, "からオケ", 0, 600, null, 0)
+        db.entryQueries.insertSense(80, 8, 0, "n", null, null, null, null, null)
+        db.entryQueries.insertGloss(80, 0, "singing to a backing track")
+
         driver.execute(null, "INSERT INTO gloss_fts(gloss_fts) VALUES('rebuild')", 0).await()
 
         return DictionaryDatabase(db, driver).also { openedDatabases += it }
@@ -113,6 +136,44 @@ class EntrySearchTest {
 
         assertTrue(results.hits.first { it.entryId == 2L }.isCommon)
         assertFalse(results.hits.first { it.entryId == 3L }.isCommon)
+    }
+
+    /**
+     * A row pairs a written form with a reading, and the ruby drawn from
+     * that pair asserts the reading belongs to those characters. JMdict
+     * says when it does not: そうだち is stated for 総立ち alone, and
+     * over 叢立ち it would read 叢立 as そうだ.
+     */
+    @Test
+    fun `a row takes the reading stated for the form it shows, not the entry's first`() = runTest {
+        val database = seededDatabase()
+
+        val hit = database.searchEntries("叢立ち").hits.single { it.entryId == 7L }
+
+        assertEquals(listOf("叢立ち", "むらだち"), hit.titleSegments.map { it.text })
+        assertTrue(hit.titleSegments[1].readsPreviousSegment, "むらだち is a reading of 叢立ち")
+    }
+
+    /**
+     * A `re_nokanji` reading belongs to no spelling at all, so it is
+     * neither chosen as the form's reading nor drawn over it when the
+     * query is what found the entry. It is still shown — beside the
+     * form, the way the row has always shown two texts it cannot pair.
+     */
+    @Test
+    fun `a re_nokanji reading is shown beside the form rather than over it`() = runTest {
+        val database = seededDatabase()
+
+        val byForm = database.searchEntries("空オケ").hits.single { it.entryId == 8L }
+        assertEquals(listOf("空オケ", "からオケ"), byForm.titleSegments.map { it.text })
+        assertTrue(byForm.titleSegments[1].readsPreviousSegment)
+
+        val byReading = database.searchEntries("カラオケ").hits.single { it.entryId == 8L }
+        assertEquals(listOf("空オケ", "カラオケ"), byReading.titleSegments.map { it.text })
+        assertFalse(
+            byReading.titleSegments[1].readsPreviousSegment,
+            "カラオケ is a reading of the word, not of 空オケ",
+        )
     }
 
     @Test

@@ -6,6 +6,8 @@ import cc.hosaka.okonomi.db.TitleSegment
 import cc.hosaka.okonomi.db.forEachWord
 import cc.hosaka.okonomi.db.matchedToken
 import cc.hosaka.okonomi.ui.PagingFooterState
+import cc.hosaka.okonomi.ui.furigana.FuriganaSegment
+import cc.hosaka.okonomi.ui.furigana.alignReading
 
 @Immutable
 data class SearchState(
@@ -102,35 +104,158 @@ sealed interface SearchResultsState {
 }
 
 /**
- * A result row's joined title line: the segment texts joined with
- * ", " and the highlight ranges re-based onto the joined string. Kept
- * as a pure function so the offset math is testable — a highlight on a
- * later segment must land at segment start plus its range, never on a
- * separator.
+ * A result row's title as furigana: the entry's written form with the
+ * matched reading set above its kanji, instead of the two spelled out
+ * side by side.
+ *
+ * The match keeps its highlight through the fold, and keeps its extent.
+ * A plain run is split at the highlight's boundaries, so it stays
+ * character-exact. A run with a reading lights whole when the match
+ * covers a whole half of it and only in part when it does not: たべ
+ * against 食べる lights 食-with-た as a unit and べ exactly, while
+ * そうさい against 相殺関税 — one undivided run reading そうさいかんぜい
+ * — lights the そうさい of the ruby and leaves the kanji alone, because
+ * which of those kanji take そうさい is the thing nobody can say.
+ *
+ * Both the form's own offsets and the reading's are honoured, because a
+ * Japanese query matches through whichever of the two it was typed as.
+ *
+ * Pure so the offset math is testable rather than buried in a
+ * composable.
  */
-data class TitleLine(
-    val text: String,
-    val highlights: List<IntRange>,
-)
-
-fun titleLine(segments: List<TitleSegment>): TitleLine {
-    val text = StringBuilder()
-    val highlights = mutableListOf<IntRange>()
-    segments.forEachIndexed { index, segment ->
+fun titleFurigana(segments: List<TitleSegment>): List<FuriganaSegment> {
+    val title = mutableListOf<FuriganaSegment>()
+    var index = 0
+    while (index < segments.size) {
+        val segment = segments[index]
+        // Only a segment that says it reads the one before it is set
+        // over it; anything else stands beside it, joined as the row
+        // always joined two texts it could not pair.
+        val reading = segments.getOrNull(index + 1)?.takeIf { it.readsPreviousSegment }
         if (index > 0) {
-            text.append(", ")
+            title += FuriganaSegment(TITLE_SEPARATOR)
         }
-        val start = text.length
-        segment.highlight?.let { range ->
-            highlights += (start + range.first)..(start + range.last)
+        val aligned = if (reading == null) {
+            listOf(FuriganaSegment(segment.text))
+        } else {
+            alignReading(segment.text, reading.text)
         }
-        text.append(segment.text)
+        title += highlighted(aligned, segment.highlight, reading?.highlight)
+        index += if (reading == null) 1 else 2
     }
-    return TitleLine(
-        text = text.toString(),
-        highlights = highlights,
-    )
+    return title
 }
+
+/** What separates two title segments that could not be paired. */
+private const val TITLE_SEPARATOR = ", "
+
+/**
+ * [segments] with the runs covered by [formHighlight] (offsets into the
+ * written form) or [readingHighlight] (offsets into the reading) marked.
+ */
+private fun highlighted(
+    segments: List<FuriganaSegment>,
+    formHighlight: IntRange?,
+    readingHighlight: IntRange?,
+): List<FuriganaSegment> {
+    if (formHighlight == null && readingHighlight == null) return segments
+    val result = mutableListOf<FuriganaSegment>()
+    var formStart = 0
+    var readingStart = 0
+    segments.forEach { segment ->
+        val reading = segment.reading
+        val readingLength = reading?.length ?: segment.text.length
+        if (reading == null) {
+            result += splitByHighlight(segment.text, formStart, readingStart, formHighlight, readingHighlight)
+        } else {
+            result += segment.copy(
+                highlight = rubyHighlight(
+                    text = formHighlight.within(formStart, segment.text.length),
+                    reading = readingHighlight.within(readingStart, readingLength),
+                    textLength = segment.text.length,
+                    readingLength = readingLength,
+                ),
+            )
+        }
+        formStart += segment.text.length
+        readingStart += readingLength
+    }
+    return result
+}
+
+/**
+ * What a match covers of one kanji-with-ruby run, given how much of each
+ * half it reached.
+ *
+ * A half matched from end to end means the run itself matched, and both
+ * halves light: 食 reads た and nothing else, so a search for たべ has
+ * matched 食 as much as it has matched た. A half matched only in part
+ * means the run is larger than the match, and only the characters
+ * actually typed light — 相殺関税 is one undivided run, and lighting its
+ * kanji for a match on そうさい would claim そうさい belongs to 相殺,
+ * which is the split [alignReading] declined to make.
+ */
+private fun rubyHighlight(
+    text: IntRange?,
+    reading: IntRange?,
+    textLength: Int,
+    readingLength: Int,
+): FuriganaSegment.Highlight? = when {
+    text != null && text.count() == textLength -> FuriganaSegment.Highlight.Whole
+    reading != null && reading.count() == readingLength -> FuriganaSegment.Highlight.Whole
+    text != null -> FuriganaSegment.Highlight.PartOfText(text)
+    reading != null -> FuriganaSegment.Highlight.PartOfReading(reading)
+    else -> null
+}
+
+/**
+ * The part of this highlight that falls inside a run starting at [start]
+ * and [length] long, rebased onto the run, or null when none of it does.
+ */
+private fun IntRange?.within(start: Int, length: Int): IntRange? {
+    if (this == null || length <= 0) return null
+    val from = maxOf(first, start)
+    val to = minOf(last, start + length - 1)
+    return if (from > to) null else (from - start)..(to - start)
+}
+
+/**
+ * A run with no reading of its own, cut into highlighted and plain
+ * pieces. Its reading is its own text, so a character is covered when
+ * either offset falls in its highlight.
+ */
+private fun splitByHighlight(
+    text: String,
+    formStart: Int,
+    readingStart: Int,
+    formHighlight: IntRange?,
+    readingHighlight: IntRange?,
+): List<FuriganaSegment> {
+    val pieces = mutableListOf<FuriganaSegment>()
+    var runStart = 0
+    var runHighlighted = isHighlighted(0, formStart, readingStart, formHighlight, readingHighlight)
+    for (index in 1..text.length) {
+        val highlighted = index < text.length &&
+            isHighlighted(index, formStart, readingStart, formHighlight, readingHighlight)
+        if (index < text.length && highlighted == runHighlighted) continue
+        pieces += FuriganaSegment(
+            text = text.substring(runStart, index),
+            highlight = if (runHighlighted) FuriganaSegment.Highlight.Whole else null,
+        )
+        runStart = index
+        runHighlighted = highlighted
+    }
+    return pieces
+}
+
+private fun isHighlighted(
+    offset: Int,
+    formStart: Int,
+    readingStart: Int,
+    formHighlight: IntRange?,
+    readingHighlight: IntRange?,
+): Boolean = formHighlight?.contains(formStart + offset) == true ||
+    readingHighlight?.contains(readingStart + offset) == true
 
 /**
  * Character ranges of [text] to highlight for an English result: every

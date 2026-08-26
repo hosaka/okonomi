@@ -28,13 +28,14 @@ private const val SURU_NOUN_CODE = "vs"
 fun produceFormsTabState(
     entryId: Long,
     base: String,
+    reading: String?,
     posCodes: List<String>,
 ): State<FormsTabState> {
     // The initial state is the finished table, headed by the JMdict
     // code: there is nothing to wait for, so the first frame is already
     // the answer and only the heading arrives later.
-    val initial = remember(base, posCodes) {
-        FormsTabState(content = formsContent(base, posCodes, labels = emptyMap()))
+    val initial = remember(base, reading, posCodes) {
+        FormsTabState(content = formsContent(base, reading, posCodes, labels = emptyMap()))
     }
     return produceScreenState(
         // Keyed per entry beside the entry's own screen state, so two
@@ -42,7 +43,7 @@ fun produceFormsTabState(
         key = "entry-forms-$entryId",
         initial = initial,
     ) {
-        formsTabStateProducer(base, posCodes)
+        formsTabStateProducer(base, reading, posCodes)
     }
 }
 
@@ -57,6 +58,7 @@ fun produceFormsTabState(
  */
 suspend fun ScreenStateScope.formsTabStateProducer(
     base: String,
+    reading: String?,
     posCodes: List<String>,
     load: suspend (List<String>) -> Map<String, String> = { loadTagLabels(it) },
 ): Flow<FormsTabState> {
@@ -81,7 +83,9 @@ suspend fun ScreenStateScope.formsTabStateProducer(
             }
             emitAll(
                 labels.map { resolved ->
-                    FormsTabState(content = FormsTabContentState.Ready(conjugations.tables(resolved.orEmpty())))
+                    FormsTabState(
+                        content = FormsTabContentState.Ready(conjugations.tables(reading, resolved.orEmpty())),
+                    )
                 },
             )
         }
@@ -106,6 +110,7 @@ private suspend fun loadLabels(
 
 private fun formsContent(
     base: String,
+    reading: String?,
     posCodes: List<String>,
     labels: Map<String, String>,
 ): FormsTabContentState {
@@ -113,7 +118,7 @@ private fun formsContent(
     return if (conjugations.isEmpty()) {
         notConjugable(posCodes)
     } else {
-        FormsTabContentState.Ready(conjugations.tables(labels))
+        FormsTabContentState.Ready(conjugations.tables(reading, labels))
     }
 }
 
@@ -125,9 +130,12 @@ private fun notConjugable(posCodes: List<String>) =
  * returned yet — is headed by the code itself: an unlabelled table
  * would be worse than a cryptic one, and a withheld table worse still.
  */
-private fun List<Conjugation>.tables(labels: Map<String, String>): List<ConjugationTable> = map { conjugation ->
+private fun List<Conjugation>.tables(
+    reading: String?,
+    labels: Map<String, String>,
+): List<ConjugationTable> = map { conjugation ->
     ConjugationTable(
         className = labels[conjugation.code] ?: conjugation.code,
-        forms = conjugation.forms,
+        rows = conjugationRows(conjugation, reading),
     )
 }

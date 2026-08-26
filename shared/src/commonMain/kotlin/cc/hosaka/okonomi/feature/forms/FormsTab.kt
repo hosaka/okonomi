@@ -33,8 +33,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cc.hosaka.okonomi.db.EntryDetail
-import cc.hosaka.okonomi.lang.Form
 import cc.hosaka.okonomi.ui.CenteredMessage
+import cc.hosaka.okonomi.ui.furigana.FuriganaSegment
+import cc.hosaka.okonomi.ui.furigana.FuriganaText
+import cc.hosaka.okonomi.ui.furigana.plainText
 import cc.hosaka.okonomi.ui.theme.Dimens
 import cc.hosaka.okonomi.ui.theme.horizontalPaddingHalf
 import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
@@ -85,6 +87,9 @@ fun FormsTab(
         // inflect, so the headword is what conjugates — the same text
         // the Word tab shows at the top of the entry.
         base = entry.headword,
+        // The same paradigms run over the reading are what tell the
+        // table which of its stems shift; see [conjugationRows].
+        reading = entry.headwordReading?.text,
         posCodes = entry.posCodes,
     )
     FormsTabContent(
@@ -138,7 +143,7 @@ private fun ConjugationTables(
                     TableHeading(table.className.lowercase())
                 }
                 item(key = "table-$index") {
-                    ConjugationGrid(table.forms)
+                    ConjugationGrid(table.rows)
                 }
             }
         }
@@ -165,7 +170,7 @@ private fun TableHeading(text: String) {
 }
 
 @Composable
-private fun ConjugationGrid(forms: List<Form>) {
+private fun ConjugationGrid(rows: List<ConjugationRow>) {
     val outline = MaterialTheme.colorScheme.outlineVariant
     val labelWidth = labelColumnWidth()
     val noForm = stringResource(Res.string.entry_forms_no_form)
@@ -189,8 +194,8 @@ private fun ConjugationGrid(forms: List<Form>) {
             VerticalRule(outline)
             HeaderCell(stringResource(Res.string.entry_forms_negative))
         }
-        forms.forEachIndexed { index, form ->
-            val label = stringResource(form.id.label)
+        rows.forEachIndexed { index, row ->
+            val label = stringResource(row.id.label)
             GridRow(
                 // The alternating tint is what keeps the eye on one row
                 // across three columns of dense kana.
@@ -204,17 +209,20 @@ private fun ConjugationGrid(forms: List<Form>) {
                 // reader would otherwise get, with nothing tying a form
                 // to its label or its column. One node per row, read as
                 // a sentence, is the whole relationship.
+                // A ruby is a reading aid for the eye; a screen reader
+                // already gets the word, so the description carries the
+                // written form alone.
                 description = stringResource(
                     Res.string.entry_forms_row_description,
                     label,
-                    form.affirmative,
-                    form.negative ?: noForm,
+                    row.affirmative.plainText(),
+                    row.negative?.plainText() ?: noForm,
                 ),
             ) {
                 LabelCell(text = label, width = labelWidth)
-                ValueCell(form.affirmative)
+                ValueCell(row.affirmative)
                 VerticalRule(outline)
-                ValueCell(form.negative ?: NO_FORM)
+                ValueCell(row.negative ?: listOf(FuriganaSegment(NO_FORM)))
             }
         }
     }
@@ -306,9 +314,9 @@ private fun RowScope.HeaderCell(text: String) {
 }
 
 @Composable
-private fun RowScope.ValueCell(text: String) {
-    Text(
-        text = text,
+private fun RowScope.ValueCell(segments: List<FuriganaSegment>) {
+    FuriganaText(
+        segments = segments,
         style = MaterialTheme.typography.bodyLarge,
         modifier = Modifier
             .weight(1f)

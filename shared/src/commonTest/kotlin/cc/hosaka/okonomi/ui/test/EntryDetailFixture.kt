@@ -15,7 +15,7 @@ internal fun entryDetail(
     headword: String = "本",
     forms: List<EntryForm> = listOf(EntryForm(text = headword, isCommon = true)),
     readings: List<EntryReading> = listOf(
-        EntryReading(text = "ほん", romaji = "hon", restrictions = emptyList(), isCommon = true),
+        EntryReading(text = "ほん", restrictions = emptyList(), isCommon = true),
     ),
     senses: List<EntrySense> = listOf(entrySense()),
     isCommon: Boolean = true,

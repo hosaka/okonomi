@@ -25,7 +25,7 @@ class EntryStateProducerTest {
         entryId = entryId,
         headword = "食べる",
         forms = listOf(EntryForm("食べる", isCommon = true)),
-        readings = listOf(EntryReading("たべる", "taberu", emptyList(), isCommon = true)),
+        readings = listOf(EntryReading("たべる", emptyList(), isCommon = true)),
         senses = listOf(
             EntrySense(
                 posCodes = listOf("v1"),
