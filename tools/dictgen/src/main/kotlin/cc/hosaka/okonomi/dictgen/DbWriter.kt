@@ -302,6 +302,22 @@ class DbWriter(target: File) : AutoCloseable {
         }
     }
 
+    /**
+     * One row per character, its strokes joined by [StoredFormat.STROKE_PATHS]
+     * in KanjiVG's drawing order. The join is what keeps stroke order out of
+     * row order; see the note on `kanji_stroke_order` in kanji.sq.
+     */
+    fun writeKanjivg(parser: KanjivgParser) {
+        db.transaction {
+            parser.parse { character ->
+                db.kanjiQueries.insertKanjiStrokeOrder(
+                    character.literal,
+                    character.paths.joinToString(StoredFormat.STROKE_PATHS),
+                )
+            }
+        }
+    }
+
     fun writeRadk(data: RadkData) {
         db.transaction {
             data.radicalStrokes.forEach { (radical, strokes) -> db.kanjiQueries.insertRadical(radical, strokes) }
@@ -373,6 +389,11 @@ class DbWriter(target: File) : AutoCloseable {
         "glosses" to db.entryQueries.glossCount().executeAsOne(),
         "kanji" to db.kanjiQueries.kanjiCount().executeAsOne(),
         "radicals" to db.kanjiQueries.radicalCount().executeAsOne(),
+        // Characters that have a stroke-order diagram, NOT a stroke
+        // total: the table holds one row per character. Printed beside
+        // "kanji" a label of "strokes" would read as a stroke count that
+        // had come up short.
+        "diagrams" to db.kanjiQueries.kanjiStrokeOrderCount().executeAsOne(),
         // Person names kept, and everything else JMnedict offered.
         "names" to db.nameQueries.nameCount().executeAsOne(),
         "nonperson" to droppedNames,

@@ -209,6 +209,47 @@ object Fixtures {
         5	13	私(わたし) は 毎日 パン を 食べる
     """.trimIndent()
 
+    /**
+     * KanjiVG ships one file per character. This is 食 (U+98DF), the one
+     * character the kanjidic fixture also describes, cut to two strokes:
+     * what is under test here is the shape of the file, not the shape of
+     * the character. The DOCTYPE is kept verbatim from the real files
+     * because it references an external DTD by URL, and a generation run
+     * that fetched it would be reaching onto the network mid-build.
+     */
+    val kanjivgShoku = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.0//EN" "http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd" [
+        <!ATTLIST g
+        xmlns:kvg CDATA #FIXED "http://kanjivg.tagaini.net"
+        kvg:element CDATA #IMPLIED
+        kvg:radical CDATA #IMPLIED >
+        <!ATTLIST path
+        xmlns:kvg CDATA #FIXED "http://kanjivg.tagaini.net"
+        kvg:type CDATA #IMPLIED >
+        ]>
+        <svg xmlns="http://www.w3.org/2000/svg" width="109" height="109" viewBox="0 0 109 109" xmlns:kvg="https://kanjivg.tagaini.net/">
+        <g id="kvg:StrokePaths_098df" style="fill:none;stroke:#000000;stroke-width:3;">
+        <g id="kvg:098df" kvg:element="食">
+        <path id="kvg:098df-s1" kvg:type="㇒" d="M52.75,10.5c0.11,0.98-0.19,2.67-0.97,3.93"/>
+        <path id="kvg:098df-s2" kvg:type="㇏" d="M52.75,16.25c5.09,4.8,25.71,19.61,33.7,24.9"/>
+        </g>
+        </g>
+        <g id="kvg:StrokeNumbers_098df" style="font-size:8;fill:#808080">
+        <text transform="matrix(1 0 0 1 4.25 54.13)">1</text>
+        </g>
+        </svg>
+    """.trimIndent()
+
+    /**
+     * A calligraphic variant of the same character. KanjiVG ships
+     * thousands of these and they must never reach the database: they
+     * would collide with the plain form on its literal. The parser
+     * decides that on the filename alone, so this file's content is a
+     * perfectly good character file — only its name disqualifies it.
+     */
+    val kanjivgShokuVariant = kanjivgShoku
+
     fun writeDataDir(dir: File) {
         dir.mkdirs()
         File(dir, "JMdict_e.xml").writeText(jmdict)
@@ -218,5 +259,8 @@ object Fixtures {
         File(dir, "jpn_sentences.tsv").writeText(jpnSentences)
         File(dir, "eng_sentences.tsv").writeText(engSentences)
         File(dir, "jpn_indices.csv").writeText(jpnIndices)
+        val kanjivg = File(dir, "kanjivg").apply { mkdirs() }
+        File(kanjivg, "098df.svg").writeText(kanjivgShoku)
+        File(kanjivg, "098df-Kaisho.svg").writeText(kanjivgShokuVariant)
     }
 }

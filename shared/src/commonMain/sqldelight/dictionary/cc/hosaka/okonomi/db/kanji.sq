@@ -35,6 +35,24 @@ CREATE TABLE kanji_radical (
 CREATE INDEX kanji_radical_kanji_idx ON kanji_radical(kanji);
 CREATE INDEX kanji_radical_radical_idx ON kanji_radical(radical);
 
+-- One row per character, holding every stroke of it as newline-joined
+-- SVG path data in KanjiVG's own drawing order.
+--
+-- Not one row per stroke, deliberately. See the note on
+-- kanjiReadingsForLiterals below for what happened the last time an
+-- order this project needs was left to row order: 79,921 stroke rows
+-- would put stroke order back under exactly that risk, and a character
+-- drawn out of order is wrong in a way no reader can un-learn. A single
+-- joined column cannot be resequenced by a query plan, and the Kanji
+-- tab wants a whole character at once anyway.
+--
+-- Newline is safe as the separator: no `d` value in the KanjiVG corpus
+-- contains one (verified across all 6,703 non-variant files).
+CREATE TABLE kanji_stroke_order (
+    literal TEXT PRIMARY KEY,
+    paths TEXT NOT NULL
+);
+
 insertKanji:
 INSERT INTO kanji(literal, grade, stroke_count, freq, jlpt) VALUES (?, ?, ?, ?, ?);
 
@@ -50,11 +68,17 @@ INSERT INTO radical(literal, stroke_count) VALUES (?, ?);
 insertKanjiRadical:
 INSERT INTO kanji_radical(kanji, radical) VALUES (?, ?);
 
+insertKanjiStrokeOrder:
+INSERT INTO kanji_stroke_order(literal, paths) VALUES (?, ?);
+
 kanjiCount:
 SELECT COUNT(*) FROM kanji;
 
 radicalCount:
 SELECT COUNT(*) FROM radical;
+
+kanjiStrokeOrderCount:
+SELECT COUNT(*) FROM kanji_stroke_order;
 
 -- Single-character forms. The entry view's Kanji tab uses the IN-list
 -- forms below; these stay as the natural shape for the kanji detail
@@ -120,3 +144,10 @@ FROM kanji_radical kr
 JOIN radical r ON r.literal = kr.radical
 WHERE kr.kanji IN :literals
 ORDER BY kr.kanji, r.stroke_count, r.literal;
+
+-- One row per literal, so there is nothing here for an ORDER BY to get
+-- wrong: the stroke order is inside the value, not spread over rows.
+strokeOrderForLiterals:
+SELECT literal, paths
+FROM kanji_stroke_order
+WHERE literal IN :literals;

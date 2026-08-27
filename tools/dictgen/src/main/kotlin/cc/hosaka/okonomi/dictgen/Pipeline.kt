@@ -19,7 +19,7 @@ import java.time.Instant
  * old rankings forever.
  *
  * What a bump costs, which is the other half of the decision: the app
- * re-copies the whole bundled database, currently 176 MB, on every
+ * re-copies the whole bundled database, currently 184 MB, on every
  * device that already has one — decompressing and writing it out again
  * before the dictionary can be used. That is not a migration cost that
  * scales with what changed; it is the same for a new column and for a
@@ -63,6 +63,12 @@ import java.time.Instant
  * have moved either. A device left on version 5 keeps a database whose
  * name rows are mostly places, which the new search would happily return.
  *
+ * 7: `kanji_stroke_order`, KanjiVG's per-stroke SVG path data, which
+ * the Kanji tab's 88.dp slot draws and animates. This one IS a DDL
+ * change, so [DICTIONARY_SCHEMA_FINGERPRINT] moves with it — a device
+ * left on version 6 would hold a database with no such table, and the
+ * tab's fifth query would fail against it rather than degrade.
+ *
  * THIS COUNTER IS THE ONLY RE-COPY SIGNAL. Bump it for a schema change
  * too, not only for a data change.
  *
@@ -88,7 +94,7 @@ import java.time.Instant
  * [DICTIONARY_SCHEMA_FINGERPRINT] is what stops that from being a thing
  * anyone has to remember.
  */
-const val DICTIONARY_FORMAT_VERSION = 6
+const val DICTIONARY_FORMAT_VERSION = 7
 
 /**
  * Fingerprint of the schema DDL, as a guard on the counter above.
@@ -111,7 +117,7 @@ const val DICTIONARY_FORMAT_VERSION = 6
  * [DICTIONARY_FORMAT_VERSION], then paste the new value the failure
  * message prints.
  */
-const val DICTIONARY_SCHEMA_FINGERPRINT = "6415d12732697f3c"
+const val DICTIONARY_SCHEMA_FINGERPRINT = "3769814c5932b696"
 
 /**
  * Union of several DTDs' entity declarations, earlier sources winning:
@@ -144,6 +150,7 @@ class Pipeline(private val dataDir: File, private val out: File) {
         val jmnedict = source("JMnedict.xml")
         val kanjidic = source("kanjidic2.xml")
         val radk = source("radkfile")
+        val kanjivg = sourceDir("kanjivg")
         val tatoeba = TatoebaParser(
             japanese = source("jpn_sentences.tsv"),
             english = source("eng_sentences.tsv"),
@@ -153,7 +160,7 @@ class Pipeline(private val dataDir: File, private val out: File) {
         out.parentFile?.mkdirs()
         val tmp = File(out.parentFile, out.name + ".tmp")
         try {
-            return generate(jmdict, jmnedict, kanjidic, radk, tatoeba, tmp)
+            return generate(jmdict, jmnedict, kanjidic, radk, kanjivg, tatoeba, tmp)
         } catch (e: Exception) {
             tmp.delete()
             throw e
@@ -165,6 +172,7 @@ class Pipeline(private val dataDir: File, private val out: File) {
         jmnedict: File,
         kanjidic: File,
         radk: File,
+        kanjivg: File,
         tatoeba: TatoebaParser,
         tmp: File,
     ): Summary {
@@ -185,6 +193,7 @@ class Pipeline(private val dataDir: File, private val out: File) {
             writer.writeTatoeba(tatoeba)
             writer.writeKanjidic(KanjidicParser(kanjidic))
             writer.writeRadk(RadkParser.parse(radk))
+            writer.writeKanjivg(KanjivgParser(kanjivg))
             writer.writeNames(jmnedictParser)
             // Both parsers have read their DTD by now, so the label
             // table can be written from what they declared.
@@ -216,6 +225,13 @@ class Pipeline(private val dataDir: File, private val out: File) {
         val file = File(dataDir, name)
         if (!file.isFile) throw PipelineException("Missing source file: $name (expected at ${file.path})")
         return file
+    }
+
+    /** KanjiVG ships one file per character, so its source is a directory. */
+    private fun sourceDir(name: String): File {
+        val dir = File(dataDir, name)
+        if (!dir.isDirectory) throw PipelineException("Missing source directory: $name (expected at ${dir.path})")
+        return dir
     }
 
     private fun extractCreationDate(jmdict: File): String? =

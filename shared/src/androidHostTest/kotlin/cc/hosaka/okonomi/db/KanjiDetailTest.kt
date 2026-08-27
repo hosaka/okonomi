@@ -76,6 +76,13 @@ class KanjiDetailTest {
         // A character radkfile decomposes but kanjidic never describes.
         db.kanjiQueries.insertKanjiRadical("兀", "儿")
 
+        // KanjiVG's paths arrive as one newline-joined value per
+        // character. 物 deliberately gets none: the shipped corpus
+        // covers 6,703 characters and kanjidic more than twice that, so
+        // a character with readings and no strokes is normal data.
+        db.kanjiQueries.insertKanjiStrokeOrder("食", "M1,2c3,4\nM5,6c7,8\nM9,10c11,12")
+        db.kanjiQueries.insertKanjiStrokeOrder("一", "M11,54c3,0")
+
         return DictionaryDatabase(db, driver).also { openedDatabases += it }
     }
 
@@ -111,6 +118,21 @@ class KanjiDetailTest {
         assertEquals(listOf("thing"), characters[1].meanings)
         // Ordered simplest radical first, ties broken by literal.
         assertEquals(listOf("勿", "牛"), characters[1].radicals)
+    }
+
+    @Test
+    fun `stroke paths come back split, in the order they were stored`() = runTest {
+        val characters = seededDatabase().loadKanjiForWord(listOf("食", "物"))
+
+        assertEquals(
+            listOf("M1,2c3,4", "M5,6c7,8", "M9,10c11,12"),
+            characters.first().strokePaths,
+            "the stored order IS the stroke order; nothing else records it",
+        )
+        assertTrue(
+            characters[1].strokePaths.isEmpty(),
+            "a character KanjiVG does not carry still renders, with an empty slot",
+        )
     }
 
     @Test
@@ -164,6 +186,7 @@ class KanjiDetailTest {
         assertEquals("彁", character.literal)
         assertFalse(character.hasData)
         assertTrue(character.radicals.isEmpty())
+        assertTrue(character.strokePaths.isEmpty())
     }
 
     @Test

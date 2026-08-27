@@ -18,6 +18,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
@@ -45,10 +47,12 @@ import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * Side of the square the KanjiVG stroke-order diagram will occupy. It is
- * the diagram's own size, independent of the column that holds it.
+ * Side of the square the KanjiVG stroke-order diagram occupies. It is
+ * the diagram's own size, independent of the column that holds it, and
+ * is shared with [StrokeOrderDiagram] so the filled slot and the empty
+ * one are the same square.
  */
-private val STROKE_ORDER_SIZE = 88.dp
+internal val STROKE_ORDER_SIZE = 88.dp
 
 /**
  * Floor for the leading column, not a fixed width: the literal is set at
@@ -57,12 +61,12 @@ private val STROKE_ORDER_SIZE = 88.dp
  */
 private val GLYPH_COLUMN_MIN_WIDTH = 88.dp
 
-private val PLACEHOLDER_BORDER = 1.dp
+internal val PLACEHOLDER_BORDER = 1.dp
 
-private val PLACEHOLDER_CORNER = 12.dp
+internal val PLACEHOLDER_CORNER = 12.dp
 
 /** Dash and gap of the stroke-order slot's outline. */
-private val PLACEHOLDER_DASH = 6.dp
+internal val PLACEHOLDER_DASH = 6.dp
 
 /** Joins the values of one reading or meaning line. */
 private const val READING_JOIN = "・"
@@ -98,11 +102,26 @@ fun KanjiCard(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(Dimens.verticalPaddingHalf),
             ) {
-                Text(
-                    text = character.literal,
-                    style = MaterialTheme.typography.displayMedium,
-                )
-                StrokeOrderPlaceholder()
+                // The diagram draws the character, so printing the literal
+                // beside it would show the same glyph twice in one column.
+                // Where there is no diagram it is the other way round: the
+                // literal is the only thing identifying the card, and the
+                // parse has to be resolved HERE rather than inside the
+                // diagram, or a character whose stored paths do not parse
+                // would fall back to a dashed square naming nothing.
+                val strokes = rememberStrokeGeometry(character.strokePaths)
+                if (strokes == null) {
+                    Text(
+                        text = character.literal,
+                        style = MaterialTheme.typography.displayMedium,
+                    )
+                    // KanjiVG carries 6,703 characters and kanjidic more
+                    // than twice that, so an empty slot is a normal state
+                    // of the shipped data, not a failure to load.
+                    StrokeOrderPlaceholder()
+                } else {
+                    StrokeOrderDiagram(strokes, character.literal)
+                }
             }
             Column(
                 modifier = Modifier
@@ -153,25 +172,34 @@ fun KanjiCard(
 }
 
 /**
- * The square the KanjiVG stroke-order diagram will occupy, drawn at its
- * final size now so importing the diagrams later is a drop-in rather
- * than a re-layout of every card. The dashed outline is what marks it as
- * a slot waiting to be filled; a filled blank would read as a diagram
- * that failed to load.
+ * The empty stroke-order slot: the same square [StrokeOrderDiagram]
+ * fills, for a character KanjiVG does not carry or whose stored path
+ * data would not parse. The dashed outline is what marks it as a slot
+ * with nothing in it; a filled blank would read as a diagram that failed
+ * to load. It reports no click action, which is the difference an
+ * accessibility service can hear between the two states.
  */
 @Composable
-private fun StrokeOrderPlaceholder() {
+internal fun StrokeOrderPlaceholder(modifier: Modifier = Modifier) {
     val outline = MaterialTheme.colorScheme.outlineVariant
     val density = LocalDensity.current
     val borderPx = with(density) { PLACEHOLDER_BORDER.toPx() }
     val cornerPx = with(density) { PLACEHOLDER_CORNER.toPx() }
     val dashPx = with(density) { PLACEHOLDER_DASH.toPx() }
     Box(
-        modifier = Modifier
+        modifier = modifier
             .size(STROKE_ORDER_SIZE)
             .drawBehind {
+                // Inset by half the border, the same as the filled slot's
+                // guide grid: a stroke is centred on its rectangle, so
+                // without this the two states draw outlines of visibly
+                // different weight while sitting one above the other in
+                // the same list.
+                val inset = borderPx / 2f
                 drawRoundRect(
                     color = outline,
+                    topLeft = Offset(inset, inset),
+                    size = Size(size.width - borderPx, size.height - borderPx),
                     cornerRadius = CornerRadius(cornerPx, cornerPx),
                     style = Stroke(
                         width = borderPx,

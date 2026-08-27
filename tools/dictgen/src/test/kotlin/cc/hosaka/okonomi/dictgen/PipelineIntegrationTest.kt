@@ -30,6 +30,10 @@ class PipelineIntegrationTest {
         assertEquals(2L, summary.counts["glosses"])
         assertEquals(1L, summary.counts["kanji"])
         assertEquals(2L, summary.counts["radicals"])
+        // The kanjivg fixture directory holds two files for the same
+        // character, one of them a -Kaisho variant. One row, not two:
+        // the variant filter is the only thing keeping them apart.
+        assertEquals(1L, summary.counts["diagrams"])
         // Two of the fixture's four name entries are person names; see
         // keepsOnlyPersonNames.
         assertEquals(2L, summary.counts["names"])
@@ -116,6 +120,39 @@ class PipelineIntegrationTest {
             val byRadical = db.kanjiQueries.kanjiByRadical("一").executeAsList().map { it.literal }.toSet()
             assertEquals(setOf("食"), byRadical)
         }
+    }
+
+    @Test
+    fun persistsStrokeOrderInDocumentOrderForNonVariantFilesOnly() {
+        withDb(generate()) { db ->
+            val rows = db.kanjiQueries.strokeOrderForLiterals(listOf("食", "倉")).executeAsList()
+            // 倉 has no KanjiVG file in the fixture and 食 has two, one of
+            // them a -Kaisho variant: one row, for the plain form.
+            assertEquals(listOf("食"), rows.map { it.literal })
+            // Newline-joined in the order the file declares them, which
+            // is the only place stroke order is recorded. Written out in
+            // full rather than compared against the fixture string, so a
+            // parser that reversed or re-sorted the strokes fails here.
+            assertEquals(
+                listOf(
+                    "M52.75,10.5c0.11,0.98-0.19,2.67-0.97,3.93",
+                    "M52.75,16.25c5.09,4.8,25.71,19.61,33.7,24.9",
+                ),
+                rows.single().paths.split("\n"),
+            )
+        }
+    }
+
+    @Test
+    fun missingKanjivgDirectoryFailsFastWithItsName() {
+        val dataDir = tempDir()
+        Fixtures.writeDataDir(dataDir)
+        File(dataDir, "kanjivg").deleteRecursively()
+        val out = File(tempDir(), "okonomi.db")
+
+        val e = assertFailsWith<PipelineException> { Pipeline(dataDir, out).run() }
+        assertTrue("kanjivg" in (e.message ?: ""), "message should name the directory: ${e.message}")
+        assertTrue(!out.exists(), "no partial DB should be left behind")
     }
 
     @Test
@@ -275,7 +312,10 @@ class PipelineIntegrationTest {
         // the DDL (the read-only database is regenerated, never
         // migrated), so the tag_label increment, the sentence tables,
         // the raised sentence cap and the surface forms in the breakdown
-        // column each moved the format version alone.
+        // column each moved the format version alone. Version 7 added
+        // the kanji_stroke_order table, which IS a DDL change and so
+        // moved the schema fingerprint with it - but still not the
+        // schema version, for the reason below.
         //
         // The schema version is PINNED AT 1 and is expected to stay
         // there for the life of the project. SQLDelight derives it from
@@ -288,7 +328,7 @@ class PipelineIntegrationTest {
         // of the sidecar that can move, and therefore the only thing
         // that makes a provisioned device re-copy.
         assertEquals(1L, OkonomiDb.Schema.version)
-        assertEquals(6, DICTIONARY_FORMAT_VERSION)
+        assertEquals(7, DICTIONARY_FORMAT_VERSION)
     }
 
     @Test
@@ -316,7 +356,7 @@ class PipelineIntegrationTest {
         assertTrue(sidecar.isFile, "sidecar should be written next to the database")
         // Literals on purpose: the sidecar is the only thing that makes
         // a device re-copy, so a silent version regression must fail here.
-        assertEquals("${Fixtures.JMDICT_DATE}:1:6", sidecar.readText())
+        assertEquals("${Fixtures.JMDICT_DATE}:1:7", sidecar.readText())
         assertEquals(
             "${Fixtures.JMDICT_DATE}:${OkonomiDb.Schema.version}:$DICTIONARY_FORMAT_VERSION",
             sidecar.readText(),

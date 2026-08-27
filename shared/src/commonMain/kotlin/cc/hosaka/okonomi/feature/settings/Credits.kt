@@ -6,6 +6,7 @@ import okonomi.shared.generated.resources.settings_credit_usage_furiganable
 import okonomi.shared.generated.resources.settings_credit_usage_jmdict
 import okonomi.shared.generated.resources.settings_credit_usage_jmnedict
 import okonomi.shared.generated.resources.settings_credit_usage_kanjidic
+import okonomi.shared.generated.resources.settings_credit_usage_kanjivg
 import okonomi.shared.generated.resources.settings_credit_usage_radkfile
 import okonomi.shared.generated.resources.settings_credit_usage_tatoeba
 import okonomi.shared.generated.resources.settings_credit_usage_yomitan
@@ -116,5 +117,16 @@ val creditEntries: List<CreditEntry> = listOf(
         licenceUrl = APACHE_2_LICENCE_URL,
         usage = Res.string.settings_credit_usage_furiganable,
         detail = FURIGANABLE_SOURCE,
+    ),
+    CreditEntry(
+        name = "KanjiVG",
+        // The variant is named in full, unlike Tatoeba above, because
+        // KanjiVG states it outright: leaving the ShareAlike term off
+        // would weaken an attribution the licence obliges us to make.
+        licence = "CC BY-SA 3.0",
+        // The licence requires linking KanjiVG's own website, not the
+        // licence deed, so this url is the project page.
+        licenceUrl = "https://kanjivg.tagaini.net/",
+        usage = Res.string.settings_credit_usage_kanjivg,
     ),
 )

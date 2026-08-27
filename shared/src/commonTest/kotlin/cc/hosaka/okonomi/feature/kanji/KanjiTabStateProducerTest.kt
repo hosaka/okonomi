@@ -29,6 +29,7 @@ class KanjiTabStateProducerTest {
         nameReadings = listOf("ぐい"),
         meanings = listOf("eat"),
         radicals = listOf(literal),
+        strokePaths = emptyList(),
     )
 
     private val neverLoad: suspend (List<String>) -> List<KanjiCharacter> = {

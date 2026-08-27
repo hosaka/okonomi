@@ -1,7 +1,9 @@
 package cc.hosaka.okonomi.dictgen
 
+import java.io.ByteArrayInputStream
 import java.io.File
 import javax.xml.stream.XMLInputFactory
+import javax.xml.stream.XMLResolver
 import javax.xml.stream.XMLStreamConstants
 import javax.xml.stream.XMLStreamReader
 import javax.xml.stream.events.EntityDeclaration
@@ -21,6 +23,19 @@ internal class XmlSource(file: File) : AutoCloseable {
         factory.setProperty(XMLInputFactory.IS_REPLACING_ENTITY_REFERENCES, false)
         factory.setProperty(XMLInputFactory.SUPPORT_DTD, true)
         factory.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, false)
+        // The line above is NOT enough on its own: it governs external
+        // ENTITIES, while a DOCTYPE's external SUBSET is fetched
+        // regardless. KanjiVG's files name the W3C's SVG DTD by URL, so
+        // without this resolver every one of the 6,703 of them opens an
+        // HTTP connection to w3.org - which turns generation into an
+        // hours-long, network-dependent build against a host that
+        // throttles exactly this request. Measured, not theorised.
+        //
+        // Resolving every external reference to nothing is safe for all
+        // sources here: the EDRDG files declare their entities in their
+        // INTERNAL subsets, which is what the tag labels are read from,
+        // and KanjiVG needs no declarations at all.
+        factory.setProperty(XMLInputFactory.RESOLVER, NoExternalReferences)
         reader = try {
             factory.createXMLStreamReader(file.absolutePath, stream)
         } catch (e: Exception) {
@@ -33,6 +48,12 @@ internal class XmlSource(file: File) : AutoCloseable {
         reader.close()
         stream.close()
     }
+}
+
+/** Resolves every external DTD or entity reference to nothing at all. */
+private object NoExternalReferences : XMLResolver {
+    override fun resolveEntity(publicID: String?, systemID: String?, baseURI: String?, namespace: String?): Any =
+        ByteArrayInputStream(ByteArray(0))
 }
 
 /**

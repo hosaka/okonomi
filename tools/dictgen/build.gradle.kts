@@ -75,11 +75,28 @@ val generateDictionary = tasks.register<JavaExec>("generateDictionary") {
         "eng_sentences.tsv",
         "jpn_indices.csv",
     )
+    // KanjiVG ships one SVG per character, so this source is a directory
+    // rather than a file and needs its own existence check below: the
+    // `.isFile` test the files use rejects a directory outright.
+    val sourceDirNames = listOf("kanjivg")
     val dataDir = rootDir.resolve("data")
     val outputDir = dictionaryOutputDir
     inputs.files(sourceNames.map { dataDir.resolve(it) })
         .withPropertyName("dictionarySources")
         .withPathSensitivity(PathSensitivity.NONE)
+    // Registered as file TREES, not as inputs.dir(...). Gradle validates
+    // an input directory before it runs any task action, and does so even
+    // when the property is marked optional, so inputs.dir turns a fresh
+    // clone into "property 'dictionarySourceDir-kanjivg' specifies
+    // directory ... which doesn't exist" and the curated message below --
+    // the one that names every source and points at README.md -- is never
+    // reached. A tree over a missing directory is simply empty, so the
+    // build survives configuration and fails in doFirst with something
+    // worth reading. Contents are still tracked when the directory is
+    // there, which is what keeps the task up-to-date correctly.
+    inputs.files(sourceDirNames.map { fileTree(dataDir.resolve(it)) })
+        .withPropertyName("dictionarySourceDirs")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
     outputs.dir(outputDir).withPropertyName("dictionaryOutputDir")
     argumentProviders.add(
         CommandLineArgumentProvider {
@@ -90,13 +107,19 @@ val generateDictionary = tasks.register<JavaExec>("generateDictionary") {
         },
     )
     doFirst {
-        val missing = sourceNames.filterNot { dataDir.resolve(it).isFile }
+        val missingFiles = sourceNames.filterNot { dataDir.resolve(it).isFile }
+        val missingDirs = sourceDirNames.filterNot { name ->
+            val dir = dataDir.resolve(name)
+            dir.isDirectory && dir.list()?.isNotEmpty() == true
+        }
+        val missing = missingFiles + missingDirs.map { "$it/" }
         if (missing.isNotEmpty()) {
             throw GradleException(
                 "Dictionary sources are missing from ${dataDir}: ${missing.joinToString()}. " +
                     "The app bundles the generated dictionary, so building it requires the " +
                     "JMdict_e.xml, JMnedict.xml, kanjidic2.xml and radkfile sources from EDRDG, " +
                     "plus jpn_sentences.tsv, eng_sentences.tsv and jpn_indices.csv from Tatoeba, " +
+                    "and the kanjivg/ directory of per-character SVGs from KanjiVG, " +
                     "in data/. See README.md for where each one is downloaded from.",
             )
         }

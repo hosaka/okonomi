@@ -39,6 +39,14 @@ internal object StoredFormat {
 
     /** Free text that is concatenated rather than listed: s_inf, trans_det. */
     const val TEXT = "; "
+
+    /**
+     * A character's KanjiVG stroke paths: `kanji_stroke_order.paths`.
+     * Newline rather than one of the above because SVG path data uses
+     * commas and semicolons freely, and no `d` value in the corpus
+     * contains a newline.
+     */
+    const val STROKE_PATHS = "\n"
 }
 
 data class JmdictEntry(

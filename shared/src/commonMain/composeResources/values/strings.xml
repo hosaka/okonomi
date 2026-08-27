@@ -70,6 +70,16 @@
     <string name="entry_kanji_grade">Grade %1$d</string>
     <string name="entry_kanji_frequency">Frequency #%1$d</string>
     <string name="entry_kanji_stroke_order">Stroke order</string>
+    <!-- The tap label on a filled stroke-order slot, and the only thing
+         that tells a screen reader the diagram does anything. "Replay"
+         because the slot already shows the finished character: the tap
+         re-draws it rather than revealing it for the first time. -->
+    <string name="entry_kanji_stroke_order_play">Replay stroke order</string>
+    <!-- Content description for the stroke-order diagram. It names the
+         character because the card no longer prints the literal beside
+         the diagram, so this is the only thing telling a screen reader
+         which character the slot draws. -->
+    <string name="entry_kanji_stroke_order_of">%1$s, stroke order</string>
     <string name="entry_kanji_no_data">No character data for this kanji</string>
     <!-- Reached by any headword with no kanji in it, which is usually
          kana but also covers JMdict's fullwidth latin headwords. -->
@@ -146,6 +156,7 @@
     <string name="settings_credit_usage_yomitan">Deinflection engine and rule data</string>
     <string name="settings_credit_usage_tatoeba">Example sentences and their translations</string>
     <string name="settings_credit_usage_furiganable">Furigana text rendering</string>
+    <string name="settings_credit_usage_kanjivg">Kanji stroke order diagrams</string>
     <string name="settings_libraries_open">Open libraries list</string>
     <string name="libraries_title">Open source libraries</string>
     <string name="libraries_back">Back</string>

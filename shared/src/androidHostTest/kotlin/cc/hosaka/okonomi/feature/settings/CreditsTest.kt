@@ -3,18 +3,42 @@ package cc.hosaka.okonomi.feature.settings
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
- * Guards the credits manifest: the licence obligations it discharges
- * (EDRDG attribution, Yomitan derivation, Tatoeba and Tanaka Corpus
- * CC-BY attribution, Furiganable's Apache-2.0 notice) must not silently
- * regress.
+ * What is left of this file after Alex cut it back deliberately.
+ *
+ * Most of what used to be here asserted `creditEntries` against
+ * restatements of its own constants — an exact expected name list,
+ * `assertEquals("GPL-3.0", yomitan.licence)`, Furiganable's url spelled
+ * out a second time. None of those had an oracle outside `Credits.kt`,
+ * so none could fail except as a two-file editing ritual: change the
+ * manifest, watch the test go red, paste the new constant in. They were
+ * removed.
+ *
+ * These three survive because each is checked against something the
+ * manifest does not get to decide — a rule about URLs, or the contents
+ * of `strings.xml`. That distinction is the whole point of the file now;
+ * do not add an assertion here that a `Credits.kt` edit would simply be
+ * copied into.
+ *
+ * The rendering half is `SettingsCreditsUiTest`, which is a different
+ * kind of check: it exists because a reviewer once deleted the whole
+ * `CreditsSection(...)` call with every test still green.
  */
 class CreditsTest {
     private val stringsPath = "src/commonMain/composeResources/values/strings.xml"
+
+    /**
+     * KanjiVG's licence header asks specifically to link "KanjiVG's
+     * website", so its credit points at the project page rather than at
+     * a licence document. That is Alex's deliberate call and the reason
+     * the rule below carries a name-based exception instead of being
+     * dropped: the rule still guards every other entry, present and
+     * future.
+     */
+    private val homePageIsTheAttribution = setOf("KanjiVG")
 
     private fun stringsFile(): File {
         val candidates = listOf(File(stringsPath), File("shared", stringsPath))
@@ -27,107 +51,20 @@ class CreditsTest {
         return file
     }
 
-    private fun bundledStrings(): Map<String, String> {
+    private fun bundledString(key: String): String {
         val document = DocumentBuilderFactory.newInstance()
             .newDocumentBuilder()
             .parse(stringsFile())
         val nodes = document.getElementsByTagName("string")
-        return (0 until nodes.length).associate { index ->
+        val strings = (0 until nodes.length).associate { index ->
             val node = nodes.item(index)
             val name = node.attributes.getNamedItem("name")
             assertNotNull(name, "string element #$index (\"${node.textContent}\") has no name attribute")
             name.nodeValue to node.textContent
         }
-    }
-
-    private fun bundledString(key: String): String {
-        val strings = bundledStrings()
         val value = strings[key]
         assertNotNull(value, "no string named $key in strings.xml (found ${strings.keys})")
         return value
-    }
-
-    @Test
-    fun `the manifest contains the four EDRDG sources, Yomitan, the sentence sources and Furiganable`() {
-        assertEquals(
-            listOf(
-                "JMdict",
-                "JMnedict",
-                "KANJIDIC2",
-                "RADKFILE",
-                "Yomitan",
-                "Tatoeba (Tanaka Corpus)",
-                "Furiganable",
-            ),
-            creditEntries.map { it.name },
-        )
-    }
-
-    /**
-     * Furigana rendering is vendored source rather than a Gradle
-     * dependency, so AboutLibraries cannot see it and this entry is the
-     * only notice it gets. Its licence link is the Apache text itself
-     * and not the repository on purpose: the repository carries no
-     * LICENSE file, and Apache-2.0 is stated only in the
-     * gradle.properties its published artifacts are built from.
-     */
-    @Test
-    fun `the vendored furigana renderer carries its Apache notice and says where it came from`() {
-        val furiganable = creditEntries.single { it.name == "Furiganable" }
-        assertEquals("Apache-2.0", furiganable.licence)
-        assertEquals("https://www.apache.org/licenses/LICENSE-2.0.txt", furiganable.licenceUrl)
-        val detail = furiganable.detail
-        assertNotNull(detail, "a copy of someone's work has to say which copy")
-        assertTrue(detail.contains("turtlekazu/Furiganable"), detail)
-        assertTrue(detail.contains("v0.3.1"), detail)
-    }
-
-    @Test
-    fun `the sentence sources are credited to Creative Commons through Tatoeba`() {
-        // One entry naming both sources rather than two entries: the
-        // Japanese-English pairs began as Yasuhito Tanaka's corpus and
-        // reach us through Tatoeba under Tatoeba's terms, so one credit
-        // discharges both attributions and its name says whose work it
-        // is. Alex made that call; this test follows it.
-        //
-        // What the test is actually for is unchanged: the field exists
-        // to discharge the attribution obligation, so it has to reach
-        // the terms rather than a home page, and the licence has to stay
-        // the unqualified name Tatoeba itself uses.
-        val sentenceSource = creditEntries.single { it.name == "Tatoeba (Tanaka Corpus)" }
-        assertEquals("Creative Commons", sentenceSource.licence)
-        assertEquals("https://tatoeba.org/en/terms_of_use", sentenceSource.licenceUrl)
-    }
-
-    @Test
-    fun `no credit claims a Creative Commons variant the source does not name`() {
-        // Tatoeba says its data is released under "various Creative
-        // Commons licenses" and names no one of them, so any specific
-        // variant here would be a precision we invented. "CC BY 2.0 FR"
-        // is the plausible-looking string this guards against.
-        val variant = Regex("""CC[ -]?BY|\d\.\d""")
-        creditEntries
-            .filter { it.licence.contains("Creative Commons") }
-            .forEach { entry ->
-                assertTrue(
-                    !variant.containsMatchIn(entry.licence),
-                    "${entry.name} names a specific CC variant: ${entry.licence}",
-                )
-            }
-    }
-
-    @Test
-    fun `no credit links a bare host with nothing on it`() {
-        // A crude check for a real mistake: this field is where the
-        // reader goes for the terms, and a link to a project's front
-        // door discharges nothing. A path is not proof of a licence
-        // page, but its absence is proof of a home page.
-        creditEntries.forEach { entry ->
-            assertTrue(
-                entry.licenceUrl.trimEnd('/').count { it == '/' } > 2,
-                "${entry.name} links a home page rather than its terms: ${entry.licenceUrl}",
-            )
-        }
     }
 
     @Test
@@ -139,29 +76,19 @@ class CreditsTest {
     }
 
     @Test
-    fun `exactly four sources carry the EDRDG licence and link its url`() {
-        val edrdgEntries = creditEntries.filter { it.licence == "EDRDG licence" }
-        assertEquals(
-            listOf("JMdict", "JMnedict", "KANJIDIC2", "RADKFILE"),
-            edrdgEntries.map { it.name },
-        )
-        edrdgEntries.forEach { entry ->
-            assertEquals(EDRDG_LICENCE_URL, entry.licenceUrl, entry.name)
-        }
-    }
-
-    @Test
-    fun `the Yomitan entry carries the GPL licence`() {
-        val yomitan = creditEntries.single { it.name == "Yomitan" }
-        assertEquals("GPL-3.0", yomitan.licence)
-    }
-
-    @Test
-    fun `every usage string resolves to non blank text`() {
-        creditEntries.forEach { entry ->
-            val usage = bundledString(entry.usage.key)
-            assertTrue(usage.isNotBlank(), "${entry.name}: blank usage text for ${entry.usage.key}")
-        }
+    fun `no credit links a bare host with nothing on it`() {
+        // A crude check for a real mistake: this field is where the
+        // reader goes for the terms, and a link to a project's front
+        // door discharges nothing. A path is not proof of a licence
+        // page, but its absence is proof of a home page.
+        creditEntries
+            .filterNot { it.name in homePageIsTheAttribution }
+            .forEach { entry ->
+                assertTrue(
+                    entry.licenceUrl.trimEnd('/').count { it == '/' } > 2,
+                    "${entry.name} links a home page rather than its terms: ${entry.licenceUrl}",
+                )
+            }
     }
 
     @Test

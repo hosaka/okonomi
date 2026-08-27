@@ -40,6 +40,21 @@ data class KanjiCharacter(
     val meanings: List<String>,
     /** Radical literals from radkfile, simplest first. */
     val radicals: List<String>,
+    /**
+     * One SVG path per stroke, in KanjiVG's drawing order, on the
+     * `109x109` viewBox KanjiVG draws every character in. Empty for a
+     * character KanjiVG does not carry, which is why the Kanji tab
+     * treats emptiness as a rendering state rather than an error.
+     *
+     * Emptiness is NOT how an older database presents itself: a copy
+     * predating dictionary format version 7 has no `kanji_stroke_order`
+     * table at all, so the query below would fail rather than come back
+     * empty. That state is unreachable — provisioning re-copies the
+     * bundled database whenever the version sidecar differs, and does so
+     * before anything queries it (`DictionaryProvisioningTest`) — which
+     * is exactly what the format bump buys.
+     */
+    val strokePaths: List<String>,
 ) {
     /**
      * False for a character that appears in a word but carries no
@@ -77,7 +92,7 @@ suspend fun loadKanjiForWord(literals: List<String>): List<KanjiCharacter> {
  * is preserved and repeats are collapsed, so a headword that writes the
  * same character twice still yields one card.
  *
- * Four queries, one per table, each over the whole character list: a
+ * Five queries, one per table, each over the whole character list: a
  * headword is short but a per-character round trip would still be an
  * N+1 against a file-backed database.
  */
@@ -91,6 +106,8 @@ suspend fun DictionaryDatabase.loadKanjiForWord(literals: List<String>): List<Ka
     val meanings = db.kanjiQueries.kanjiMeaningsForLiterals(distinct).awaitList().groupBy { it.kanji }
     coroutineContext.ensureActive()
     val radicals = db.kanjiQueries.radicalsForLiterals(distinct).awaitList().groupBy { it.kanji }
+    coroutineContext.ensureActive()
+    val strokes = db.kanjiQueries.strokeOrderForLiterals(distinct).awaitList().associateBy { it.literal }
     return distinct.map { literal ->
         val row = characters[literal]
         // One pass over the character's readings; the map keeps each
@@ -109,6 +126,9 @@ suspend fun DictionaryDatabase.loadKanjiForWord(literals: List<String>): List<Ka
             meanings = meanings[literal].orEmpty().map { it.text },
             // The query orders radicals by (kanji, stroke count, literal).
             radicals = radicals[literal].orEmpty().map { it.literal },
+            // One row per character, so stroke order is the order inside
+            // the stored value and no query plan can reach it.
+            strokePaths = StoredValues.strokePaths(strokes[literal]?.paths),
         )
     }
 }

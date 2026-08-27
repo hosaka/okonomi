@@ -14,6 +14,7 @@
 - Android SDK Platform 37 (`compileSdk` 37), AGP 9.1.1, Gradle 9.3.1 (bumped for AboutLibraries 15.0.4).
 - Assume Kotlin Multiplatform + Compose Multiplatform project conventions.
 - Do not assume Android emulator/device availability unless explicitly requested by the user.
+- `data/kanjivg/` is a build prerequisite alongside the other `data/` sources, so an existing checkout fails its next `assembleDebug` until it is populated (see README.md).
 
 ## High-Level Architecture Overview
 
