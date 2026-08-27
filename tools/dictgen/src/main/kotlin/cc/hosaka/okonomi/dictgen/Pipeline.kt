@@ -69,6 +69,15 @@ import java.time.Instant
  * left on version 6 would hold a database with no such table, and the
  * tab's fifth query would fail against it rather than degrade.
  *
+ * 8: the stored breakdown rescues two defects in Tatoeba's index that
+ * left a real word on screen finding nothing when tapped — the `NI`
+ * proper-noun marker stored as if it were a word (235 tokens, the word
+ * itself sitting in the surface), and a particle glued to the front or
+ * back of one (2,567 tokens, `になる` alone 2,559). Rows changed, no DDL,
+ * so [DICTIONARY_SCHEMA_FINGERPRINT] must NOT have moved. A device left
+ * on version 7 keeps sentences that render correctly but whose taps on
+ * those words open a truncated-prefix search.
+ *
  * THIS COUNTER IS THE ONLY RE-COPY SIGNAL. Bump it for a schema change
  * too, not only for a data change.
  *
@@ -94,7 +103,7 @@ import java.time.Instant
  * [DICTIONARY_SCHEMA_FINGERPRINT] is what stops that from being a thing
  * anyone has to remember.
  */
-const val DICTIONARY_FORMAT_VERSION = 7
+const val DICTIONARY_FORMAT_VERSION = 8
 
 /**
  * Fingerprint of the schema DDL, as a guard on the counter above.

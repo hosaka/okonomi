@@ -370,7 +370,11 @@ class EntryIndex(
      * exactly it.
      */
     fun storedWord(token: BLineToken): StoredBreakdownWord {
-        val entryId = resolve(token)
+        // Resolved once. Only a token the cascade cannot place is a
+        // rescue candidate, and only a rescued one is resolved again.
+        val direct = resolve(token)
+        val token = if (direct != null) token else rescueUnresolvable(token)
+        val entryId = direct ?: resolve(token)
         val reading = when {
             !containsKanji(token.headword) -> null
             token.reading != null -> token.reading
@@ -420,6 +424,67 @@ class EntryIndex(
      * not know which: both tables are consulted and their candidates
      * unioned, keeping the kanji forms' order first.
      */
+    /**
+     * A headword the dictionary cannot carry, rewritten to one it can.
+     *
+     * Two defects in the shipped index account for almost all of it,
+     * and both leave a token that is a real word on screen but finds
+     * nothing when tapped, so the reader gets a prefix-truncated search
+     * for a word the app itself put in front of them:
+     *
+     * - **[PROPER_NOUN_MARKER] is a marker, not a word.** The index
+     *   writes `NI{ヤフオク}`, `NI{西遊記}`, `NI{カルピス}` — the code
+     *   marks the token as a proper noun and the actual word is the
+     *   surface. Measured on the shipped index: 235 tokens, 142 distinct
+     *   surfaces, 194 of those occurrences findable as a word or a name
+     *   once the surface is used.
+     * - **A particle glued to the word.** `になる` is the big one at
+     *   2,559 occurrences; `も肉`, `ノートを`, `温度が` and `彼と` are
+     *   the same defect in ones and twos. The particle is stripped only
+     *   when what remains is a word the dictionary actually carries, so
+     *   this can rescue a token and never redirect one.
+     *
+     * Deliberately narrow. The caller runs it ONLY for a token the
+     * resolve cascade could not place, and `resolve` returns null only
+     * when the dictionary carries the headword nowhere — so a token
+     * that works today cannot be reached by this at all. Rewriting the
+     * headword is safe for the app's word-locating scan because the
+     * surface — the sentence's own spelling — is untouched: `になる`
+     * becomes `なる` while the sentence is still scanned for `になりました`.
+     *
+     * What it does NOT try to fix, measured and left alone: 119
+     * occurrences across 30 texts that are genuine phrase fragments
+     * (`関する限り`, `よくある事だが`) or compositional compounds
+     * (`三日間`, `何年間`). There is no dictionary entry to send those
+     * to, so they keep the search's own truncated-prefix fallback,
+     * which flags itself on screen.
+     */
+    private fun rescueUnresolvable(token: BLineToken): BLineToken {
+        if (token.headword == PROPER_NOUN_MARKER) {
+            val surface = token.surface
+            // No surface leaves nothing to rescue it with; the marker
+            // itself must never reach the reader as a word.
+            if (surface != null) return token.copy(headword = surface)
+            return token
+        }
+        val stripped = GLUED_PARTICLES.firstNotNullOfOrNull { particle ->
+            token.headword.removeGluedParticle(particle)?.takeIf { candidatesFor(it).isNotEmpty() }
+        }
+        return if (stripped == null) token else token.copy(headword = stripped)
+    }
+
+    /**
+     * [headword] without [particle] at either end, or null when it does
+     * not carry it. The whole token is never consumed: a headword that
+     * IS the particle is the particle, not a word wearing one.
+     */
+    private fun String.removeGluedParticle(particle: String): String? = when {
+        length <= particle.length -> null
+        startsWith(particle) -> drop(particle.length)
+        endsWith(particle) -> dropLast(particle.length)
+        else -> null
+    }
+
     private fun candidatesFor(headword: String): List<Long> {
         val forms = byKanjiForm[headword].orEmpty()
         val readings = byReading[headword].orEmpty()
@@ -430,6 +495,29 @@ class EntryIndex(
         }
     }
 }
+
+/**
+ * The index's own code for "this token is a proper noun". It is not a
+ * Japanese word and must never be stored as one; the word it stands for
+ * is the token's surface.
+ */
+private const val PROPER_NOUN_MARKER = "NI"
+
+/**
+ * Single-character particles the index glues to a word.
+ *
+ * Single-character only, deliberately. Multi-character sequences (`には`,
+ * `では`) occur nowhere in the shipped index's unresolvable tokens, and
+ * attempting them would mean choosing whether `特には` is `特` or `特に`
+ * — a judgement no measurement here supports. They are left out rather
+ * than guessed at; if a future index ships them, that is the moment to
+ * decide with data in hand.
+ *
+ * A token strippable more than one way takes the first particle listed.
+ * That is arbitrary but fixed, so the generated database does not depend
+ * on iteration order; [EntryIndexRescueTest] pins it.
+ */
+private val GLUED_PARTICLES = listOf("に", "を", "が", "は", "と", "で", "も", "や", "へ")
 
 /** One usable Japanese/English pair with the B-line that indexes it. */
 data class TatoebaSentence(

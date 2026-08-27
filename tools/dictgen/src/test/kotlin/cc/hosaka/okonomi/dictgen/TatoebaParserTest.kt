@@ -111,6 +111,122 @@ class BLineTest {
     }
 }
 
+/**
+ * The two shipped-index defects that put a real-looking word on screen
+ * which finds nothing when tapped, and the boundaries of the rescue.
+ *
+ * Measured on the shipped index before this existed: 2,921 tokens
+ * resolved to nothing AND could not be found by the search a tap opens.
+ * `になる` was 2,559 of them and the `NI` marker 235 — 96% between two
+ * defects, which is why the rescue is two narrow rules rather than a
+ * general repair.
+ */
+class EntryIndexRescueTest {
+
+    private val index = EntryIndex(
+        byKanjiForm = mapOf("肉" to listOf(70L), "西遊記" to listOf(80L), "温度" to listOf(90L)),
+        byReading = mapOf(
+            "なる" to listOf(60L),
+            "にく" to listOf(70L),
+            "さいゆうき" to listOf(80L),
+            "おんど" to listOf(90L),
+            "に" to listOf(100L),
+            // Findable ON PURPOSE: it makes にく a token that the rescue
+            // WOULD rewrite (に + く, both carried) if its "already
+            // findable" guard were removed. Without this the guard has
+            // nothing that could catch it failing.
+            "く" to listOf(110L),
+            "と" to listOf(120L),
+        ),
+        commonRank = mapOf(
+            60L to 100L, 70L to 100L, 80L to 100L, 90L to 100L, 100L to 50L, 110L to 100L, 120L to 100L,
+        ),
+        readings = mapOf(
+            60L to listOf(IndexedReading("なる", false, emptyList())),
+            70L to listOf(IndexedReading("にく", false, emptyList())),
+            80L to listOf(IndexedReading("さいゆうき", false, emptyList())),
+            90L to listOf(IndexedReading("おんど", false, emptyList())),
+            100L to listOf(IndexedReading("に", false, emptyList())),
+            110L to listOf(IndexedReading("く", false, emptyList())),
+            120L to listOf(IndexedReading("と", false, emptyList())),
+        ),
+    )
+
+    private fun token(headword: String, surface: String? = null) = BLineToken(
+        headword = headword,
+        reading = null,
+        entrySeq = null,
+        senseIndex = null,
+        surface = surface,
+        checked = false,
+    )
+
+    @Test
+    fun `a word with a particle glued to its front is stored as the word`() {
+        val stored = index.storedWord(token("になる", surface = "になりました"))
+        assertEquals("なる", stored.headword)
+        assertEquals(60L, stored.entryId)
+        // The surface is the sentence's own spelling and the app scans
+        // for exactly it, so rewriting the headword must not touch it.
+        assertEquals("になりました", stored.surface)
+    }
+
+    @Test
+    fun `a word with a particle glued to its end is stored as the word`() {
+        assertEquals("温度", index.storedWord(token("温度が")).headword)
+    }
+
+    @Test
+    fun `the proper noun marker is replaced by the word it stands for`() {
+        val stored = index.storedWord(token("NI", surface = "西遊記"))
+        assertEquals("西遊記", stored.headword)
+        assertEquals(80L, stored.entryId)
+    }
+
+    @Test
+    fun `the proper noun marker with no surface is left alone rather than guessed at`() {
+        assertEquals("NI", index.storedWord(token("NI")).headword)
+    }
+
+    @Test
+    fun `a headword the dictionary already carries is never rewritten`() {
+        // にく is carried, and is ALSO に + く with both halves carried,
+        // so the rescue would rewrite it to く the moment its "already
+        // findable" guard stopped running. That is the whole point of
+        // this test: a token that merely cannot be stripped would pass
+        // with the guard deleted and prove nothing.
+        val stored = index.storedWord(token("にく"))
+        assertEquals("にく", stored.headword)
+        assertEquals(70L, stored.entryId)
+    }
+
+    @Test
+    fun `a particle is not stripped when what is left is not a word`() {
+        // に + くくく is not a word, so the token stays as the source
+        // wrote it rather than being redirected to something arbitrary.
+        assertEquals("にくくく", index.storedWord(token("にくくく")).headword)
+    }
+
+    /**
+     * にく is strippable two ways here — に leaves く and も is absent,
+     * but ときも-style ambiguity is real in principle — so the order of
+     * GLUED_PARTICLES decides the answer. Pinned so a reordering of that
+     * list shows up as a failing test rather than as a silently
+     * different generated database.
+     */
+    @Test
+    fun `a token strippable more than one way takes the first particle listed`() {
+        // とに: と leaves に (carried), に leaves と (not carried). The
+        // list puts に first, so the trailing に is what goes.
+        assertEquals("と", index.storedWord(token("とに")).headword)
+    }
+
+    @Test
+    fun `a genuine phrase fragment is left for the search fallback`() {
+        assertEquals("関する限り", index.storedWord(token("関する限り")).headword)
+    }
+}
+
 class EntryIndexTest {
 
     /**

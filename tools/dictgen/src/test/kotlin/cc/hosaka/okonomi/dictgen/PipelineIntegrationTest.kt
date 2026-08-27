@@ -315,7 +315,10 @@ class PipelineIntegrationTest {
         // column each moved the format version alone. Version 7 added
         // the kanji_stroke_order table, which IS a DDL change and so
         // moved the schema fingerprint with it - but still not the
-        // schema version, for the reason below.
+        // schema version, for the reason below. Version 8 rewrote
+        // breakdown rows to rescue Tatoeba's proper-noun marker and its
+        // glued particles: rows again, no DDL, so the fingerprint did
+        // NOT move with it.
         //
         // The schema version is PINNED AT 1 and is expected to stay
         // there for the life of the project. SQLDelight derives it from
@@ -328,7 +331,7 @@ class PipelineIntegrationTest {
         // of the sidecar that can move, and therefore the only thing
         // that makes a provisioned device re-copy.
         assertEquals(1L, OkonomiDb.Schema.version)
-        assertEquals(7, DICTIONARY_FORMAT_VERSION)
+        assertEquals(8, DICTIONARY_FORMAT_VERSION)
     }
 
     @Test
@@ -356,7 +359,7 @@ class PipelineIntegrationTest {
         assertTrue(sidecar.isFile, "sidecar should be written next to the database")
         // Literals on purpose: the sidecar is the only thing that makes
         // a device re-copy, so a silent version regression must fail here.
-        assertEquals("${Fixtures.JMDICT_DATE}:1:7", sidecar.readText())
+        assertEquals("${Fixtures.JMDICT_DATE}:1:8", sidecar.readText())
         assertEquals(
             "${Fixtures.JMDICT_DATE}:${OkonomiDb.Schema.version}:$DICTIONARY_FORMAT_VERSION",
             sidecar.readText(),
