@@ -117,6 +117,14 @@ class EntrySearchTest {
         return DictionaryDatabase(db, driver).also { openedDatabases += it }
     }
 
+    /**
+     * たべ is both: 食べる is reached exactly through the continuative
+     * candidate たべる *and* prefix-matches the typed characters. It is
+     * ordered with the exact hits — above 食べた口, which merely starts
+     * with them and is the more common entry — and presented as a prefix
+     * hit, with the typed kana highlighted and no breadcrumb explaining
+     * a match the reader can already see.
+     */
     @Test
     fun `prefix search matches readings, highlights the prefix and ranks by common_rank`() = runTest {
         val database = seededDatabase()
@@ -124,7 +132,7 @@ class EntrySearchTest {
         val results = database.searchEntries("たべ")
 
         assertFalse(results.isFallback)
-        assertEquals(listOf(6L, 1L, 2L, 3L), results.hits.map { it.entryId })
+        assertEquals(listOf(1L, 6L, 2L, 3L), results.hits.map { it.entryId })
 
         val taberu = results.hits.first { it.entryId == 1L }
         assertEquals(listOf("食べる", "たべる"), taberu.titleSegments.map { it.text })
@@ -228,6 +236,215 @@ class EntrySearchTest {
         assertEquals(listOf(1L, 4L), results.hits.map { it.entryId })
     }
 
+    /**
+     * Alex's device case: searching 私 put わらわ first and わたし
+     * twelfth.
+     *
+     * The ranking was never wrong — わたし carries 101 and the archaic
+     * entries 950. What went wrong was the bucketing. The prefix window
+     * holds `limit + 1` entries per source and fills with well-ranked
+     * compounds, so the rank-950 entries written 私 fall outside it and
+     * used to count as exact-only, which put them ahead of every prefix
+     * hit — わたし among them, because it sits *inside* the window and
+     * was therefore dropped from the exact group.
+     *
+     * [pronounDatabase] is that shape at the smallest size that
+     * reproduces it: with `limit = 4` the window holds five entries,
+     * which the common one and the four compounds fill exactly.
+     */
+    @Test
+    fun `a common exact match leads the rare ones that fall outside the prefix window`() = runTest {
+        val database = pronounDatabase()
+
+        val results = database.searchEntries("私", limit = 4)
+
+        assertEquals(
+            listOf(500L, 501L, 502L, 510L),
+            results.hits.map { it.entryId },
+            "the exact matches lead, by commonness, and the compounds follow",
+        )
+        assertTrue(results.hasMore, "three compounds are still waiting below the page")
+    }
+
+    /**
+     * The same corpus with room for everything, so the whole order is
+     * visible rather than only its head: every entry written 私 comes
+     * before every entry that merely starts with it, however common the
+     * compounds are.
+     */
+    @Test
+    fun `an exact match outranks a more common compound that merely starts with it`() = runTest {
+        val database = pronounDatabase()
+
+        val results = database.searchEntries("私")
+
+        assertEquals(
+            listOf(500L, 501L, 502L, 510L, 511L, 512L, 513L),
+            results.hits.map { it.entryId },
+        )
+        assertFalse(results.hasMore, "and that is all of them")
+    }
+
+    /**
+     * The claim the merge's KDoc makes about paging, over the corpus
+     * built to break it: a longer page is the same page with more on the
+     * end. The exact group grows as the window does — 501 and 502 are
+     * outside the four-row prefix window and inside the seven-row one —
+     * and a row already on screen must not move when it does.
+     */
+    @Test
+    fun `a longer page of exact and prefix hits extends the shorter one`() = runTest {
+        val database = pronounDatabase()
+
+        val pages = listOf(1, 2, 4, 7).map { limit ->
+            limit to database.searchEntries("私", limit = limit).hits.map { it.entryId }
+        }
+
+        pages.zipWithNext { (shortLimit, shorter), (longLimit, longer) ->
+            assertEquals(
+                shorter,
+                longer.take(shorter.size),
+                "page of $shortLimit must be a prefix of page of $longLimit",
+            )
+        }
+        assertEquals(listOf(500L), pages.first().second)
+    }
+
+    /**
+     * The 私 shape: one common entry written with the bare character,
+     * two archaic ones nobody ranks, and compounds that start with it
+     * and rank between the two — which is what fills the prefix window
+     * and pushes the archaic entries out of it.
+     */
+    private suspend fun pronounDatabase(): DictionaryDatabase {
+        val path = tempDir().resolve(DICTIONARY_DB_NAME).absolutePath
+        val driver = JdbcSqliteDriver("jdbc:sqlite:$path")
+        OkonomiDb.Schema.create(driver).await()
+        val db = OkonomiDb(driver)
+
+        listOf(
+            Triple(500L, 101L, "わたし"),
+            Triple(501L, 950L, "わらわ"),
+            Triple(502L, 950L, "わし"),
+        ).forEach { (id, rank, reading) ->
+            val common = if (rank == 101L) 1L else 0L
+            db.entryQueries.insertEntry(id, rank, common)
+            db.entryQueries.insertKanjiForm(id, 0, "私", rank, common)
+            db.entryQueries.insertReading(id, 0, reading, 0, rank, null, common)
+            db.entryQueries.insertSense(id * 10, id, 0, "pn", null, null, null, null, null)
+            db.entryQueries.insertGloss(id * 10, 0, "I, me")
+        }
+
+        listOf(
+            Triple(510L, 103L, "私立"),
+            Triple(511L, 109L, "私鉄"),
+            Triple(512L, 128L, "私費"),
+            Triple(513L, 137L, "私用"),
+        ).forEach { (id, rank, form) ->
+            db.entryQueries.insertEntry(id, rank, 1)
+            db.entryQueries.insertKanjiForm(id, 0, form, rank, 1)
+            db.entryQueries.insertReading(id, 0, "よみ$id", 0, rank, null, 1)
+            db.entryQueries.insertSense(id * 10, id, 0, "n", null, null, null, null, null)
+            db.entryQueries.insertGloss(id * 10, 0, "compound $id")
+        }
+
+        driver.execute(null, "INSERT INTO gloss_fts(gloss_fts) VALUES('rebuild')", 0).await()
+        return DictionaryDatabase(db, driver).also { openedDatabases += it }
+    }
+
+    /**
+     * A deinflected hit far outside the prefix window is still shown as
+     * what it is: き is the first character of きる, so it is
+     * highlighted, and calling the match "continuative" would explain
+     * something already on the row.
+     *
+     * The window is what this is about. 着る is the 174th き-prefix
+     * entry in the shipped dictionary, so no page a reader sees puts it
+     * inside one; [continuativeDatabase] reproduces that at `limit = 1`,
+     * where the window holds two entries and the two common ones fill
+     * it. Presentation taken from whether the entry also turned up among
+     * the prefix hits gives a breadcrumb here.
+     */
+    @Test
+    fun `a deinflected hit showing the typed characters is highlighted, not traced`() = runTest {
+        val database = continuativeDatabase()
+
+        val kiru = database.searchEntries("き", limit = 1).hits.single()
+
+        assertEquals(600L, kiru.entryId)
+        assertEquals(listOf("着る", "きる"), kiru.titleSegments.map { it.text })
+        assertEquals(0 until 1, kiru.titleSegments[1].highlight)
+        assertTrue(kiru.traceLabels.isEmpty(), "き is the first character of きる")
+    }
+
+    /**
+     * And it stays that way as the reader pages. At `limit = 10` the
+     * prefix window reaches 着る and at `limit = 1` it does not, so a
+     * presentation read off the window flips between these two — a row
+     * the reader is looking at losing its breadcrumb and gaining a
+     * highlight when the next page lands.
+     */
+    @Test
+    fun `paging past a deinflected hit does not change how it is shown`() = runTest {
+        val database = continuativeDatabase()
+
+        val narrow = database.searchEntries("き", limit = 1).hits.single { it.entryId == 600L }
+        val wide = database.searchEntries("き", limit = 10).hits.single { it.entryId == 600L }
+
+        assertEquals(narrow.titleSegments, wide.titleSegments)
+        assertEquals(narrow.traceLabels, wide.traceLabels)
+    }
+
+    /**
+     * The breadcrumb's own case, on the same corpus, so the two rules
+     * are pinned against each other rather than one at a time: きた does
+     * not begin きる, nothing on the row says why 着る matched, and the
+     * trace is what says it.
+     */
+    @Test
+    fun `a deinflected hit the query does not spell keeps its breadcrumb`() = runTest {
+        val database = continuativeDatabase()
+
+        val kiru = database.searchEntries("きた").hits.single { it.entryId == 600L }
+
+        assertTrue(kiru.traceLabels.isNotEmpty(), "きた is not the start of きる")
+        assertTrue(kiru.titleSegments.all { it.highlight == null })
+    }
+
+    /**
+     * 着る, which nothing marks common, behind enough well-ranked
+     * き-prefix entries to keep it out of a small prefix window.
+     */
+    private suspend fun continuativeDatabase(): DictionaryDatabase {
+        val path = tempDir().resolve(DICTIONARY_DB_NAME).absolutePath
+        val driver = JdbcSqliteDriver("jdbc:sqlite:$path")
+        OkonomiDb.Schema.create(driver).await()
+        val db = OkonomiDb(driver)
+
+        db.entryQueries.insertEntry(600, 950, 0)
+        db.entryQueries.insertKanjiForm(600, 0, "着る", 950, 0)
+        db.entryQueries.insertReading(600, 0, "きる", 0, 950, null, 0)
+        db.entryQueries.insertSense(6000, 600, 0, "v1,vt", null, null, null, null, null)
+        db.entryQueries.insertGloss(6000, 0, "to wear")
+
+        // Readings rather than kanji forms: 着る is reached through the
+        // reading prefix query, so it is that query's window it has to
+        // be pushed out of.
+        listOf(
+            Triple(601L, 101L, "きこう"),
+            Triple(602L, 105L, "きじ"),
+            Triple(603L, 110L, "きかい"),
+        ).forEach { (id, rank, reading) ->
+            db.entryQueries.insertEntry(id, rank, 1)
+            db.entryQueries.insertReading(id, 0, reading, 1, rank, null, 1)
+            db.entryQueries.insertSense(id * 10, id, 0, "n", null, null, null, null, null)
+            db.entryQueries.insertGloss(id * 10, 0, "common word $id")
+        }
+
+        driver.execute(null, "INSERT INTO gloss_fts(gloss_fts) VALUES('rebuild')", 0).await()
+        return DictionaryDatabase(db, driver).also { openedDatabases += it }
+    }
+
     @Test
     fun `english search goes through gloss fts`() = runTest {
         val database = seededDatabase()
@@ -327,7 +544,7 @@ class EntrySearchTest {
 
         // Entries 3 and 4 share rank 999, so only their membership in
         // the tail is asserted, not their mutual order.
-        assertEquals(listOf(6L, 1L, 2L), results.hits.take(3).map { it.entryId })
+        assertEquals(listOf(1L, 6L, 2L), results.hits.take(3).map { it.entryId })
         assertEquals(setOf(3L, 4L), results.hits.drop(3).map { it.entryId }.toSet())
         val tabemono = results.hits.first { it.entryId == 2L }
         assertEquals(listOf("食べ物", "たべもの"), tabemono.titleSegments.map { it.text })

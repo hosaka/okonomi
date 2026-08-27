@@ -192,10 +192,11 @@ private const val ENTRY_ROW_CHUNK = 400
  * Japanese input (any kana or kanji codepoint) runs indexed prefix
  * matching on readings and kanji forms plus exact matching of the
  * deinflection candidates, each candidate validated against the entry's
- * part-of-speech flags. Deinflected exact hits rank before prefix hits;
- * both groups are ordered by (common_rank, entry_id) — a total order,
- * so paging extends the list instead of reshuffling it — and entries
- * are deduplicated.
+ * part-of-speech flags. Exact hits rank before prefix-only hits
+ * ([mergeMatches]) while how each is presented travels with the match
+ * itself ([deinflectedExactMatches]); both groups are ordered by
+ * (common_rank, entry_id) — a total order, so paging extends the list
+ * instead of reshuffling it — and entries are deduplicated.
  * When nothing matches, the query tail is truncated progressively and
  * prefix matching re-run; such results are marked
  * [SearchResults.isFallback].
@@ -333,8 +334,11 @@ private class RankedMatch(
 )
 
 private suspend fun DictionaryDatabase.searchJapanese(query: String, limit: Int): SearchResults {
-    // One row of overfetch per source, so a pool fed by a single query
-    // can still exceed the limit and set hasMore.
+    // One of overfetch per source, so a pool fed by a single query can
+    // still exceed the limit and set hasMore. What it counts differs by
+    // source and the difference matters: the exact queries are limited
+    // in rows (an entry can spend several) and the prefix queries in
+    // entries, since they group by entry_id.
     val fetchLimit = limit + 1
     val exact = deinflectedExactMatches(query, fetchLimit)
     val prefix = prefixMatches(query, fetchLimit)
@@ -518,6 +522,22 @@ private fun matchedWordPosition(text: String, tokens: List<String>): Int? {
  * Exact matches of the deduplicated deinflection candidates, each
  * validated per candidate: the candidate's condition flags must
  * intersect the flags of the entry's parts of speech (0 matches all).
+ *
+ * **How the match is presented is decided here, from the match itself.**
+ * A breadcrumb explains a match the reader cannot otherwise see, so a
+ * candidate whose text *begins with what was typed* takes a highlight
+ * over those characters instead — たべ finds 食べる through the
+ * continuative rule, and "continuative" explains nothing when たべ is
+ * the first thing on the row. 食べた finds it too and 食べる does not
+ * begin with 食べた, so that one keeps its breadcrumb.
+ *
+ * A property of the match and never of the pool it lands in. Deciding it
+ * by whether the entry also turned up among the prefix hits — which the
+ * merge used to do — makes the answer depend on how many better-ranked
+ * compounds fit in the prefix window: 着る is the 174th き-prefix entry
+ * and would carry a breadcrumb on a page where き is the first character
+ * of きる, then lose it four pages later when the window grew past it.
+ * The reader would watch a row they are looking at change its mind.
  */
 private suspend fun DictionaryDatabase.deinflectedExactMatches(
     query: String,
@@ -549,14 +569,15 @@ private suspend fun DictionaryDatabase.deinflectedExactMatches(
             }
             .minByOrNull { it.trace.size }
             ?: return@mapNotNull null
+        // The identity candidate is the query itself, so this covers a
+        // plain exact match as the whole word highlighted.
+        val showsQuery = row.text.startsWith(query)
         RankedMatch(
             entryId = row.entryId,
             matchedText = row.text,
             commonRank = row.commonRank,
-            // The identity candidate (empty trace) is a plain exact
-            // match: highlight the whole word instead of a breadcrumb.
-            highlightLength = if (candidate.trace.isEmpty()) row.text.length else null,
-            trace = candidate.trace,
+            highlightLength = if (showsQuery) query.length else null,
+            trace = if (showsQuery) emptyList() else candidate.trace,
         )
     }
 }
@@ -596,13 +617,28 @@ private class MatchedRow(
 )
 
 /**
- * Deinflected exact hits first, then prefix hits, each group ordered by
- * the matched row's common_rank; entries are deduplicated. An entry
- * that also prefix-matches the typed query is presented as a prefix hit
- * (highlight over the typed prefix) rather than a deinflected one — the
- * breadcrumb ranking applies to prefix-only situations, so e.g. たべ
- * shows 食べる as a highlighted prefix match, not as "continuative".
- * Returns the full deduplicated pool; callers truncate to their limit.
+ * Exact hits first, then the prefix hits that are not also exact, each
+ * group ordered by the matched row's common_rank; entries are
+ * deduplicated. Returns the full deduplicated pool; callers truncate to
+ * their limit.
+ *
+ * **This decides order and nothing else.** How a hit is presented — the
+ * highlight, or the deinflection breadcrumb — is settled where the match
+ * is made ([deinflectedExactMatches], [prefixMatches]) and travels with
+ * it, so an entry that is both an exact and a prefix match is ordered as
+ * exact while showing the typed characters highlighted. Deciding
+ * presentation here instead would tie it to what fit in the prefix
+ * window, which changes as the reader pages.
+ *
+ * An entry in both groups used to be dropped from the exact group
+ * outright, which put it *below* every exact-only hit however rare those
+ * were. Searching 私 filled the prefix window — `limit + 1` *entries*
+ * per source, since both prefix queries group by entry — with
+ * well-ranked compounds (私立 103, 私鉄 109, 私費 128), so eleven of the
+ * fourteen entries written 私 fell outside it, counted as exact-only and
+ * led the page, while わたし at rank 101 sat inside the window and landed
+ * twelfth. Nothing about the ranking was wrong; the bucketing overrode
+ * it.
  *
  * Each group is sorted on (common_rank, entry_id) rather than on
  * common_rank alone: common_rank is not a total order, and under a plain
@@ -615,11 +651,12 @@ private fun mergeMatches(
     exact: List<RankedMatch>,
     prefix: List<RankedMatch>,
 ): List<RankedMatch> {
-    val prefixIds = prefix.map { it.entryId }.toSet()
-    val exactOnly = exact.filter { it.entryId !in prefixIds }
     val byRankThenId = compareBy<RankedMatch>({ it.commonRank }, { it.entryId })
-    return (exactOnly.sortedWith(byRankThenId) + prefix.sortedWith(byRankThenId))
+    val exactMatches = exact.sortedWith(byRankThenId).distinctBy { it.entryId }
+    val exactIds = exactMatches.mapTo(mutableSetOf()) { it.entryId }
+    return exactMatches + prefix.sortedWith(byRankThenId)
         .distinctBy { it.entryId }
+        .filter { it.entryId !in exactIds }
 }
 
 /**

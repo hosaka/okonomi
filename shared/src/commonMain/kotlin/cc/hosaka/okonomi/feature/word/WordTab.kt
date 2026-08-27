@@ -27,6 +27,7 @@ import cc.hosaka.okonomi.ui.CommonWordChip
 import cc.hosaka.okonomi.ui.TagChip
 import cc.hosaka.okonomi.ui.furigana.FuriganaText
 import cc.hosaka.okonomi.ui.furigana.alignReading
+import cc.hosaka.okonomi.ui.furigana.withRoomForRuby
 import cc.hosaka.okonomi.ui.theme.Dimens
 import cc.hosaka.okonomi.ui.theme.horizontalPaddingFourth
 import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
@@ -109,11 +110,25 @@ private fun Headword(entry: EntryDetail) {
             ),
     ) {
         val reading = entry.headwordReading?.text
+        val segments = remember(entry.headword, reading) {
+            alignReading(entry.headword, reading ?: entry.headword)
+        }
+        val style = MaterialTheme.typography.displayMedium
         FuriganaText(
-            segments = remember(entry.headword, reading) {
-                alignReading(entry.headword, reading ?: entry.headword)
-            },
-            style = MaterialTheme.typography.displayMedium,
+            segments = segments,
+            // displayMedium's own 52sp line box is less than half what a
+            // 45sp reading needs above the characters, so the ruby was
+            // drawn above the composable — and this is the top row of a
+            // LazyColumn, which clips its viewport 8dp higher up. 葡萄棚
+            // arrived with the top of its dakuten cut off. Stated rather
+            // than measured into a constant: see [withRoomForRuby].
+            //
+            // Asked for only where a reading is actually drawn, and on
+            // the same test FuriganaText itself branches on. ありがとう
+            // and every other kana headword aligns to segments carrying
+            // no reading at all, and 43.2sp of room for one that will
+            // never be drawn is a hole in the page.
+            style = if (segments.any { it.reading != null }) style.withRoomForRuby() else style,
         )
         val alternates = entry.alternateForms
         if (alternates.isNotEmpty()) {

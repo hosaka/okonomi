@@ -42,7 +42,8 @@ internal val breakdownGrammaticalPos = setOf("prt", "cop", "aux", "aux-v", "aux-
 internal val breakdownGrammaticalTextPos = setOf("prt", "cop")
 
 /**
- * Whether tapping [word] should open a search for it.
+ * Whether [word] is a word worth looking up — a content word rather
+ * than part of the sentence's machinery.
  *
  * Two clauses, and both are needed:
  *
@@ -62,6 +63,12 @@ internal val breakdownGrammaticalTextPos = setOf("prt", "cop")
  * 食べる's business, and asking about the inflected form would find
  * nothing at all.
  *
+ * This is the dictionary's question and it decides how the word is
+ * DRAWN. Whether a tap on it goes anywhere is the screen's, and it is
+ * [opensSearch]; the two used to be one function and the cost was the
+ * word the reader came to study drawn in the colour reserved for
+ * particles.
+ *
  * Pure, and stated here rather than inline in the tab, on the precedent
  * of the search's `titleFurigana`: what a reader can tap is a rule
  * worth testing without composing anything.
@@ -73,6 +80,33 @@ internal fun isBreakdownWordTappable(word: BreakdownWord, pos: BreakdownPos): Bo
     if (entryPos.isNotEmpty() && entryPos.all { it in breakdownGrammaticalPos }) return false
     return pos.byText[word.text].orEmpty().none { it in breakdownGrammaticalTextPos }
 }
+
+/**
+ * Whether tapping [word] takes the reader anywhere, on a tab showing
+ * the examples of [wordBeingRead].
+ *
+ * A content word normally does. The exception is the word the entry is
+ * about: a tap searches for the word's dictionary form, so on 私's own
+ * examples every 私 in them would search 私 and land the reader back on
+ * the page they are already reading. Only the tap goes — the word is
+ * part of the sentence, is drawn like the content word it is, and keeps
+ * its furigana.
+ *
+ * **By spelling, and not by the entry Tatoeba linked.** The spelling is
+ * what a tap searches for and what the reader can see; the link is
+ * neither. Deciding it by entry id would leave two identical 私 in one
+ * sentence behaving differently with nothing on screen to tell them
+ * apart — exactly the "inconsistency with no perceivable pattern" the
+ * text clause of [isBreakdownWordTappable] exists to prevent.
+ *
+ * An empty [wordBeingRead] suppresses nothing, which is what a caller
+ * with no entry in hand means; no breakdown word is spelled with it.
+ */
+internal fun opensSearch(
+    word: BreakdownWord,
+    tappableWords: Set<BreakdownWord>,
+    wordBeingRead: String,
+): Boolean = word in tappableWords && word.text != wordBeingRead
 
 @Immutable
 data class PhrasesTabState(
@@ -130,6 +164,15 @@ sealed interface PhrasesTabContentState {
          * get the same answer.
          */
         val tappableWords: Set<BreakdownWord> = emptySet(),
+        /**
+         * The dictionary form of the entry these examples belong to.
+         * A piece of a sentence spelled the same is drawn like any
+         * other content word and opens no search; see [opensSearch].
+         *
+         * Empty suppresses nothing, which is what a fixture that states
+         * no entry means. The producer always states one.
+         */
+        val wordBeingRead: String = "",
         /**
          * The part-of-speech codes of the entries the words were linked
          * to, keyed by entry id — the same answer [isBreakdownWordTappable]

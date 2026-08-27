@@ -73,7 +73,7 @@ fun PhrasesTab(
     // way to another tab, and this one must not query for the trip — and
     // see there too for why this parameter carries no default.
     val state = if (loadEnabled) {
-        producePhrasesTabState(entryId = entry.entryId).value
+        producePhrasesTabState(entryId = entry.entryId, headword = entry.headword).value
     } else {
         PhrasesTabState()
     }
@@ -125,6 +125,7 @@ internal fun PhrasesTabContent(
         is PhrasesTabContentState.Ready -> SentenceList(
             sentences = content.sentences,
             tappableWords = content.tappableWords,
+            wordBeingRead = content.wordBeingRead,
             entryPos = content.entryPos,
             onShowMore = content.onShowMore,
             footer = content.footer,
@@ -138,6 +139,7 @@ internal fun PhrasesTabContent(
 private fun SentenceList(
     sentences: List<ExampleSentence>,
     tappableWords: Set<BreakdownWord>,
+    wordBeingRead: String,
     entryPos: Map<Long, List<String>>,
     onShowMore: (() -> Unit)?,
     footer: PagingFooterState,
@@ -178,6 +180,7 @@ private fun SentenceList(
                 SentenceBlock(
                     sentence = sentence,
                     tappableWords = tappableWords,
+                    wordBeingRead = wordBeingRead,
                     entryPos = entryPos,
                 )
             }
@@ -190,6 +193,7 @@ private fun SentenceList(
 private fun SentenceBlock(
     sentence: ExampleSentence,
     tappableWords: Set<BreakdownWord>,
+    wordBeingRead: String,
     entryPos: Map<Long, List<String>>,
 ) {
     Column(
@@ -203,6 +207,7 @@ private fun SentenceBlock(
         SentenceText(
             sentence = sentence,
             tappableWords = tappableWords,
+            wordBeingRead = wordBeingRead,
             entryPos = entryPos,
         )
         Text(
@@ -258,9 +263,17 @@ private val SENTENCE_TAP_HEIGHT = 48.dp
  * where one `Text` would not have. Both want a device and Alex's eyes
  * before being designed around.
  *
- * A tappable word is drawn in the dynamic primary colour and nothing
+ * A content word is drawn in the dynamic primary colour and nothing
  * else: no underline, no background, no ripple — the rule Alex set for
  * the breakdown row this replaced, carried over to the sentence.
+ *
+ * **The colour says what the word is; the tap says where it goes, and
+ * they are not the same question.** On 私's own examples every 私 in
+ * them is still a pronoun and still drawn as one — it simply has
+ * nowhere to send the reader, who is already on its page. Drawing it in
+ * the colour reserved for particles would tell them 私 is grammar,
+ * which is both wrong and the opposite of why they opened the entry.
+ * See [opensSearch].
  *
  * That the sentence itself can afford it was the open question, and it
  * is settled: this shipped without the colour, on the reasoning that
@@ -284,6 +297,7 @@ private val SENTENCE_TAP_HEIGHT = 48.dp
 private fun SentenceText(
     sentence: ExampleSentence,
     tappableWords: Set<BreakdownWord>,
+    wordBeingRead: String,
     entryPos: Map<Long, List<String>>,
 ) {
     val navigation = LocalNavigationController.current
@@ -292,18 +306,19 @@ private fun SentenceText(
     // does. Derived once per sentence instead: the sentence, the
     // tappable set, the codes and the controller are all fixed for its
     // life.
-    val pieces = remember(sentence, tappableWords, entryPos, navigation) {
+    val pieces = remember(sentence, tappableWords, wordBeingRead, entryPos, navigation) {
         sentencePieces(sentence, entryPos).map { piece ->
             RenderedPiece(
                 segments = piece.segments,
+                isContentWord = piece.word?.let { it in tappableWords } == true,
                 onTap = piece.word
-                    ?.takeIf { it in tappableWords }
+                    ?.takeIf { opensSearch(it, tappableWords, wordBeingRead) }
                     ?.let { word -> { navigation.navigate(SearchRoute(word.text)) } },
             )
         }
     }
     val style = MaterialTheme.typography.bodyLarge.atJapaneseReadingSize()
-    val tappableColor = MaterialTheme.colorScheme.primary
+    val contentWordColor = MaterialTheme.colorScheme.primary
     FlowRow {
         pieces.forEach { piece ->
             Box(
@@ -341,7 +356,7 @@ private fun SentenceText(
                     // to its segments so both halves of a ruby unit take
                     // it, since the base and the reading are drawn from
                     // this one style.
-                    color = if (piece.onTap == null) Color.Unspecified else tappableColor,
+                    color = if (piece.isContentWord) contentWordColor else Color.Unspecified,
                 )
             }
         }
@@ -349,13 +364,19 @@ private fun SentenceText(
 }
 
 /**
- * One piece of the sentence as the row draws it: the runs to render
- * and, for a content word, what tapping it does. A null [onTap] is an
- * inert piece — a particle, punctuation, or text no word claimed —
- * following the project's "null callback is a disabled action" rule.
+ * One piece of the sentence as the row draws it: the runs to render,
+ * whether they are a content word — which is what the colour follows —
+ * and what tapping them does.
+ *
+ * The two are separate because a piece can be one without the other. A
+ * null [onTap] is a piece that goes nowhere, following the project's
+ * "null callback is a disabled action" rule: a particle, punctuation,
+ * text no word claimed, *or* the word this tab's entry is about, which
+ * is a content word with nowhere to go.
  */
 @Immutable
 private data class RenderedPiece(
     val segments: List<FuriganaSegment>,
+    val isContentWord: Boolean,
     val onTap: (() -> Unit)?,
 )

@@ -217,6 +217,64 @@ private const val RUBY_SCALE = 0.45f
 private const val RUBY_GAP_SCALE = 0.03f
 
 /**
+ * The line height at which a line's reading is drawn *inside* the line
+ * box rather than above it.
+ *
+ * The characters sit centred in the box, so a box of height H offers
+ * `H / 2` above their middle, and the reading's top reaches
+ * `fontSize / 2 + ruby + gap` above that middle (see [RubyUnit]'s
+ * translation). Twice the reach is therefore the smallest box that
+ * holds the whole unit.
+ *
+ * This is NOT the floor [FuriganaText] applies on its own, and the two
+ * answer different questions. That floor — `fontSize + ruby + gap` —
+ * is the line *advance* at which a wrapped line's reading clears the
+ * line above it, which is all a multi-line paragraph needs. A single
+ * line's reading needs the room to be inside its own box, and that is
+ * twice the surplus.
+ */
+internal fun rubyReadyLineHeight(fontSize: TextUnit): TextUnit =
+    (fontSize.value * (1f + 2f * (RUBY_SCALE + RUBY_GAP_SCALE))).sp
+
+/**
+ * This style with a line box tall enough to hold the reading drawn over
+ * its first line, and unchanged when it already has one.
+ *
+ * A caller that draws ruby with room above it — a headline, a row of
+ * its own — states this, because [FuriganaText]'s own floor does not:
+ * it reserves the advance consecutive lines need, which is half the
+ * surplus a centred single line needs above its characters. Everything
+ * beyond that is drawn outside the composable's bounds, where whatever
+ * sits above decides whether it survives. On the Word tab's headword
+ * nothing did — the reading overhung the top of the tab's `LazyColumn`,
+ * which clips its viewport, and 葡萄棚's dakuten arrived with its top
+ * few pixels sliced off.
+ *
+ * The same arithmetic `atJapaneseReadingSize` states by hand for the
+ * 22sp reading size: 44sp against the 43.1sp [rubyReadyLineHeight]
+ * computes, which is why every surface at that size was already whole.
+ *
+ * Two units decide the two branches, and they are not symmetrical:
+ *
+ * - **An em font size returns the style untouched.** Every size here is
+ *   derived by scaling it, and an em one cannot be compared with a line
+ *   height in sp at all; [FuriganaText] stands a default in for it, and
+ *   guessing a line height from a number that does not mean what it
+ *   looks like would be worse than leaving it alone.
+ * - **An em line height is replaced.** It looks like it might already be
+ *   generous — `2.em` is 90sp on a 45sp style — but [FuriganaText] will
+ *   not use it either: it takes such a line height as unstated and falls
+ *   to its own floor, which is the short box this exists to avoid.
+ *   Keeping it would hand the caller the clip back.
+ */
+fun TextStyle.withRoomForRuby(): TextStyle {
+    if (!fontSize.isScalablePixels) return this
+    val needed = rubyReadyLineHeight(fontSize)
+    if (lineHeight.isScalablePixels && lineHeight >= needed) return this
+    return copy(lineHeight = needed)
+}
+
+/**
  * A line of Japanese with its readings set above the kanji.
  *
  * The line is laid out as one [BasicText], so it wraps, ellipsizes and
@@ -257,7 +315,13 @@ fun FuriganaText(
     val rubyGap = fontSize * RUBY_GAP_SCALE
     val rubyLetterSpacing = -fontSize * RUBY_GAP_SCALE
     // The ruby is drawn outside the base line's own box, so the line has
-    // to be tall enough to hold it or consecutive lines overlap.
+    // to be tall enough to hold it or consecutive lines overlap. This is
+    // the ADVANCE that clears a wrapped line's ruby past the line above
+    // it, and it is deliberately not the taller box a single line's ruby
+    // needs to be drawn inside its own bounds: applying that here would
+    // stretch every table row and sentence line that today overhangs
+    // harmlessly into the padding around it. A caller that needs the
+    // room states [withRoomForRuby].
     val minLineHeight = (fontSize.value + rubyFontSize.value + rubyGap.value).sp
     val lineHeight = when {
         requestedStyle.lineHeight.isScalablePixels && requestedStyle.lineHeight > minLineHeight ->
@@ -357,13 +421,22 @@ fun FuriganaText(
  *   size. Stating the alignment makes the ruby path's own convention
  *   the line's convention.
  *
- * Centring is also the alignment the ruby floor was always arithmetic
- * for: with the glyph centred, the reading's top lands within a hair of
- * the top of the box (`fontSize / 2 + ruby + gap` up from the middle of
- * a box `fontSize + ruby + gap` tall). Under the proportional default
- * that sum was never quite the right one. A caller that states its own
- * `lineHeightStyle` still gets it — [RubyUnit] reads the alignment back
- * and follows it — so this is a default, not an override.
+ * Centring is also the alignment the ruby floor is arithmetic for: with
+ * the glyph centred, the reading's top lands `fontSize / 2 + ruby + gap`
+ * up from the middle of the line, which is what makes a wrapped line's
+ * ruby clear the line above it in a box `fontSize + ruby + gap` tall.
+ * Under the proportional default that sum was never quite the right one.
+ * A caller that states its own `lineHeightStyle` still gets it —
+ * [RubyUnit] reads the alignment back and follows it — so this is a
+ * default, not an override.
+ *
+ * What centring does *not* do is put that reading inside the box. Half
+ * the surplus lands above the characters and the reading wants all of
+ * it, so on the floor alone a first line's ruby is drawn `(ruby + gap)
+ * / 2` above the composable's own bounds — 10.8sp at `displayMedium`,
+ * which is how the Word tab's headword lost the top of its dakuten to
+ * the edge of a clipping `LazyColumn`. [withRoomForRuby] is the box
+ * that holds it; this alignment is what makes that arithmetic exact.
  */
 private val CENTRED_IN_LINE = LineHeightStyle(
     alignment = LineHeightStyle.Alignment.Center,

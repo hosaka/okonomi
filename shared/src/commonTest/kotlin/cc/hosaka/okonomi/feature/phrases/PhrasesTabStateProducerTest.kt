@@ -72,6 +72,7 @@ class PhrasesTabStateProducerTest {
         val states = collectStates(
             scope.phrasesTabStateProducer(
                 entryId = 1358280L,
+                headword = "食べる",
                 load = load,
                 loadPos = noPos,
                 invalidate = neverInvalidate,
@@ -88,6 +89,7 @@ class PhrasesTabStateProducerTest {
         collectStates(
             scope.phrasesTabStateProducer(
                 entryId = 1358280L,
+                headword = "食べる",
                 load = load,
                 loadPos = noPos,
                 invalidate = neverInvalidate,
@@ -104,6 +106,7 @@ class PhrasesTabStateProducerTest {
         val states = collectStates(
             scope.phrasesTabStateProducer(
                 entryId = 1L,
+                headword = "食べる",
                 load = { stored },
                 loadPos = noPos,
                 invalidate = neverInvalidate,
@@ -123,6 +126,7 @@ class PhrasesTabStateProducerTest {
         val states = collectStates(
             scope.phrasesTabStateProducer(
                 entryId = 1L,
+                headword = "食べる",
                 load = { stored },
                 loadPos = noPos,
                 invalidate = neverInvalidate,
@@ -149,6 +153,7 @@ class PhrasesTabStateProducerTest {
         val states = collectStates(
             scope.phrasesTabStateProducer(
                 entryId = 1L,
+                headword = "食べる",
                 load = { stored },
                 loadPos = noPos,
                 invalidate = neverInvalidate,
@@ -173,6 +178,7 @@ class PhrasesTabStateProducerTest {
         val states = collectStates(
             scope.phrasesTabStateProducer(
                 entryId = 1L,
+                headword = "食べる",
                 load = { sentences(2) },
                 loadPos = noPos,
                 invalidate = neverInvalidate,
@@ -191,6 +197,7 @@ class PhrasesTabStateProducerTest {
         val states = collectStates(
             scope.phrasesTabStateProducer(
                 entryId = 1L,
+                headword = "食べる",
                 load = { emptyList() },
                 loadPos = noPos,
                 invalidate = neverInvalidate,
@@ -209,6 +216,7 @@ class PhrasesTabStateProducerTest {
         val states = collectStates(
             scope.phrasesTabStateProducer(
                 entryId = 1L,
+                headword = "食べる",
                 load = { throw RuntimeException("database gone") },
                 loadPos = noPos,
                 invalidate = {},
@@ -226,6 +234,7 @@ class PhrasesTabStateProducerTest {
         val states = collectStates(
             scope.phrasesTabStateProducer(
                 entryId = 1L,
+                headword = "食べる",
                 load = { throw RuntimeException("database gone") },
                 loadPos = noPos,
                 invalidate = {},
@@ -251,6 +260,7 @@ class PhrasesTabStateProducerTest {
         val states = collectStates(
             scope.phrasesTabStateProducer(
                 entryId = 1L,
+                headword = "食べる",
                 load = load,
                 loadPos = noPos,
                 invalidate = {},
@@ -277,6 +287,7 @@ class PhrasesTabStateProducerTest {
         val states = collectStates(
             scope.phrasesTabStateProducer(
                 entryId = 1L,
+                headword = "食べる",
                 load = { throw RuntimeException("database gone") },
                 loadPos = noPos,
                 invalidate = { invalidations++ },
@@ -306,6 +317,7 @@ class PhrasesTabStateProducerTest {
         val states = collectStates(
             scope.phrasesTabStateProducer(
                 entryId = 1L,
+                headword = "食べる",
                 load = {
                     listOf(
                         sentence.copy(
@@ -336,6 +348,48 @@ class PhrasesTabStateProducerTest {
     }
 
     /**
+     * The entry's own dictionary form reaches the state, which is the
+     * only thing the producer does with it and the only place the tab
+     * can learn it. Its consequence — the word drawn as a content word
+     * with no tap on it — is `PhrasesTapUiTest`'s, because it lives
+     * inside a composable.
+     *
+     * Pinned separately from `tappableWords`, which must be unaffected:
+     * folding the two together is what once drew the word the reader
+     * came to study in the colour reserved for particles.
+     */
+    @Test
+    fun `the entry's own headword reaches the state without changing what is tappable`() = runTest {
+        val scope = FakeScreenStateScope()
+        val taberu = BreakdownWord("食べる", "たべる", entryId = 1_358_280L)
+        val gohan = BreakdownWord("ご飯", "ごはん", entryId = 1_269_500L)
+
+        val states = collectStates(
+            scope.phrasesTabStateProducer(
+                entryId = 1_358_280L,
+                headword = "食べる",
+                load = {
+                    listOf(sentence.copy(japanese = "ご飯を食べる。", words = listOf(gohan, taberu)))
+                },
+                loadPos = {
+                    BreakdownPos(
+                        byEntryId = mapOf(
+                            1_358_280L to listOf("v1", "vt"),
+                            1_269_500L to listOf("n"),
+                        ),
+                        byText = mapOf("食べる" to listOf("v1", "vt"), "ご飯" to listOf("n")),
+                    )
+                },
+                invalidate = neverInvalidate,
+            ),
+        )
+
+        val ready = assertIs<PhrasesTabContentState.Ready>(states.last().content)
+        assertEquals("食べる", ready.wordBeingRead)
+        assertEquals(setOf(gohan, taberu), ready.tappableWords, "both are still content words")
+    }
+
+    /**
      * A decoration failing must not cost the reader the thing they came
      * for. The sentences are loaded and readable; that the colouring
      * could not be worked out is a reason to colour nothing, not a
@@ -349,6 +403,7 @@ class PhrasesTabStateProducerTest {
         val states = collectStates(
             scope.phrasesTabStateProducer(
                 entryId = 1L,
+                headword = "食べる",
                 load = { listOf(sentence) },
                 loadPos = { throw RuntimeException("database gone") },
                 // A real database failure still gets the project's
@@ -373,6 +428,7 @@ class PhrasesTabStateProducerTest {
         collectStates(
             scope.phrasesTabStateProducer(
                 entryId = 1L,
+                headword = "食べる",
                 load = { emptyList() },
                 loadPos = { throw AssertionError("nothing to look a part of speech up for") },
                 invalidate = neverInvalidate,
@@ -387,6 +443,7 @@ class PhrasesTabStateProducerTest {
         val states = collectStates(
             scope.phrasesTabStateProducer(
                 entryId = 1L,
+                headword = "食べる",
                 // Reopening cannot fix a broken invariant, and throwing
                 // the handle away would turn one bug into a
                 // reprovisioning storm.

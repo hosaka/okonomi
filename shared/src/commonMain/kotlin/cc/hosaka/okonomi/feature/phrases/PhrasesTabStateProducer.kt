@@ -21,13 +21,14 @@ import kotlinx.coroutines.flow.combine
 @Composable
 fun producePhrasesTabState(
     entryId: Long,
+    headword: String,
 ): State<PhrasesTabState> = produceScreenState(
     // Keyed per entry beside the entry's own screen state, so two
     // entries on the same back stack cannot share one tab's sentences.
     key = "entry-phrases-$entryId",
     initial = PhrasesTabState(),
 ) {
-    phrasesTabStateProducer(entryId)
+    phrasesTabStateProducer(entryId, headword)
 }
 
 /**
@@ -50,6 +51,13 @@ internal const val PHRASES_PAGE_SIZE = 30
  */
 suspend fun ScreenStateScope.phrasesTabStateProducer(
     entryId: Long,
+    /**
+     * The entry's own dictionary form, carried through untouched so the
+     * tab can leave the word the reader is studying without a tap. It
+     * takes no part in loading anything; see
+     * [PhrasesTabContentState.Ready.wordBeingRead].
+     */
+    headword: String,
     load: suspend (Long) -> List<ExampleSentence> = { loadSentencesForEntry(it) },
     loadPos: suspend (List<BreakdownWord>) -> BreakdownPos = { loadBreakdownPos(it) },
     invalidate: suspend () -> Unit = { invalidateDictionary() },
@@ -82,6 +90,7 @@ suspend fun ScreenStateScope.phrasesTabStateProducer(
                     PhrasesTabContentState.Ready(
                         sentences = state.value.sentences.take(limit),
                         tappableWords = state.value.tappableWords,
+                        wordBeingRead = headword,
                         entryPos = state.value.entryPos,
                         // Computed from the limit this state was built
                         // for rather than incremented, so the scroll
