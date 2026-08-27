@@ -1,6 +1,5 @@
 package cc.hosaka.okonomi.feature.search
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -53,6 +52,7 @@ import cc.hosaka.okonomi.ui.CommonWordChip
 import cc.hosaka.okonomi.ui.LoadMoreEffect
 import cc.hosaka.okonomi.ui.PagingFooterState
 import cc.hosaka.okonomi.ui.SearchTextField
+import cc.hosaka.okonomi.ui.ListCard
 import cc.hosaka.okonomi.ui.TagChip
 import cc.hosaka.okonomi.ui.furigana.FuriganaText
 import cc.hosaka.okonomi.ui.pagingFooterItem
@@ -350,15 +350,7 @@ internal fun SearchResultRow(
     glossTokens: List<String>,
     onClick: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(
-                horizontal = Dimens.contentPadding,
-                vertical = Dimens.verticalPaddingHalf,
-            ),
-    ) {
+    ListCard(onClick = onClick) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -430,14 +422,7 @@ internal fun SearchResultRow(
 private fun NameResultRow(
     name: NameHit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(
-                horizontal = Dimens.contentPadding,
-                vertical = Dimens.verticalPaddingHalf,
-            ),
-    ) {
+    ListCard {
         Row(
             verticalAlignment = Alignment.CenterVertically,
         ) {

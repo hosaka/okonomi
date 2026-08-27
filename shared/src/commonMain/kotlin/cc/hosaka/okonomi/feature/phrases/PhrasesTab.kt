@@ -11,11 +11,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -33,15 +32,14 @@ import cc.hosaka.okonomi.feature.navigation.LocalNavigationController
 import cc.hosaka.okonomi.feature.search.SearchRoute
 import cc.hosaka.okonomi.ui.CenteredBox
 import cc.hosaka.okonomi.ui.CenteredMessage
+import cc.hosaka.okonomi.ui.ListCard
 import cc.hosaka.okonomi.ui.LoadMoreEffect
 import cc.hosaka.okonomi.ui.PagingFooterState
 import cc.hosaka.okonomi.ui.furigana.FuriganaSegment
 import cc.hosaka.okonomi.ui.furigana.FuriganaText
 import cc.hosaka.okonomi.ui.pagingFooterItem
 import cc.hosaka.okonomi.ui.scrollIndicator
-import cc.hosaka.okonomi.ui.theme.Dimens
 import cc.hosaka.okonomi.ui.theme.atJapaneseReadingSize
-import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
 import okonomi.shared.generated.resources.Res
 import okonomi.shared.generated.resources.entry_phrases_empty
 import okonomi.shared.generated.resources.entry_phrases_error
@@ -165,18 +163,10 @@ private fun SentenceList(
             state = listState,
             contentPadding = contentPadding,
         ) {
-            itemsIndexed(
+            items(
                 items = sentences,
-                key = { _, sentence -> sentence.id },
-            ) { index, sentence ->
-                // The rule goes above the block rather than below it, so
-                // the last sentence does not end on a dangling line.
-                if (index > 0) {
-                    HorizontalDivider(
-                        modifier = Modifier
-                            .padding(horizontal = Dimens.contentPadding),
-                    )
-                }
+                key = { sentence -> sentence.id },
+            ) { sentence ->
                 SentenceBlock(
                     sentence = sentence,
                     tappableWords = tappableWords,
@@ -196,14 +186,7 @@ private fun SentenceBlock(
     wordBeingRead: String,
     entryPos: Map<Long, List<String>>,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(
-                horizontal = Dimens.contentPadding,
-                vertical = Dimens.verticalPaddingHalf,
-            ),
-    ) {
+    ListCard {
         SentenceText(
             sentence = sentence,
             tappableWords = tappableWords,

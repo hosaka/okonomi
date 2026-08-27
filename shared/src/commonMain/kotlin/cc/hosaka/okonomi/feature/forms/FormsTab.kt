@@ -1,7 +1,6 @@
 package cc.hosaka.okonomi.feature.forms
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
@@ -15,21 +14,18 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cc.hosaka.okonomi.db.EntryDetail
@@ -37,6 +33,7 @@ import cc.hosaka.okonomi.ui.CenteredMessage
 import cc.hosaka.okonomi.ui.furigana.FuriganaSegment
 import cc.hosaka.okonomi.ui.furigana.FuriganaText
 import cc.hosaka.okonomi.ui.furigana.plainText
+import cc.hosaka.okonomi.ui.ListCard
 import cc.hosaka.okonomi.ui.theme.Dimens
 import cc.hosaka.okonomi.ui.theme.horizontalPaddingHalf
 import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
@@ -49,10 +46,11 @@ import okonomi.shared.generated.resources.entry_forms_row_description
 import okonomi.shared.generated.resources.entry_forms_suru
 import org.jetbrains.compose.resources.stringResource
 
-/** Thin enough to read as a grid line rather than as a box. */
+/**
+ * Thickness of the rules between cells. Since the table lost its outer
+ * outline to the card panel, this is now only ever a grid line.
+ */
 private val TABLE_BORDER = 1.dp
-
-private val TABLE_SHAPE = RoundedCornerShape(12.dp)
 
 /**
  * The em dash a row without a negative shows. The volitional is the
@@ -61,13 +59,6 @@ private val TABLE_SHAPE = RoundedCornerShape(12.dp)
  */
 private const val NO_FORM = "—"
 
-/**
- * "Causative passive" is the longest label and what the leading column
- * has to fit. Sized in multiples of the label's own font size rather
- * than in fixed dp, so the column grows with the reader's text scale
- * instead of truncating a long label into ambiguity.
- */
-private const val LABEL_COLUMN_EMS = 8.5f
 
 /**
  * The forms of the word, one table per conjugable class. Everything the
@@ -172,43 +163,36 @@ private fun TableHeading(text: String) {
 @Composable
 private fun ConjugationGrid(rows: List<ConjugationRow>) {
     val outline = MaterialTheme.colorScheme.outlineVariant
-    val labelWidth = labelColumnWidth()
     val noForm = stringResource(Res.string.entry_forms_no_form)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(
-                start = Dimens.contentPadding,
-                end = Dimens.contentPadding,
-                bottom = Dimens.verticalPaddingHalf,
-            )
-            .clip(TABLE_SHAPE)
-            .border(TABLE_BORDER, outline, TABLE_SHAPE),
-    ) {
+    // The same panel every list row sits in, so a tab of tables and a tab
+    // of rows read as one app. It replaces the outline this table used to
+    // draw around itself: the panel already separates it from the page,
+    // and a border on top of that was the thing making the Forms tab look
+    // like a different screen. Zero content padding because the rows band
+    // the full width of the panel - that is what the tint is for.
+    ListCard(contentPadding = 0.dp) {
         GridRow(
-            background = MaterialTheme.colorScheme.surfaceContainerHigh,
+            background = MaterialTheme.colorScheme.surfaceContainerHighest,
             topDivider = null,
         ) {
-            Spacer(modifier = Modifier.width(labelWidth))
             HeaderCell(stringResource(Res.string.entry_forms_affirmative))
             VerticalRule(outline)
             HeaderCell(stringResource(Res.string.entry_forms_negative))
         }
-        rows.forEachIndexed { index, row ->
+        rows.forEach { row ->
             val label = stringResource(row.id.label)
-            GridRow(
-                // The alternating tint is what keeps the eye on one row
-                // across three columns of dense kana.
-                background = if (index % 2 == 0) {
-                    Color.Transparent
-                } else {
-                    MaterialTheme.colorScheme.surfaceContainerLow
-                },
-                topDivider = outline,
+            ConjugationEntry(
+                label = label,
+                affirmative = row.affirmative,
+                negative = row.negative ?: listOf(FuriganaSegment(NO_FORM)),
+                outline = outline,
                 // Three unrelated strings per row is what a screen
                 // reader would otherwise get, with nothing tying a form
                 // to its label or its column. One node per row, read as
-                // a sentence, is the whole relationship.
+                // a sentence, is the whole relationship — and that is
+                // unchanged by the label moving above the forms: the
+                // grouping was always the description's job, never the
+                // layout's.
                 // A ruby is a reading aid for the eye; a screen reader
                 // already gets the word, so the description carries the
                 // written form alone.
@@ -218,12 +202,64 @@ private fun ConjugationGrid(rows: List<ConjugationRow>) {
                     row.affirmative.plainText(),
                     row.negative?.plainText() ?: noForm,
                 ),
-            ) {
-                LabelCell(text = label, width = labelWidth)
-                ValueCell(row.affirmative)
-                VerticalRule(outline)
-                ValueCell(row.negative ?: listOf(FuriganaSegment(NO_FORM)))
-            }
+            )
+        }
+    }
+}
+
+/**
+ * One conjugation: its name on a band spanning the table, and beneath it
+ * the affirmative and negative sharing the width equally.
+ *
+ * The name used to be a third column, which cost the forms a third of
+ * the table to a word like "Causative passive" and left dense kana
+ * cramped into what remained. Above them it costs a line of height,
+ * which the tab has to spare, and gives each form half the table.
+ *
+ * The band is tinted rather than the rows being striped alternately.
+ * Zebra existed to hold the eye across three columns; with two columns
+ * and a named band above each pair, the banding IS the grouping, and
+ * stripes on top of it would be a second, competing rhythm.
+ *
+ * The whole group is one semantics node — the label is not separately
+ * focusable — so a screen reader still hears "Non-past, 食べる,
+ * 食べない" rather than a loose label followed by two orphan forms.
+ */
+@Composable
+private fun ConjugationEntry(
+    label: String,
+    affirmative: List<FuriganaSegment>,
+    negative: List<FuriganaSegment>,
+    outline: Color,
+    description: String,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clearAndSetSemantics { contentDescription = description },
+    ) {
+        HorizontalRule(outline)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .cellPadding(),
+        )
+        HorizontalRule(outline)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                // Lets the column rule run the full height of whichever
+                // form wrapped furthest.
+                .height(IntrinsicSize.Min),
+        ) {
+            ValueCell(affirmative)
+            VerticalRule(outline)
+            ValueCell(negative)
         }
     }
 }
@@ -283,23 +319,7 @@ private fun VerticalRule(color: Color) {
     )
 }
 
-@Composable
-private fun labelColumnWidth(): Dp {
-    val fontSize = MaterialTheme.typography.labelMedium.fontSize
-    return with(LocalDensity.current) { fontSize.toDp() * LABEL_COLUMN_EMS }
-}
 
-@Composable
-private fun LabelCell(text: String, width: Dp) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier
-            .width(width)
-            .cellPadding(),
-    )
-}
 
 @Composable
 private fun RowScope.HeaderCell(text: String) {

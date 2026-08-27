@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -26,6 +25,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import cc.hosaka.okonomi.db.KanjiCharacter
+import cc.hosaka.okonomi.ui.ListCard
 import cc.hosaka.okonomi.ui.TagChip
 import cc.hosaka.okonomi.ui.theme.Dimens
 import cc.hosaka.okonomi.ui.theme.horizontalPaddingFourth
@@ -85,15 +85,8 @@ fun KanjiCard(
     character: KanjiCharacter,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        modifier = modifier
-            .fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-    ) {
+    ListCard(modifier = modifier) {
         Row(
-            modifier = Modifier
-                .padding(Dimens.contentPadding),
             horizontalArrangement = Arrangement.spacedBy(Dimens.horizontalPaddingHalf),
         ) {
             Column(
