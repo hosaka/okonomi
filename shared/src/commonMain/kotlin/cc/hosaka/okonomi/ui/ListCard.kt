@@ -1,6 +1,6 @@
 package cc.hosaka.okonomi.ui
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import cc.hosaka.okonomi.ui.theme.Dimens
 import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
@@ -39,11 +40,22 @@ import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
  * rather than fixing it, so every list now calls this instead: change
  * the panel here and Search, Favourites, Phrases and Kanji move together.
  *
- * [onClick] null means the row is not a control, following the project's
- * rule that a null callback is a disabled action — the Names section of
- * the search results is the case that needs it, since a name has no
- * entry view to open. A non-null one takes its ripple from the enclosing
- * `Surface`, which clips to the card's shape.
+ * [onClick] null means a tap goes nowhere, following the project's rule
+ * that a null callback is a disabled action — the Names section of the
+ * search results is the case that needs it, since a name has no entry
+ * view to open.
+ *
+ * [onLongClick] is how every list offers copy-to-clipboard. A card with
+ * only a long press still takes a press animation on a plain tap, which
+ * is deliberate: the Kanji and Phrases cards used to be the only things
+ * in the app that swallowed a touch silently, and looking dead is worse
+ * than a ripple that resolves to nothing. Such a card is NOT given
+ * `Role.Button` though, so an accessibility service is not told to
+ * expect a click that does nothing; the long press announces itself
+ * through [onLongClickLabel] instead.
+ *
+ * The ripple is clipped by the enclosing `Surface`, which clips to the
+ * card's shape.
  *
  * The card owns its own spacing, outer and inner, so a caller adding a
  * row cannot accidentally set a different rhythm. Content is laid out in
@@ -61,6 +73,8 @@ import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
 fun ListCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
     contentPadding: Dp = Dimens.contentPadding,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -76,9 +90,33 @@ fun ListCard(
     ) {
         Column(
             modifier = Modifier
-                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+                .then(interaction(onClick, onLongClick, onLongClickLabel))
                 .padding(contentPadding),
             content = content,
         )
     }
+}
+
+/**
+ * The card's touch handling: nothing at all when neither callback is
+ * given, and one `combinedClickable` when either is. One modifier rather
+ * than a `clickable` plus something else, because a long press and a tap
+ * on the same node have to be resolved together — two separate gesture
+ * modifiers would race.
+ */
+@Composable
+private fun interaction(
+    onClick: (() -> Unit)?,
+    onLongClick: (() -> Unit)?,
+    onLongClickLabel: String?,
+): Modifier {
+    if (onClick == null && onLongClick == null) return Modifier
+    return Modifier.combinedClickable(
+        role = if (onClick != null) Role.Button else null,
+        onLongClickLabel = onLongClickLabel,
+        onLongClick = onLongClick,
+        // A card that only copies still answers a tap with a ripple; see
+        // the KDoc above for why that is preferred to a dead card.
+        onClick = onClick ?: {},
+    )
 }

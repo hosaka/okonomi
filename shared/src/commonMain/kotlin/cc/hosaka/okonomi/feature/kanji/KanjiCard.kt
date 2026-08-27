@@ -26,6 +26,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import cc.hosaka.okonomi.db.KanjiCharacter
 import cc.hosaka.okonomi.ui.ListCard
+import cc.hosaka.okonomi.ui.rememberClipboardCopy
 import cc.hosaka.okonomi.ui.TagChip
 import cc.hosaka.okonomi.ui.theme.Dimens
 import cc.hosaka.okonomi.ui.theme.horizontalPaddingFourth
@@ -43,6 +44,7 @@ import okonomi.shared.generated.resources.entry_kanji_section_on
 import okonomi.shared.generated.resources.entry_kanji_section_radical
 import okonomi.shared.generated.resources.entry_kanji_stroke_order
 import okonomi.shared.generated.resources.entry_kanji_strokes
+import okonomi.shared.generated.resources.list_card_copy
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -85,81 +87,99 @@ fun KanjiCard(
     character: KanjiCharacter,
     modifier: Modifier = Modifier,
 ) {
-    ListCard(modifier = modifier) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(Dimens.horizontalPaddingHalf),
+    val copy = rememberClipboardCopy()
+    ListCard(
+        modifier = modifier,
+        // Just the character. The card is full of readings and meanings,
+        // but the thing a reader wants in their clipboard is the kanji.
+        onLongClick = { copy(character.literal) },
+        onLongClickLabel = stringResource(Res.string.list_card_copy),
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Dimens.verticalPaddingHalf),
         ) {
-            Column(
-                modifier = Modifier
-                    .widthIn(min = GLYPH_COLUMN_MIN_WIDTH),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(Dimens.verticalPaddingHalf),
+            // Only the readings that sit level with the diagram share its
+            // row. Everything below it spans the card instead, because the
+            // column beside a 88.dp square is 88.dp of nothing once the
+            // square ends - which on a character with several meanings was
+            // most of the card's height.
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Dimens.horizontalPaddingHalf),
             ) {
-                // The diagram draws the character, so printing the literal
-                // beside it would show the same glyph twice in one column.
-                // Where there is no diagram it is the other way round: the
-                // literal is the only thing identifying the card, and the
-                // parse has to be resolved HERE rather than inside the
-                // diagram, or a character whose stored paths do not parse
-                // would fall back to a dashed square naming nothing.
-                val strokes = rememberStrokeGeometry(character.strokePaths)
-                if (strokes == null) {
-                    Text(
-                        text = character.literal,
-                        style = MaterialTheme.typography.displayMedium,
+                Column(
+                    modifier = Modifier
+                        .widthIn(min = GLYPH_COLUMN_MIN_WIDTH),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(Dimens.verticalPaddingHalf),
+                ) {
+                    // The diagram draws the character, so printing the literal
+                    // beside it would show the same glyph twice in one column.
+                    // Where there is no diagram it is the other way round: the
+                    // literal is the only thing identifying the card, and the
+                    // parse has to be resolved HERE rather than inside the
+                    // diagram, or a character whose stored paths do not parse
+                    // would fall back to a dashed square naming nothing.
+                    val strokes = rememberStrokeGeometry(character.strokePaths)
+                    if (strokes == null) {
+                        Text(
+                            text = character.literal,
+                            style = MaterialTheme.typography.displayMedium,
+                        )
+                        // KanjiVG carries 6,703 characters and kanjidic more
+                        // than twice that, so an empty slot is a normal state
+                        // of the shipped data, not a failure to load.
+                        StrokeOrderPlaceholder()
+                    } else {
+                        StrokeOrderDiagram(strokes, character.literal)
+                    }
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(Dimens.verticalPaddingHalf),
+                ) {
+                    if (!character.hasData) {
+                        // A character kanjidic does not carry is a real state
+                        // of the shipped data: say so rather than leaving the
+                        // card looking half-rendered.
+                        Text(
+                            text = stringResource(Res.string.entry_kanji_no_data),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    // The two readings every kanji that has any will have,
+                    // kept beside the glyph so the pairing reads at a glance.
+                    LabelledLine(
+                        label = stringResource(Res.string.entry_kanji_section_on),
+                        values = character.onReadings,
+                        join = READING_JOIN,
                     )
-                    // KanjiVG carries 6,703 characters and kanjidic more
-                    // than twice that, so an empty slot is a normal state
-                    // of the shipped data, not a failure to load.
-                    StrokeOrderPlaceholder()
-                } else {
-                    StrokeOrderDiagram(strokes, character.literal)
+                    LabelledLine(
+                        label = stringResource(Res.string.entry_kanji_section_kun),
+                        values = character.kunReadings,
+                        join = READING_JOIN,
+                    )
                 }
             }
-            Column(
-                modifier = Modifier
-                    .weight(1f),
-                verticalArrangement = Arrangement.spacedBy(Dimens.verticalPaddingHalf),
-            ) {
-                if (!character.hasData) {
-                    // A character kanjidic does not carry is a real state
-                    // of the shipped data: say so rather than leaving the
-                    // card looking half-rendered.
-                    Text(
-                        text = stringResource(Res.string.entry_kanji_no_data),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                LabelledLine(
-                    label = stringResource(Res.string.entry_kanji_section_on),
-                    values = character.onReadings,
-                    join = READING_JOIN,
-                )
-                LabelledLine(
-                    label = stringResource(Res.string.entry_kanji_section_kun),
-                    values = character.kunReadings,
-                    join = READING_JOIN,
-                )
-                LabelledLine(
-                    label = stringResource(Res.string.entry_kanji_section_name),
-                    values = character.nameReadings,
-                    join = READING_JOIN,
-                )
-                LabelledLine(
-                    label = stringResource(Res.string.entry_kanji_section_meanings),
-                    values = character.meanings,
-                    join = MEANING_JOIN,
-                )
-                LabelledLine(
-                    label = stringResource(Res.string.entry_kanji_section_radical),
-                    values = character.radicals,
-                    join = RADICAL_JOIN,
-                )
-                // Secondary to the readings and meanings above, so the
-                // chips close the card rather than heading it.
-                MetadataChips(character)
-            }
+            LabelledLine(
+                label = stringResource(Res.string.entry_kanji_section_name),
+                values = character.nameReadings,
+                join = READING_JOIN,
+            )
+            LabelledLine(
+                label = stringResource(Res.string.entry_kanji_section_meanings),
+                values = character.meanings,
+                join = MEANING_JOIN,
+            )
+            LabelledLine(
+                label = stringResource(Res.string.entry_kanji_section_radical),
+                values = character.radicals,
+                join = RADICAL_JOIN,
+            )
+            // Secondary to the readings and meanings above, so the
+            // chips close the card rather than heading it.
+            MetadataChips(character)
         }
     }
 }

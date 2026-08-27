@@ -69,6 +69,10 @@
     <string name="entry_kanji_jlpt">JLPT %1$d</string>
     <string name="entry_kanji_grade">Grade %1$d</string>
     <string name="entry_kanji_frequency">Frequency #%1$d</string>
+    <!-- Announced by accessibility services as the action a long press
+         on any list card performs. One string for every list, because
+         the gesture is the same everywhere. -->
+    <string name="list_card_copy">Copy</string>
     <string name="entry_kanji_stroke_order">Stroke order</string>
     <!-- The tap label on a filled stroke-order slot, and the only thing
          that tells a screen reader the diagram does anything. "Replay"

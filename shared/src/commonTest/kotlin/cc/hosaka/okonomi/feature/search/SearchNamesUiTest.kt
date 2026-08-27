@@ -3,8 +3,11 @@ package cc.hosaka.okonomi.feature.search
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
@@ -33,8 +36,8 @@ import org.jetbrains.compose.resources.stringResource
 
 /**
  * What the producer tests cannot see: where the name rows land on screen,
- * what a name row is made of, that tapping one does nothing, and that the
- * toggle is reachable from the field.
+ * what a name row is made of, that tapping one leads nowhere, and that
+ * the toggle is reachable from the field.
  */
 @OptIn(ExperimentalTestApi::class)
 class SearchNamesUiTest : ComposeUiTestBase() {
@@ -74,15 +77,28 @@ class SearchNamesUiTest : ComposeUiTestBase() {
         onNodeWithText("みちこ").assertIsDisplayed()
     }
 
-    /** Alex's ruling: a name has no entry view to open, so the row is inert. */
+    /**
+     * Alex's ruling: a name has no entry view to open, so a tap on the
+     * row must not take the reader anywhere.
+     *
+     * The row is no longer INERT, and that is a deliberate later change:
+     * every list card now answers a touch, and a long press on this one
+     * copies the name. So the row carries a click action for the ripple.
+     * What the ruling actually forbids is it LEADING somewhere, which is
+     * what the navigation assertion pins — and the row is still not
+     * announced as a button, so nothing tells a screen-reader user to
+     * expect a destination.
+     */
     @Test
-    fun `a name row is not clickable and opens nothing`() = runComposeUiTest {
+    fun `a name row leads nowhere and is not announced as a button`() = runComposeUiTest {
         val navigation = RecordingNavigationController()
         setContent {
             SearchUnderTest(hits = emptyList(), names = listOf(tanaka()), navigation = navigation)
         }
 
-        onNodeWithText("Tanaka").assertHasNoClickAction()
+        onNodeWithText("Tanaka").assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button).not(),
+        )
         onNodeWithText("Tanaka").performClick()
         waitForIdle()
 

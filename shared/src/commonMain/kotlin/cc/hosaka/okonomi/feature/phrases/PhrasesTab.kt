@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -33,6 +32,7 @@ import cc.hosaka.okonomi.feature.search.SearchRoute
 import cc.hosaka.okonomi.ui.CenteredBox
 import cc.hosaka.okonomi.ui.CenteredMessage
 import cc.hosaka.okonomi.ui.ListCard
+import cc.hosaka.okonomi.ui.rememberClipboardCopy
 import cc.hosaka.okonomi.ui.LoadMoreEffect
 import cc.hosaka.okonomi.ui.PagingFooterState
 import cc.hosaka.okonomi.ui.furigana.FuriganaSegment
@@ -44,6 +44,7 @@ import okonomi.shared.generated.resources.Res
 import okonomi.shared.generated.resources.entry_phrases_empty
 import okonomi.shared.generated.resources.entry_phrases_error
 import okonomi.shared.generated.resources.entry_retry
+import okonomi.shared.generated.resources.list_card_copy
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -146,36 +147,36 @@ private fun SentenceList(
 ) {
     val listState = rememberLazyListState()
     LoadMoreEffect(listState = listState, onLoadMore = onShowMore)
-    // A sentence is something a learner copies into a note or a search
-    // box. What a copy now yields is unverified and platform-divergent,
-    // and it is here rather than hidden: the line used to be one Text
-    // and is a row of them, and the ruby is a TextView outside the
-    // selection registrar on Android while it is a BasicText inside it
-    // on iOS — so a copy may pick up readings and a second copy of the
-    // base characters there. Needs a device, on both.
-    SelectionContainer {
-        LazyColumn(
-            modifier = modifier
-                .fillMaxSize()
-                // The tab's content padding keeps the indicator clear of
-                // the floating tab bar the last rows scroll under.
-                .scrollIndicator(listState, contentPadding),
-            state = listState,
-            contentPadding = contentPadding,
-        ) {
-            items(
-                items = sentences,
-                key = { sentence -> sentence.id },
-            ) { sentence ->
-                SentenceBlock(
-                    sentence = sentence,
-                    tappableWords = tappableWords,
-                    wordBeingRead = wordBeingRead,
-                    entryPos = entryPos,
-                )
-            }
-            pagingFooterItem(footer)
+    // No SelectionContainer here, deliberately. It used to wrap this
+    // list so a sentence could be copied by selecting text, but every
+    // card now takes a long press to copy the whole Japanese sentence,
+    // and the card wins that gesture - so selection could no longer be
+    // started and the wrapper only looked like it worked. Alex chose
+    // the long press: on a phone it is one gesture against a drag with
+    // two handles, and it copies the sentence exactly rather than
+    // whatever the ruby happened to contribute. The Forms tab still
+    // uses one, because its cards take no long press.
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            // The tab's content padding keeps the indicator clear of
+            // the floating tab bar the last rows scroll under.
+            .scrollIndicator(listState, contentPadding),
+        state = listState,
+        contentPadding = contentPadding,
+    ) {
+        items(
+            items = sentences,
+            key = { sentence -> sentence.id },
+        ) { sentence ->
+            SentenceBlock(
+                sentence = sentence,
+                tappableWords = tappableWords,
+                wordBeingRead = wordBeingRead,
+                entryPos = entryPos,
+            )
         }
+        pagingFooterItem(footer)
     }
 }
 
@@ -186,7 +187,14 @@ private fun SentenceBlock(
     wordBeingRead: String,
     entryPos: Map<Long, List<String>>,
 ) {
-    ListCard {
+    val copy = rememberClipboardCopy()
+    ListCard(
+        // The Japanese sentence alone. The English is a translation the
+        // reader can already read; what goes into a note or a search box
+        // is the Japanese.
+        onLongClick = { copy(sentence.japanese) },
+        onLongClickLabel = stringResource(Res.string.list_card_copy),
+    ) {
         SentenceText(
             sentence = sentence,
             tappableWords = tappableWords,

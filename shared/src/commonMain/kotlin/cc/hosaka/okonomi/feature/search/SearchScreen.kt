@@ -53,6 +53,7 @@ import cc.hosaka.okonomi.ui.LoadMoreEffect
 import cc.hosaka.okonomi.ui.PagingFooterState
 import cc.hosaka.okonomi.ui.SearchTextField
 import cc.hosaka.okonomi.ui.ListCard
+import cc.hosaka.okonomi.ui.rememberClipboardCopy
 import cc.hosaka.okonomi.ui.TagChip
 import cc.hosaka.okonomi.ui.furigana.FuriganaText
 import cc.hosaka.okonomi.ui.pagingFooterItem
@@ -62,6 +63,7 @@ import cc.hosaka.okonomi.ui.theme.atJapaneseReadingSize
 import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
 import okonomi.shared.generated.resources.Res
 import okonomi.shared.generated.resources.entry_back
+import okonomi.shared.generated.resources.list_card_copy
 import okonomi.shared.generated.resources.name_type_fem
 import okonomi.shared.generated.resources.name_type_given
 import okonomi.shared.generated.resources.name_type_masc
@@ -350,7 +352,14 @@ internal fun SearchResultRow(
     glossTokens: List<String>,
     onClick: () -> Unit,
 ) {
-    ListCard(onClick = onClick) {
+    val copy = rememberClipboardCopy()
+    ListCard(
+        onClick = onClick,
+        // The written form, not the reading: segments that sit OVER the
+        // word as furigana are dropped, so 食(た)べる copies as 食べる.
+        onLongClick = { copy(hit.writtenForm()) },
+        onLongClickLabel = stringResource(Res.string.list_card_copy),
+    ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -422,7 +431,13 @@ internal fun SearchResultRow(
 private fun NameResultRow(
     name: NameHit,
 ) {
-    ListCard {
+    val copy = rememberClipboardCopy()
+    ListCard(
+        // A name written only in kana has no kanji form, and the
+        // reading IS what the row shows in that case.
+        onLongClick = { copy(name.kanji ?: name.reading) },
+        onLongClickLabel = stringResource(Res.string.list_card_copy),
+    ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -487,3 +502,12 @@ private fun senseLineText(line: String, glossTokens: List<String>): AnnotatedStr
         }
     }
 }
+
+/**
+ * What a long press on a result copies: the word as it is written,
+ * without the furigana set over it. A segment marked
+ * [TitleSegment.readsPreviousSegment] is a reading belonging above the
+ * segment before it, so including it would paste 食たべる.
+ */
+internal fun SearchHit.writtenForm(): String =
+    titleSegments.filterNot { it.readsPreviousSegment }.joinToString("") { it.text }
