@@ -310,7 +310,6 @@ private fun SentenceText(
         sentencePieces(sentence, entryPos).map { piece ->
             RenderedPiece(
                 segments = piece.segments,
-                isContentWord = piece.word?.let { it in tappableWords } == true,
                 onTap = piece.word
                     ?.takeIf { opensSearch(it, tappableWords, wordBeingRead) }
                     ?.let { word -> { navigation.navigate(SearchRoute(word.text)) } },
@@ -349,6 +348,16 @@ private fun SentenceText(
                 FuriganaText(
                     segments = piece.segments,
                     style = style,
+                    // The colour marks what a tap will do, so it follows
+                    // [RenderedPiece.onTap] and nothing else. It briefly
+                    // followed "is a content word" instead, on the
+                    // argument that the word being read would otherwise
+                    // be drawn like a particle. Alex overruled that on a
+                    // device (2026-08-27): colour is the affordance he
+                    // set when tappable words were introduced, so a
+                    // coloured word that does nothing reads as broken,
+                    // which is worse than a studied word looking plain.
+                    //
                     // The colour, not a highlight: a highlight styles
                     // the part of a run that matched something, and
                     // nothing here matched anything — the whole word is
@@ -356,7 +365,7 @@ private fun SentenceText(
                     // to its segments so both halves of a ruby unit take
                     // it, since the base and the reading are drawn from
                     // this one style.
-                    color = if (piece.isContentWord) contentWordColor else Color.Unspecified,
+                    color = if (piece.onTap != null) contentWordColor else Color.Unspecified,
                 )
             }
         }
@@ -364,19 +373,17 @@ private fun SentenceText(
 }
 
 /**
- * One piece of the sentence as the row draws it: the runs to render,
- * whether they are a content word — which is what the colour follows —
- * and what tapping them does.
+ * One piece of the sentence as the row draws it: the runs to render and
+ * what tapping them does.
  *
- * The two are separate because a piece can be one without the other. A
- * null [onTap] is a piece that goes nowhere, following the project's
+ * A null [onTap] is a piece that goes nowhere, following the project's
  * "null callback is a disabled action" rule: a particle, punctuation,
- * text no word claimed, *or* the word this tab's entry is about, which
- * is a content word with nowhere to go.
+ * text no word claimed, *or* the word this tab's entry is about. All of
+ * them are drawn the same, because the colour promises a tap and these
+ * have none to give.
  */
 @Immutable
 private data class RenderedPiece(
     val segments: List<FuriganaSegment>,
-    val isContentWord: Boolean,
     val onTap: (() -> Unit)?,
 )

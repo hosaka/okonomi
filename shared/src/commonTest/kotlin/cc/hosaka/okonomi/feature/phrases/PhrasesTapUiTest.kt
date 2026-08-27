@@ -145,17 +145,24 @@ class PhrasesTapUiTest : ComposeUiTestBase() {
     }
 
     /**
-     * Losing the tap must not cost the word its appearance. 話 is still
-     * a noun and is still drawn as one — anything else tells the reader
-     * the word they came to study is grammar.
+     * The colour promises a tap, so a word that has lost its tap loses
+     * the colour with it. 話 while reading 話 is drawn like anything
+     * else on the line that goes nowhere.
+     *
+     * This briefly went the other way — colour followed "is a content
+     * word", so the studied word stayed tinted — on the argument that it
+     * would otherwise read as grammar. Alex overruled it on a device
+     * (2026-08-27): he set the colour as the tappable affordance when
+     * the feature was introduced, and a tinted word that does nothing
+     * reads as broken. Do not restore the other rule without him.
      *
      * Read off the resolved text style rather than off pixels, which is
      * where the colour handed to `FuriganaText` actually lands; the
-     * particle is measured too, so "same as the content word" cannot
+     * tappable word is measured too, so "same as the particle" cannot
      * pass by every piece having gone the same neutral colour.
      */
     @Test
-    fun `the word the entry is about keeps its content-word colour`() = runComposeUiTest {
+    fun `the word the entry is about loses the colour with the tap`() = runComposeUiTest {
         setContent {
             PhrasesUnderTest(
                 navigation = RecordingNavigationController(),
@@ -167,8 +174,8 @@ class PhrasesTapUiTest : ComposeUiTestBase() {
         val tappable = onNodeWithText(GAKKOU.text).textColor()
         val particle = onNodeWithText(WO.text).textColor()
 
-        assertEquals(tappable, suppressed, "the word being read is a content word and is drawn as one")
-        assertNotEquals(particle, suppressed, "and not in the colour a particle takes")
+        assertEquals(particle, suppressed, "a word that goes nowhere is drawn like the rest that go nowhere")
+        assertNotEquals(tappable, suppressed, "and not in the colour that promises a tap")
     }
 }
 
