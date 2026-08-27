@@ -22,7 +22,13 @@ sqldelight {
         create("OkonomiDb") {
             packageName.set("cc.hosaka.okonomi.db")
             // Same schema files the app compiles: single source of truth in :shared.
-            srcDirs.setFrom("../../shared/src/commonMain/sqldelight")
+            //
+            // The DICTIONARY's directory alone, never the whole sqldelight
+            // tree: the user database's `.sq` files live beside it, and
+            // compiling those in here would create list/list_entry inside
+            // the shipped okonomi.db and move
+            // DICTIONARY_SCHEMA_FINGERPRINT.
+            srcDirs.setFrom("../../shared/src/commonMain/sqldelight/dictionary")
             dialect(libs.sqldelight.sqliteDialect)
             verifyMigrations.set(false)
         }

@@ -76,6 +76,42 @@ class HomeSelectionStateTest {
         assertEquals(1, state.reselectionsOf(homeSettingsItem.key))
     }
 
+    /**
+     * Three sections, in this order. The order is not cosmetic: the first
+     * item is the default section, so Search is what system back returns
+     * to from anywhere else.
+     */
+    @Test
+    fun `favourites is a section of its own between search and settings`() {
+        assertEquals(listOf(homeSearchItem, homeFavouritesItem, homeSettingsItem), homeNavigationItems)
+        assertEquals(homeSearchItem, HomeSelectionState(homeNavigationItems).default)
+    }
+
+    /**
+     * The Favourites tab behaves like every other section: tapping it
+     * while it shows a pushed entry pops back to the saved list, and
+     * tapping it at its root is a plain reselect.
+     */
+    @Test
+    fun `tapping the favourites tab while an entry is open pops to the saved list`() {
+        assertEquals(
+            HomeSelectAction.PopToRoot,
+            homeSelectAction(
+                tappedKey = homeFavouritesItem.key,
+                selectedKey = homeFavouritesItem.key,
+                depth = 2,
+            ),
+        )
+        assertEquals(
+            HomeSelectAction.SignalReselect,
+            homeSelectAction(
+                tappedKey = homeFavouritesItem.key,
+                selectedKey = homeFavouritesItem.key,
+                depth = 1,
+            ),
+        )
+    }
+
     @Test
     fun `tapping another section switches to it`() {
         assertEquals(

@@ -7,8 +7,21 @@
   version sidecar does not match, so backing it up would blow the 25 MB
   Auto Backup quota to restore something the app rebuilds for free.
   iOS excludes the same file from iCloud backup for the same reason.
+
+  user.db is the opposite case and is deliberately NOT excluded: it holds
+  the reader's saved words, the only data in this app that cannot be
+  regenerated from anything, and a restore is the only thing that brings
+  it back to a new phone.
+
+  Its journal IS excluded. Auto Backup copies files individually and at
+  no particular instant, so a rollback journal captured beside a database
+  it no longer matches is worse than no journal at all — SQLite would
+  roll back pages the restored database never had. The database is opened
+  in journal_mode = DELETE (see openUserDb), so this file exists only
+  during a write and its absence is always safe.
 -->
 <full-backup-content>
     <exclude domain="file" path="okonomi.db" />
     <exclude domain="file" path="okonomi.db.version" />
+    <exclude domain="file" path="user.db-journal" />
 </full-backup-content>

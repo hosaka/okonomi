@@ -3,6 +3,7 @@ package cc.hosaka.okonomi.feature.navigation
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.NavKey
 import androidx.savedstate.serialization.SavedStateConfiguration
+import cc.hosaka.okonomi.feature.favourites.FavouritesRoute
 import cc.hosaka.okonomi.feature.libraries.LibrariesRoute
 import cc.hosaka.okonomi.feature.search.SearchRoute
 import cc.hosaka.okonomi.feature.settings.SettingsRoute
@@ -20,6 +21,7 @@ val navigationSavedStateConfiguration: SavedStateConfiguration = SavedStateConfi
     serializersModule = SerializersModule {
         polymorphic(NavKey::class) {
             subclass(SearchRoute::class)
+            subclass(FavouritesRoute::class)
             subclass(SettingsRoute::class)
             subclass(LibrariesRoute::class)
             subclass(EntryRoute::class)

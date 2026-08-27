@@ -3,6 +3,7 @@
     <string name="app_name">okonomi</string>
     <string name="common_word_badge">common</string>
     <string name="home_search_label">Search</string>
+    <string name="home_favourites_label">Favourites</string>
     <string name="home_settings_label">Settings</string>
     <string name="search_placeholder">Search</string>
     <string name="search_clear">Clear</string>
@@ -47,6 +48,14 @@
     <string name="entry_restriction">only applies to %1$s</string>
     <string name="entry_error">This entry could not be loaded</string>
     <string name="entry_retry">Try again</string>
+    <!-- The save button on the entry view. One label with a spoken
+         state, not two labels: a control whose name changes under the
+         reader's thumb is a different control every time they reach for
+         it. "Word" rather than "entry" because that is what the reader
+         thinks they are keeping. -->
+    <string name="entry_save">Save word</string>
+    <string name="entry_saved">Saved</string>
+    <string name="entry_unsaved">Not saved</string>
     <string name="entry_kanji_section_on">On</string>
     <string name="entry_kanji_section_kun">Kun</string>
     <string name="entry_kanji_section_name">Nanori</string>
@@ -114,6 +123,14 @@
          state rather than as something having gone wrong. -->
     <string name="entry_phrases_empty">No example sentences for this word yet.</string>
     <string name="entry_phrases_error">The example sentences for this word could not be loaded</string>
+    <!-- The Favourites tab. The empty state has to read as a normal
+         state on a fresh install, not as something having gone wrong,
+         and it has to say where the button is: nothing else on this
+         screen can. -->
+    <string name="favourites_title">Favourites</string>
+    <string name="favourites_empty">Nothing saved yet. Look a word up and tap the heart to keep it here.</string>
+    <string name="favourites_error">Your saved words could not be loaded</string>
+    <string name="favourites_retry">Try again</string>
     <string name="settings_title">Settings</string>
     <string name="settings_dictionary_label">Dictionary</string>
     <string name="settings_dictionary_value">JMdict %1$s · %2$s entries</string>

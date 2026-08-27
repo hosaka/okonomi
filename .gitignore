@@ -134,3 +134,8 @@ _bmad-output/
 # dictionary sources and generated database
 /data/
 *.db
+
+# except the user database's schema snapshots
+# SQLDelight replays the .sqm migrations against them and fails the build
+# if the result is not the schema the .sq files describe
+!shared/src/commonMain/sqldelight/user/databases/*.db

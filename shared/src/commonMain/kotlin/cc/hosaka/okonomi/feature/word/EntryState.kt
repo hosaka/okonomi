@@ -7,6 +7,26 @@ import cc.hosaka.okonomi.db.EntryDetail
 data class EntryState(
     val entryId: Long,
     val content: EntryContentState = EntryContentState.Loading,
+    /**
+     * Whether this entry is in the reader's Favourites list. Read back
+     * from storage rather than held optimistically, so a write that
+     * could not land is seen to refuse rather than seen to lie; see
+     * `FavouritesStore`.
+     */
+    val isFavourite: Boolean = false,
+    /**
+     * Saves the entry, or unsaves it if it is already saved. Takes no
+     * argument on purpose: which way the toggle goes is decided against
+     * storage when the write runs, not against [isFavourite] as the
+     * button saw it — see `FavouritesStore.toggleFavourite` for the two
+     * taps that go wrong when the caller decides.
+     *
+     * Null means the action is not offered, following the project's
+     * "null callback is a disabled action" rule — which is what the
+     * loading and error bodies get, since there is no entry there to
+     * save.
+     */
+    val onToggleFavourite: (() -> Unit)? = null,
 )
 
 /**

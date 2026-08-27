@@ -323,6 +323,11 @@ private fun SearchResultsList(
  * beside the title for a deinflected hit. What is highlighted, and how
  * finely, comes from the pure [titleFurigana].
  *
+ * Internal rather than private because the Favourites tab draws the
+ * same row. It stays here, in the file that owns the row contract,
+ * rather than moving to a shared package: a saved word IS a search
+ * result row, and two definitions of one row would drift.
+ *
  * The headword is set at [atJapaneseReadingSize], the same size the
  * Phrases tab reads its sentences at, and the two are meant to stay
  * equal — that is why the size lives in one place named for the
@@ -340,7 +345,7 @@ private fun SearchResultsList(
  * rule; the larger size only reaches it sooner.
  */
 @Composable
-private fun SearchResultRow(
+internal fun SearchResultRow(
     hit: SearchHit,
     glossTokens: List<String>,
     onClick: () -> Unit,

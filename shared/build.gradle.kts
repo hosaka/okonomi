@@ -10,15 +10,56 @@ plugins {
     alias(libs.plugins.sqldelight)
 }
 
+// Two databases, two source directories, and the split is load-bearing.
+//
+// The default layout puts every `.sq` file under src/commonMain/sqldelight
+// and compiles them into whichever database is declared. :tools:dictgen
+// points at the dictionary's directory to build the shipped file from the
+// same schema the app reads, so a user table left in the default place
+// would end up INSIDE okonomi.db and move DICTIONARY_SCHEMA_FINGERPRINT.
+// Each database therefore names its own directory; see
+// tools/dictgen/build.gradle.kts, which must keep pointing at the
+// dictionary's alone.
 sqldelight {
     databases {
         create("OkonomiDb") {
             packageName.set("cc.hosaka.okonomi.db")
+            srcDirs.setFrom("src/commonMain/sqldelight/dictionary")
             dialect(libs.sqldelight.sqliteDialect)
             // Read-only bundled database: schema is regenerated wholesale, never migrated.
             verifyMigrations.set(false)
             // The androidx driver bridge requires the async generated schema.
             generateAsync.set(true)
+        }
+        // The user's own data, and the opposite migration policy to the
+        // dictionary's. This file can never be regenerated from anything,
+        // so it is migrated rather than replaced and the migrations are
+        // verified: `verifySqlDelightMigration` replays the checked-in
+        // `<version>.db` snapshots through the `.sqm` files and fails if
+        // the result is not the schema the `.sq` files describe.
+        create("UserDb") {
+            packageName.set("cc.hosaka.okonomi.user.db")
+            srcDirs.setFrom("src/commonMain/sqldelight/user")
+            dialect(libs.sqldelight.sqliteDialect)
+            verifyMigrations.set(true)
+            generateAsync.set(true)
+            // The build directory, NOT the checked-in snapshot directory.
+            //
+            // Verification replays the `<version>.db` snapshots in
+            // src/commonMain/sqldelight/user/databases/, which it finds
+            // because they sit under srcDirs. `generateCommonMainUserDbSchema`
+            // deliberately cannot reach them: pointed at that directory it
+            // overwrites the existing `1.db` in place, which turns the guard
+            // into a formality — change the schema, watch verify fail, run
+            // the generate task, watch it pass, and ship a DDL change with
+            // no migration behind it and every install stranded on the old
+            // one. That was not hypothetical; it was done.
+            //
+            // A snapshot is a record of a version that shipped. Publishing a
+            // new one means writing the `.sqm` first (which moves the schema
+            // version) and then copying the generated file in under its NEW
+            // number. An existing one is never replaced.
+            schemaOutputDirectory.set(layout.buildDirectory.dir("generated/userDbSchema"))
         }
     }
 }
@@ -100,6 +141,14 @@ kotlin {
             // Android AAR only carries device ABIs, so host tests exercise the
             // async-codegen queries over the synchronous JDBC driver instead.
             implementation(libs.sqldelight.sqliteDriver)
+            implementation(libs.androidx.sqlite.bundledJvm)
+            // The JVM variant of the SAME sqlite-bundled the app ships, so
+            // host tests can run `openUserDb` itself rather than a
+            // hand-assembled stand-in for it. Without it the production
+            // opener is executed by nothing: a reviewer changed
+            // AndroidxSqliteDatabaseType.File(path) to Memory and the whole
+            // suite stayed green. Dictionary tests still use JDBC above —
+            // they only need a driver, not the app's own opener.
             // Robolectric supplies the Android runtime that Compose UI tests need
             // on the JVM. Without it runComposeUiTest fails with a bare
             // NullPointerException rather than anything self-explanatory.

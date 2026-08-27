@@ -1,0 +1,46 @@
+-- Membership: which dictionary entries a list holds, and in what order.
+--
+-- entry_id is JMdict's ent_seq, which is stable across releases. There is
+-- deliberately NO foreign key on it: the entry lives in a different
+-- database file, one that is deleted and re-copied whenever the bundled
+-- dictionary moves. A saved id whose entry has gone from the dictionary
+-- stays here untouched and is simply not rendered; nothing in this
+-- database may ever delete a row because a lookup failed.
+--
+-- ord is an append counter (max + 1), not a position: saving is the only
+-- thing that writes it, so nothing has to renumber the rows already
+-- stored. Reading newest-first is ORDER BY ord DESC. A future
+-- drag-to-reorder rewrites ord and the reads keep working.
+--
+-- The primary key is what makes saving idempotent: INSERT OR IGNORE of an
+-- already-saved entry leaves the one row, with its original created_at.
+CREATE TABLE list_entry (
+    list_id INTEGER NOT NULL REFERENCES list(id) ON DELETE CASCADE,
+    entry_id INTEGER NOT NULL,
+    ord INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (list_id, entry_id)
+);
+
+CREATE INDEX list_entry_ord_idx ON list_entry(list_id, ord);
+
+entriesInList:
+SELECT entry_id
+FROM list_entry
+WHERE list_id = :list_id
+ORDER BY ord DESC, entry_id;
+
+isInList:
+SELECT EXISTS(
+    SELECT 1 FROM list_entry WHERE list_id = :list_id AND entry_id = :entry_id
+);
+
+nextOrdInList:
+SELECT COALESCE(MAX(ord), 0) + 1 FROM list_entry WHERE list_id = :list_id;
+
+addToList:
+INSERT OR IGNORE INTO list_entry(list_id, entry_id, ord, created_at)
+VALUES (:list_id, :entry_id, :ord, :created_at);
+
+removeFromList:
+DELETE FROM list_entry WHERE list_id = :list_id AND entry_id = :entry_id;

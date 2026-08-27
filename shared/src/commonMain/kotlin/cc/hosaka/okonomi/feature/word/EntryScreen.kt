@@ -72,7 +72,12 @@ fun EntryScreen(
     // every tab's lazy list, and handing those a fresh equal-but-new
     // PaddingValues on each recomposition costs a remeasure per frame
     // under scroll.
-    val bottomPadding = FloatingTabBarDefaults.contentBottomPadding
+    //
+    // The save button stands above the tab bar, so the room a scrolling
+    // tab has to leave below its last row is the bar's padding plus the
+    // button. Without that the last sentence of the Phrases tab could
+    // not be scrolled out from under the button.
+    val bottomPadding = SaveEntryButtonDefaults.contentBottomPadding
     val contentPadding = remember(bottomPadding) { PaddingValues(bottom = bottomPadding) }
     Surface(
         modifier = modifier
@@ -114,6 +119,8 @@ fun EntryScreen(
                 is EntryContentState.Ready -> EntryTabs(
                     entry = content.entry,
                     contentPadding = contentPadding,
+                    isFavourite = state.isFavourite,
+                    onToggleFavourite = state.onToggleFavourite,
                     modifier = Modifier
                         .weight(1f),
                 )
@@ -141,6 +148,8 @@ private fun EntryBackButton() {
 private fun EntryTabs(
     entry: EntryDetail,
     contentPadding: PaddingValues,
+    isFavourite: Boolean,
+    onToggleFavourite: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val tabs = EntryTab.entries
@@ -243,6 +252,17 @@ private fun EntryTabs(
                         .only(WindowInsetsSides.Bottom),
                 ),
         )
+        // After the bar, so it draws above it if they ever overlap, and
+        // outside the pager, so it belongs to the entry rather than to
+        // whichever tab happens to be on screen.
+        if (onToggleFavourite != null) {
+            SaveEntryButton(
+                isFavourite = isFavourite,
+                onToggle = onToggleFavourite,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd),
+            )
+        }
     }
 }
 

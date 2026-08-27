@@ -1,16 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Backup and device-transfer rules for Android 12 and above. See
-  backup_rules.xml: the copied dictionary is a regenerable artifact far
-  larger than the backup quota, so it is excluded from both flows.
+  backup_rules.xml for the reasoning: the copied dictionary is a
+  regenerable artifact far larger than the backup quota and is excluded
+  from both flows, the reader's saved words in user.db are the one thing
+  here that a restore has to bring back, and user.db's transient rollback
+  journal is excluded so a restore can never pair it with a database it
+  does not match.
 -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="file" path="okonomi.db" />
         <exclude domain="file" path="okonomi.db.version" />
+        <exclude domain="file" path="user.db-journal" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="file" path="okonomi.db" />
         <exclude domain="file" path="okonomi.db.version" />
+        <exclude domain="file" path="user.db-journal" />
     </device-transfer>
 </data-extraction-rules>

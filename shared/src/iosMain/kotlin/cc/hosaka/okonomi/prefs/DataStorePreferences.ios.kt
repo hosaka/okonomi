@@ -10,8 +10,12 @@ import platform.Foundation.NSUserDomainMask
 
 /**
  * Application Support, where the dictionary copy also lives — but its own
- * file beside the dictionary's directory rather than inside it, since
- * `resetDictionaryProvisioning` empties that one.
+ * file beside the dictionary's directory rather than inside it.
+ *
+ * Being outside that directory is not what makes it safe: provisioning
+ * deletes the dictionary and its sidecar by name, which is why
+ * `cc.hosaka.okonomi.user.userDatabasePath` can and does put `user.db`
+ * inside it. This file simply predates that and has no reason to move.
  *
  * Unlike the dictionary this is NOT excluded from backup: a setting the
  * reader chose is not regenerable from anything in the bundle.

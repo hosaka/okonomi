@@ -1,0 +1,37 @@
+-- The user's own lists. One ships ("Favourites"), but lists are modelled
+-- separately from membership from the very first version so that named
+-- lists can arrive later without migrating anyone's saved words.
+--
+-- slug is the machine name and never changes; name is what the reader
+-- sees and one day renames. Looking the shipped list up by its display
+-- name would break the moment renaming exists, and looking it up by a
+-- hardcoded row id would break the moment an export is restored into a
+-- fresh database.
+--
+-- AUTOINCREMENT, not a plain INTEGER PRIMARY KEY: ids must never be
+-- reused, because an export written today has to keep meaning the same
+-- thing when it is read back into a database that has since deleted a
+-- list.
+--
+-- Timestamps are epoch milliseconds, UTC. They exist for export and for
+-- ordering, not for display.
+CREATE TABLE list (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    ord INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+insertList:
+INSERT OR IGNORE INTO list(slug, name, ord, created_at, updated_at)
+VALUES (:slug, :name, :ord, :created_at, :created_at);
+
+listBySlug:
+SELECT id, slug, name, ord, created_at, updated_at
+FROM list
+WHERE slug = :slug;
+
+touchList:
+UPDATE list SET updated_at = :updated_at WHERE id = :id;

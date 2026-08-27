@@ -107,13 +107,28 @@ internal actual suspend fun provisionDictionaryUnlocked(): String = withContext(
 actual fun resetDictionaryProvisioning() {
     val targetDir = dictionaryDirectory() ?: return
     val fileManager = NSFileManager.defaultManager
+    // BY NAME, never the directory. `user.db` — the reader's saved words,
+    // the one thing in this app that cannot be regenerated — lives in
+    // this directory (see cc.hosaka.okonomi.user.userDatabasePath), and
+    // removing the directory would take it with the dictionary. The
+    // Android equivalent of this rule is held down by a mutation-proven
+    // test; this one is not, because no iOS test runs on the build host.
+    //
     // Sidecar first: if only one delete lands, a missing sidecar still
     // forces a fresh copy on the next provisioning run.
     fileManager.removeItemAtPath("$targetDir/$DICTIONARY_SIDECAR_NAME", error = null)
     fileManager.removeItemAtPath("$targetDir/$DICTIONARY_DB_NAME", error = null)
 }
 
-private fun dictionaryDirectory(): String? {
+/**
+ * Where the provisioned dictionary copy lives. Internal rather than
+ * private because the user database sits beside it (see
+ * `cc.hosaka.okonomi.user.userDatabasePath`), and "beside" has to be one
+ * fact in one place: two directory expressions that could drift apart
+ * would put the user's saved words somewhere the dictionary is not, at
+ * which point "obvious from a file listing" stops being true.
+ */
+internal fun dictionaryDirectory(): String? {
     val supportDir = NSSearchPathForDirectoriesInDomains(
         NSApplicationSupportDirectory,
         NSUserDomainMask,

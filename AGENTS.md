@@ -26,6 +26,7 @@
 - Shared chrome (`ui/`): `ScaffoldColumn`/`ScaffoldLazyColumn` (Material `Scaffold` wrappers that forward inner padding to the content), `toolbar/LargeToolbar` (`LargeFlexibleTopAppBar`) with `toolbar/util/ToolbarBehavior`/`ToolbarColors`, and `SearchTextField` (pill shaped search box with clear action).
 - Screen state (`feature/navigation/state/ProduceScreenState.kt`): `produceScreenState(key, initial) { ... }` runs a producer inside a `ScreenStateScope` (`navigation: NavigationController`, `mutablePersistedFlow(key, initial)`) and shares the resulting flow through a `ViewModel` scoped to the back stack entry (in-memory only, no disk persistence).
 - Features live in `shared/src/commonMain/kotlin/cc/hosaka/okonomi/feature/*`; user-visible strings live in `shared/src/commonMain/composeResources/values/strings.xml` and are read via `Res.string.*`.
+- Two databases, and the split is load-bearing. `shared/src/commonMain/sqldelight/dictionary/` is the bundled read-only dictionary (`okonomi.db`), regenerated wholesale by `:tools:dictgen` and never migrated. `shared/src/commonMain/sqldelight/user/` is the reader's own data (`user.db`: lists and their entries), which can never be regenerated and therefore carries real `.sqm` migrations with verification on. Each database names its own `srcDirs`; putting a `.sq` file in the wrong one compiles it into the wrong database and moves `DICTIONARY_SCHEMA_FINGERPRINT`. `user.db` sits beside the dictionary copy in the same directory, which is only safe because provisioning deletes the dictionary **by name** — never by clearing the directory. `cc.hosaka.okonomi.user.FavouritesStore` is the seam screens use over it.
 - Persisted settings (`prefs/`): `PreferenceStore` is the seam every screen uses; `appPreferences()` is the app-lifetime instance over `androidx.datastore` (one per process — DataStore rejects two over one file). Reads that fail yield the default and writes that fail are dropped, so a broken store can never take a screen down. Tests inject `FakePreferenceStore`.
 
 Practical rule: for new screens, follow the same split (see `feature/search/`):
@@ -35,7 +36,15 @@ Practical rule: for new screens, follow the same split (see `feature/search/`):
 - `XxxState.kt` for the UI contract (nullable callbacks mean disabled),
 - `XxxStateProducer.kt` with `produceXxxScreenState()` and `suspend fun ScreenStateScope.xxxScreenStateProducer(): Flow<XxxState>` for state composition, persistence, and side effects.
 
-Verification: `./gradlew :androidApp:assembleDebug :shared:compileKotlinIosArm64 :shared:compileTestKotlinIosSimulatorArm64 :shared:testAndroidHostTest :tools:dictgen:test`.
+Verification: `./gradlew :androidApp:assembleDebug :shared:compileKotlinIosArm64 :shared:compileTestKotlinIosSimulatorArm64 :shared:testAndroidHostTest :tools:dictgen:test :shared:verifySqlDelightMigration`.
+
+`:shared:verifySqlDelightMigration` is in the list because the user database
+(`user.db`, the reader's saved words) is migrated rather than replaced. It
+replays the checked-in `<version>.db` snapshots through the `.sqm` files and
+fails if the result is not the schema the `.sq` files describe. It is wired to
+`check`, which nothing else here runs, so without it a schema change could ship
+with no migration behind it — and unlike the dictionary there is no re-copy to
+repair that.
 
 `:shared:compileTestKotlinIosSimulatorArm64` is in the list because the other
 iOS task compiles main sources only. `commonTest` grew for months without ever

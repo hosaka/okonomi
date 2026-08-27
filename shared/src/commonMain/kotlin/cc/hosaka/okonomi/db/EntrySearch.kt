@@ -135,6 +135,58 @@ suspend fun searchEntries(
 }
 
 /**
+ * Result rows for [ids] on the shared app-lifetime dictionary, in the
+ * order given. See [DictionaryDatabase.entryRows].
+ */
+suspend fun entryRows(ids: List<Long>): List<SearchHit> {
+    if (ids.isEmpty()) return emptyList()
+    val database = dictionary()
+    return withContext(Dispatchers.Default) {
+        database.entryRows(ids)
+    }
+}
+
+/**
+ * Result rows for a list of entries chosen by something other than a
+ * search — the Favourites list — in the order given, with no match to
+ * highlight and no deinflection breadcrumb.
+ *
+ * An id the dictionary no longer carries yields no row rather than an
+ * error. That falls out of [buildHits], which already drops a match with
+ * nothing to title, and it is exactly what a saved entry deleted upstream
+ * looks like. Nothing here touches what the reader stored: a lookup that
+ * cannot be resolved is the dictionary's problem, never a reason to lose
+ * a saved word.
+ */
+suspend fun DictionaryDatabase.entryRows(ids: List<Long>): List<SearchHit> {
+    if (ids.isEmpty()) return emptyList()
+    // Chunked because this list is the reader's and has no ceiling on it.
+    // Every other list in the app is capped (SEARCH_MAX_RESULTS), so no
+    // query it issues can approach SQLITE_MAX_VARIABLE_NUMBER; this one
+    // binds one parameter per id across five IN queries, and a heavy
+    // saver would hit the limit as a plain failure — which this feature's
+    // read path would then report as an empty Favourites tab. Chunking
+    // bounds the query rather than the list, so nothing the reader saved
+    // becomes unreachable.
+    return ids.distinct().chunked(ENTRY_ROW_CHUNK).flatMap { chunk ->
+        coroutineContext.ensureActive()
+        buildHits(
+            matches = chunk.map { RankedMatch(entryId = it) },
+            content = loadRankingContent(chunk),
+        )
+    }
+}
+
+/**
+ * Ids per query in [entryRows]. Well under `SQLITE_MAX_VARIABLE_NUMBER`
+ * on every build this could run against — 32766 on the bundled SQLite
+ * the app ships, and higher on the JDBC build the host tests use, which
+ * is why `EntryRowsTest` has to reach an unrealistic list size to make
+ * an unchunked lookup fail.
+ */
+private const val ENTRY_ROW_CHUNK = 400
+
+/**
  * As-you-type dictionary search.
  *
  * Japanese input (any kana or kanji codepoint) runs indexed prefix
