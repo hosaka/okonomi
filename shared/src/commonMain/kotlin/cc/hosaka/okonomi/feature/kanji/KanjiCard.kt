@@ -39,9 +39,7 @@ import okonomi.shared.generated.resources.entry_kanji_jlpt
 import okonomi.shared.generated.resources.entry_kanji_no_data
 import okonomi.shared.generated.resources.entry_kanji_section_kun
 import okonomi.shared.generated.resources.entry_kanji_section_meanings
-import okonomi.shared.generated.resources.entry_kanji_section_name
 import okonomi.shared.generated.resources.entry_kanji_section_on
-import okonomi.shared.generated.resources.entry_kanji_section_radical
 import okonomi.shared.generated.resources.entry_kanji_stroke_order
 import okonomi.shared.generated.resources.entry_kanji_strokes
 import okonomi.shared.generated.resources.list_card_copy
@@ -71,25 +69,36 @@ internal val PLACEHOLDER_CORNER = 12.dp
 internal val PLACEHOLDER_DASH = 6.dp
 
 /** Joins the values of one reading or meaning line. */
-private const val READING_JOIN = "・"
+internal const val READING_JOIN = "・"
 
 private const val MEANING_JOIN = ", "
 
-private const val RADICAL_JOIN = " "
-
 /**
  * One character of the headword: its literal and stroke-order slot on
- * the leading edge, and beside them its readings, meanings and
- * radicals, with the metadata chips closing the card.
+ * the leading edge, and beside them its readings and meanings, with the
+ * metadata chips closing the card.
+ *
+ * Nanori and the radicals are NOT here. They were the two lines a reader
+ * scanning for readings had to look past, and the radicals were dead
+ * text besides, so both moved into [KanjiDetailDialog] behind [onClick].
+ *
+ * A null [onClick] is a card that opens nothing, the project's rule for
+ * a disabled action: a character with neither nanori nor radicals has no
+ * overlay to show. The card still answers a tap with a ripple and still
+ * copies on a long press, both of which [ListCard] owns.
  */
 @Composable
 fun KanjiCard(
     character: KanjiCharacter,
     modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    onClickLabel: String? = null,
 ) {
     val copy = rememberClipboardCopy()
     ListCard(
         modifier = modifier,
+        onClick = onClick,
+        onClickLabel = onClickLabel,
         // Just the character. The card is full of readings and meanings,
         // but the thing a reader wants in their clipboard is the kanji.
         onLongClick = { copy(character.literal) },
@@ -163,19 +172,9 @@ fun KanjiCard(
                 }
             }
             LabelledLine(
-                label = stringResource(Res.string.entry_kanji_section_name),
-                values = character.nameReadings,
-                join = READING_JOIN,
-            )
-            LabelledLine(
                 label = stringResource(Res.string.entry_kanji_section_meanings),
                 values = character.meanings,
                 join = MEANING_JOIN,
-            )
-            LabelledLine(
-                label = stringResource(Res.string.entry_kanji_section_radical),
-                values = character.radicals,
-                join = RADICAL_JOIN,
             )
             // Secondary to the readings and meanings above, so the
             // chips close the card rather than heading it.
@@ -275,9 +274,31 @@ private fun MetadataChip(text: String) {
     TagChip(text = text.lowercase())
 }
 
-/** A labelled line, omitted entirely when the source states nothing. */
+/**
+ * The heading over one section of a card or of the overlay.
+ *
+ * One composable rather than the same two style lines written out
+ * wherever a section needs a heading: the overlay's radicals are chips
+ * rather than a joined line, so it cannot reuse [LabelledLine] whole,
+ * and without this the two would be a copy of each other waiting to
+ * drift.
+ */
 @Composable
-private fun LabelledLine(
+internal fun SectionLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary,
+    )
+}
+
+/**
+ * A labelled line, omitted entirely when the source states nothing.
+ * Shared with [KanjiDetailDialog] so the overlay's nanori line is drawn
+ * by the same code as the card's own lines rather than a copy of it.
+ */
+@Composable
+internal fun LabelledLine(
     label: String,
     values: List<String>,
     join: String,
@@ -287,11 +308,7 @@ private fun LabelledLine(
         modifier = Modifier
             .fillMaxWidth(),
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary,
-        )
+        SectionLabel(label)
         Text(
             // Readings keep the okurigana dot kanjidic writes them with
             // (く.う), which marks where the character ends in the word.

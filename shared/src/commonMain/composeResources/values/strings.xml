@@ -61,6 +61,26 @@
     <string name="entry_kanji_section_name">Nanori</string>
     <string name="entry_kanji_section_meanings">Meanings</string>
     <string name="entry_kanji_section_radical">Radicals</string>
+    <!-- The tap label on a kanji card, and the only thing that tells a
+         screen reader the card opens anything. A verb, because the
+         label is spoken as an action hint - "double-tap to ..." - which
+         a bare noun turns into nonsense. It names the character so the
+         hint identifies its own card while a reader moves down a list
+         of them, the same shape as entry_kanji_radical_search.
+         Deliberately not the stroke-order slot's label: the slot is a
+         clickable child of the card, so two identical labels would be
+         indistinguishable to a reader and to the tests that scope by
+         them. -->
+    <string name="entry_kanji_detail_open">Show details for %1$s</string>
+    <!-- Announced when the detail overlay appears, which is the only
+         thing telling a screen reader that a new pane covered the
+         screen. It names the character because the card that opened it
+         is behind the scrim and can no longer be read. -->
+    <string name="entry_kanji_detail_title">%1$s details</string>
+    <!-- The tap label on one radical in the detail overlay. The value
+         substituted in is radkfile's representative kanji, which is the
+         same character the reader sees on the chip. -->
+    <string name="entry_kanji_radical_search">Search for %1$s</string>
     <!-- The value is kanjidic2's former four-level scale, where 1 is
          the most advanced - the inverse of the modern N5-N1 intuition,
          and not faithfully convertible to it. Alex chose to show it

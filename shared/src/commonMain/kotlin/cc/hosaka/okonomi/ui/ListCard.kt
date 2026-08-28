@@ -45,6 +45,10 @@ import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
  * search results is the case that needs it, since a name has no entry
  * view to open.
  *
+ * [onClickLabel] is what an accessibility service announces the tap as.
+ * It is only attached when [onClick] is, because a card that merely
+ * takes the press animation has no action to name — see [interaction].
+ *
  * [onLongClick] is how every list offers copy-to-clipboard. A card with
  * only a long press still takes a press animation on a plain tap, which
  * is deliberate: the Kanji and Phrases cards used to be the only things
@@ -73,6 +77,7 @@ import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
 fun ListCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
+    onClickLabel: String? = null,
     onLongClick: (() -> Unit)? = null,
     onLongClickLabel: String? = null,
     contentPadding: Dp = Dimens.contentPadding,
@@ -90,7 +95,7 @@ fun ListCard(
     ) {
         Column(
             modifier = Modifier
-                .then(interaction(onClick, onLongClick, onLongClickLabel))
+                .then(interaction(onClick, onClickLabel, onLongClick, onLongClickLabel))
                 .padding(contentPadding),
             content = content,
         )
@@ -103,16 +108,22 @@ fun ListCard(
  * than a `clickable` plus something else, because a long press and a tap
  * on the same node have to be resolved together — two separate gesture
  * modifiers would race.
+ *
+ * [onClickLabel] rides on the same condition as the role: the tap of a
+ * card that only copies resolves to `{}`, and naming that no-op would
+ * offer a screen reader an action that does nothing.
  */
 @Composable
 private fun interaction(
     onClick: (() -> Unit)?,
+    onClickLabel: String?,
     onLongClick: (() -> Unit)?,
     onLongClickLabel: String?,
 ): Modifier {
     if (onClick == null && onLongClick == null) return Modifier
     return Modifier.combinedClickable(
         role = if (onClick != null) Role.Button else null,
+        onClickLabel = if (onClick != null) onClickLabel else null,
         onLongClickLabel = onLongClickLabel,
         onLongClick = onLongClick,
         // A card that only copies still answers a tap with a ripple; see

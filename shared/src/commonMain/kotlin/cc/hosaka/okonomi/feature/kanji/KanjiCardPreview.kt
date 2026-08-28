@@ -16,14 +16,15 @@ import cc.hosaka.okonomi.ui.theme.OkonomiTheme
 
 /**
  * The four shapes a card takes, in one pass: every field populated, a
- * character with no optional metadata, a long kun list beside a
- * multi-radical line, and a character kanjidic does not carry. Between
- * them they show the whole section order — on, kun, nanori, meanings,
- * radicals, then the chip row — and every section's absent case. None
- * of this is reachable from a preview of the tab itself, which needs a
- * database. Three carry real KanjiVG stroke data and one carries none,
- * so the filled slot and the dashed empty one are both on screen at
- * once; the animation itself needs a running device.
+ * character with no optional metadata, a long kun list, and a character
+ * kanjidic does not carry. Between them they show the whole section
+ * order — on, kun, meanings, then the chip row — and every section's
+ * absent case. Nanori and the radicals are not among them any more:
+ * they live in the overlay, previewed by [KanjiDetailContentPreview].
+ * None of this is reachable from a preview of the tab itself, which
+ * needs a database. Three carry real KanjiVG stroke data and one
+ * carries none, so the filled slot and the dashed empty one are both on
+ * screen at once; the animation itself needs a running device.
  */
 @Composable
 @Preview
@@ -40,6 +41,38 @@ fun KanjiCardPreview() {
                 KanjiCard(noOptionalMetadata)
                 KanjiCard(longReadingsAndRadicals)
                 KanjiCard(noCharacterData)
+            }
+        }
+    }
+}
+
+/**
+ * The overlay's surface, without the `Dialog` window around it — the
+ * window needs a running host, the content does not.
+ *
+ * Every row of the matrix that opens anything: 食 carries a nanori and a
+ * radical, 生 the long nanori list beside three radicals, 兀 is the
+ * radicals-only row, and [nanoriOnly] the nanori-only one — where the
+ * whole radicals section is omitted rather than drawn empty, which is
+ * the layout no other fixture here can show. The remaining fixture, 腺,
+ * has neither field and so never opens this at all. The chips take no
+ * tap here; where they go needs a navigation controller.
+ */
+@Composable
+@Preview
+fun KanjiDetailContentPreview() {
+    OkonomiTheme {
+        Surface {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(Dimens.contentPadding),
+                verticalArrangement = Arrangement.spacedBy(Dimens.verticalPaddingHalf),
+            ) {
+                KanjiDetailContent(everyField, onRadicalClick = {})
+                KanjiDetailContent(longReadingsAndRadicals, onRadicalClick = {})
+                KanjiDetailContent(noCharacterData, onRadicalClick = {})
+                KanjiDetailContent(nanoriOnly, onRadicalClick = {})
             }
         }
     }
@@ -132,6 +165,16 @@ private val longReadingsAndRadicals = KanjiCharacter(
     radicals = listOf("丿", "土", "生"),
     strokePaths = seiStrokes,
 )
+
+/**
+ * Nanori with no radicals, the one matrix row none of the four real
+ * fixtures covers: radkfile knows all of these characters, and radkfile
+ * covers fewer characters than kanjidic does, so the pairing exists in
+ * the shipped data. Derived from [everyField] rather than attributed to
+ * a named character, because which characters radkfile is missing is
+ * not something this file can check.
+ */
+private val nanoriOnly = everyField.copy(radicals = emptyList())
 
 private val noCharacterData = KanjiCharacter(
     literal = "兀",
