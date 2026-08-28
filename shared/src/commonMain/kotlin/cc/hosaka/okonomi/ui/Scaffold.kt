@@ -136,17 +136,36 @@ fun ScaffoldColumn(
  * Remembered rather than rebuilt: the result is a lazy list's
  * contentPadding, and a fresh equal-but-new instance on each
  * recomposition costs that list a remeasure per frame under scroll.
+ *
+ * Keyed on the four VALUES and not on the receiver, which is the whole
+ * correctness of it. `Scaffold` hands its content the same
+ * `PaddingValues` instance across recompositions and lets what that
+ * instance reports change underneath — so a `remember(this)` is never
+ * invalidated, and the copy taken on the first composition is the one
+ * every later frame keeps using.
+ *
+ * That is not theoretical. Under a collapsing `LargeToolbar` the top
+ * inset shrinks with the bar; measured on device, the live receiver
+ * reported 112.8.dp with the bar collapsed while the remembered copy
+ * still reported the expanded 184.8.dp. The list went on reserving room
+ * for a toolbar that was no longer that tall, which is the band of empty
+ * space that used to open between the collapsed bar and the first row on
+ * every screen that uses one.
  */
 @Composable
 internal fun PaddingValues.plusScreenPadding(): PaddingValues {
     val layoutDirection = LocalLayoutDirection.current
     val screenPadding = Dimens.contentPadding
-    return remember(this, layoutDirection, screenPadding) {
+    val start = calculateStartPadding(layoutDirection)
+    val top = calculateTopPadding()
+    val end = calculateEndPadding(layoutDirection)
+    val bottom = calculateBottomPadding()
+    return remember(start, top, end, bottom, screenPadding) {
         PaddingValues(
-            start = calculateStartPadding(layoutDirection),
-            top = calculateTopPadding() + screenPadding,
-            end = calculateEndPadding(layoutDirection),
-            bottom = calculateBottomPadding() + screenPadding,
+            start = start,
+            top = top + screenPadding,
+            end = end,
+            bottom = bottom + screenPadding,
         )
     }
 }

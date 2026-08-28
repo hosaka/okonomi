@@ -3,6 +3,7 @@ package cc.hosaka.okonomi.feature.favourites
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
@@ -43,7 +44,14 @@ import org.jetbrains.compose.resources.stringResource
 fun FavouritesScreen(
     state: FavouritesState,
 ) {
-    val scrollBehavior = ToolbarBehavior.behavior()
+    // Hoisted so the toolbar can ask whether this list actually
+    // scrolls. One saved word does not fill the screen, and a toolbar
+    // that collapses over content that cannot move leaves a band of
+    // empty space where it used to be.
+    val listState = rememberLazyListState()
+    val scrollBehavior = ToolbarBehavior.behavior(
+        canScroll = { listState.canScrollForward || listState.canScrollBackward },
+    )
     // The list owns the scroll, so the plain Scaffold is used and its
     // inner padding goes to the list as content padding, letting the
     // rows scroll under the collapsing toolbar.
@@ -91,6 +99,7 @@ fun FavouritesScreen(
                 FavouritesList(
                     hits = content.hits,
                     contentPadding = contentPadding,
+                    listState = listState,
                 )
             }
         }
@@ -101,9 +110,9 @@ fun FavouritesScreen(
 private fun FavouritesList(
     hits: List<SearchHit>,
     contentPadding: PaddingValues,
+    listState: LazyListState,
 ) {
     val navigation = LocalNavigationController.current
-    val listState = rememberLazyListState()
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
