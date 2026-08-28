@@ -99,6 +99,62 @@ FROM kanji_radical kr
 JOIN kanji k ON k.literal = kr.kanji
 WHERE kr.radical = :radical;
 
+-- The radical screen's whole payload: every kanji radkfile decomposes
+-- with :radical, read once and in full.
+--
+-- Read at once rather than paged because the payload is single
+-- characters and the worst radical in the shipped data is 口 with 1,337
+-- of them. A LazyVerticalGrid recycles its rows, so the cost of holding
+-- the set is the list itself; an offset pager would buy nothing and
+-- would need this same total order to be correct anyway.
+--
+-- The order is pinned here, and it is total, so the grid can never
+-- reshuffle between two reads of the same radical:
+-- - `freq IS NULL` first, so every ranked character sorts ahead of the
+--   unranked ones. kanjidic2 ranks only a minority: 114 of 儿's 322
+--   carry a freq at all, and without this the useful ones would be
+--   scattered through the rest.
+-- - `freq` ascending, which is kanjidic2's newspaper rank: 1 is the
+--   most common.
+-- - `stroke_count` then `literal` break every remaining tie.
+--
+-- DISTINCT is what makes that order total, and it is not decoration.
+-- kanji_radical has no primary key and no unique index, radkfile is
+-- parsed by appending every codepoint under a header with no dedupe,
+-- and the rows are inserted one by one -- so one repeated (kanji,
+-- radical) pair would put one literal in the result twice. Two rows
+-- alike in all three columns cannot be ordered against each other, and
+-- worse, the grid keys its cells on the literal and Compose throws
+-- outright on a duplicate key. The shipped data carries no such pair
+-- today; this is a one-word guarantee rather than a bet on that. It is
+-- the same collapse `loadKanjiForWord` makes with `distinct()` for the
+-- same reason, on the same table.
+--
+-- With it, each literal appears exactly once and `literal` -- the
+-- `kanji` primary key -- decides every remaining pair, so nothing is
+-- left for the plan to choose.
+--
+-- kanji_radical_radical_idx covers the WHERE but none of the ORDER BY
+-- columns, so SQLite sorts the matched set. That is 1,337 rows worst
+-- case, which is why this stays one read rather than an extra index:
+-- an index on kanji_radical is DDL, and DDL moves
+-- DICTIONARY_SCHEMA_FINGERPRINT and forces a device re-copy.
+--
+-- The JOIN is an inner join and kanji_radical has no foreign key to
+-- kanji(literal), so a radkfile character kanjidic does not carry is
+-- dropped rather than surfacing as a row with no stroke count. That is
+-- the wanted behaviour here -- the grid shows characters the dictionary
+-- can talk about -- and RadicalSearchTest pins it.
+--
+-- The radical itself is not excluded: 口 is a kanji built from 口, and
+-- the reader looking at the radical's own grid expects to find it.
+kanjiContainingRadical:
+SELECT DISTINCT k.literal, k.stroke_count, k.freq
+FROM kanji_radical kr
+JOIN kanji k ON k.literal = kr.kanji
+WHERE kr.radical = :radical
+ORDER BY k.freq IS NULL, k.freq, k.stroke_count, k.literal;
+
 -- The entry view's Kanji tab reads every character of one headword at
 -- once; one query per table over the whole list, never one per
 -- character. A literal the IN-list names but kanjidic does not carry

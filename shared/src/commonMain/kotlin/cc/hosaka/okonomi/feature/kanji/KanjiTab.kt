@@ -14,7 +14,7 @@ import androidx.compose.ui.Modifier
 import cc.hosaka.okonomi.db.EntryDetail
 import cc.hosaka.okonomi.db.KanjiCharacter
 import cc.hosaka.okonomi.feature.navigation.LocalNavigationController
-import cc.hosaka.okonomi.feature.search.SearchRoute
+import cc.hosaka.okonomi.feature.radical.RadicalRoute
 import cc.hosaka.okonomi.ui.CenteredBox
 import cc.hosaka.okonomi.ui.CenteredMessage
 import okonomi.shared.generated.resources.Res
@@ -136,12 +136,19 @@ private fun KanjiList(
     val navigation = LocalNavigationController.current
     // Both halves of the tap, in order: the overlay has served its
     // purpose once the reader has chosen where to go, and leaving it
-    // standing over the search it just opened would be a second thing
+    // standing over the screen it just opened would be a second thing
     // to dismiss.
+    //
+    // A radical opens its own screen rather than seeding a word search.
+    // The question a radical asks is "which kanji are built from this",
+    // which a word search answers badly at best: 61 radicals carry no
+    // JMdict entry at all and dead-end on "No results", and a radical
+    // that is also a common word buries its kanji under hundreds of word
+    // rows.
     val onRadicalClick: (String) -> Unit = remember(navigation, detail) {
         { radical ->
             detail.dismiss()
-            navigation.navigate(SearchRoute(radical))
+            navigation.navigate(RadicalRoute(radical))
         }
     }
     Box(

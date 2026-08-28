@@ -23,7 +23,7 @@ import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.text.AnnotatedString
 import cc.hosaka.okonomi.db.KanjiCharacter
 import cc.hosaka.okonomi.feature.navigation.Route
-import cc.hosaka.okonomi.feature.search.SearchRoute
+import cc.hosaka.okonomi.feature.radical.RadicalRoute
 import cc.hosaka.okonomi.ui.test.ComposeUiTestBase
 import cc.hosaka.okonomi.ui.test.RecordingNavigationController
 import cc.hosaka.okonomi.ui.test.ScreenHost
@@ -123,7 +123,7 @@ class KanjiDetailDialogUiTest : ComposeUiTestBase() {
         }
 
     @Test
-    fun `tapping a radical searches for it and closes the overlay`() = runComposeUiTest {
+    fun `tapping a radical opens its kanji screen and closes the overlay`() = runComposeUiTest {
         val navigation = RecordingNavigationController()
         val labels = Labels()
         setContent {
@@ -135,9 +135,14 @@ class KanjiDetailDialogUiTest : ComposeUiTestBase() {
         onNode(hasClickLabel(labels.radical)).performClick()
 
         // radkfile's own value, not a CJK Radical Supplement rewrite of
-        // it: the search has to be given a character the dictionary
+        // it: the lookup has to be given a character the dictionary
         // actually carries.
-        assertEquals<List<Route>>(listOf(SearchRoute(RADICAL)), navigation.navigated)
+        //
+        // A RadicalRoute rather than a SearchRoute. A radical tap asks
+        // which kanji are built from it, which a word search answers
+        // badly at best and not at all for the 61 radicals JMdict has no
+        // entry for.
+        assertEquals<List<Route>>(listOf(RadicalRoute(RADICAL)), navigation.navigated)
         onNodeWithText(NANORI).assertDoesNotExist()
     }
 

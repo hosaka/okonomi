@@ -3,6 +3,7 @@ package cc.hosaka.okonomi.feature.navigation
 import androidx.navigation3.runtime.NavKey
 import cc.hosaka.okonomi.feature.home.navigation.homeNavigationItems
 import cc.hosaka.okonomi.feature.libraries.LibrariesRoute
+import cc.hosaka.okonomi.feature.radical.RadicalRoute
 import cc.hosaka.okonomi.feature.search.SearchRoute
 import cc.hosaka.okonomi.feature.word.EntryRoute
 import kotlin.test.Test
@@ -30,6 +31,8 @@ class NavigationGraphTest {
             // Search is both a section root and a pushed screen: a
             // breakdown word taps into one carrying its own query.
             SearchRoute(query = "為る"),
+            // Only ever pushed, and only from a radical chip.
+            RadicalRoute(radical = "口"),
         ).forEach { route ->
             assertNotNull(
                 navigationSavedStateConfiguration.serializersModule

@@ -4,7 +4,9 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -161,10 +163,82 @@ fun Modifier.scrollIndicator(
     listState: LazyListState,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     color: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+): Modifier = scrollIndicator(
+    scrollState = listState,
+    thumb = remember(listState) {
+        ScrollThumbSource { trackLength, minThumbLength ->
+            val layout = listState.layoutInfo
+            val visible = layout.visibleItemsInfo
+            scrollThumb(
+                firstVisibleIndex = visible.firstOrNull()?.index ?: 0,
+                visibleCount = visible.size,
+                totalCount = layout.totalItemsCount,
+                trackLength = trackLength,
+                minThumbLength = minThumbLength,
+            )
+        }
+    },
+    contentPadding = contentPadding,
+    color = color,
+)
+
+/**
+ * The same indicator down the end edge of a lazy grid.
+ *
+ * The arithmetic is unchanged and needs no grid-specific case: a grid
+ * counts cells where a list counts rows, and [scrollThumb] divides the
+ * visible count by the total, so the ratio is the same whichever unit
+ * both are in. What could not be shared is the state — `LazyListState`
+ * and `LazyGridState` carry `layoutInfo` of unrelated types with no
+ * common supertype — so the reading of it is what the two overloads
+ * differ by, and nothing else.
+ */
+@Composable
+fun Modifier.scrollIndicator(
+    gridState: LazyGridState,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    color: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+): Modifier = scrollIndicator(
+    scrollState = gridState,
+    thumb = remember(gridState) {
+        ScrollThumbSource { trackLength, minThumbLength ->
+            val layout = gridState.layoutInfo
+            val visible = layout.visibleItemsInfo
+            scrollThumb(
+                firstVisibleIndex = visible.firstOrNull()?.index ?: 0,
+                visibleCount = visible.size,
+                totalCount = layout.totalItemsCount,
+                trackLength = trackLength,
+                minThumbLength = minThumbLength,
+            )
+        }
+    },
+    contentPadding = contentPadding,
+    color = color,
+)
+
+/**
+ * Where the thumb goes, read fresh inside the draw phase.
+ *
+ * A `fun interface` rather than a `(Float, Float) -> ScrollThumb`: a
+ * generic function type would box both parameters and the value-class
+ * return on every frame of a flick, which is precisely the per-frame
+ * allocation [ScrollThumb] exists to avoid.
+ */
+internal fun interface ScrollThumbSource {
+    fun thumb(trackLength: Float, minThumbLength: Float): ScrollThumb
+}
+
+@Composable
+private fun Modifier.scrollIndicator(
+    scrollState: ScrollableState,
+    thumb: ScrollThumbSource,
+    contentPadding: PaddingValues,
+    color: Color,
 ): Modifier {
     val alpha = remember { Animatable(0f) }
-    LaunchedEffect(listState, alpha) {
-        snapshotFlow { listState.isScrollInProgress }
+    LaunchedEffect(scrollState, alpha) {
+        snapshotFlow { scrollState.isScrollInProgress }
             .collectLatest { scrolling ->
                 if (scrolling) {
                     alpha.animateTo(1f, tween(FADE_IN_MILLIS))
@@ -181,7 +255,7 @@ fun Modifier.scrollIndicator(
     val bottomPadding = contentPadding.calculateBottomPadding()
     val endPadding = contentPadding.calculateEndPadding(layoutDirection)
     return this.scrollIndicatorDraw(
-        listState = listState,
+        thumb = thumb,
         alpha = alpha,
         color = color,
         topPadding = topPadding,
@@ -191,7 +265,7 @@ fun Modifier.scrollIndicator(
 }
 
 private fun Modifier.scrollIndicatorDraw(
-    listState: LazyListState,
+    thumb: ScrollThumbSource,
     alpha: Animatable<Float, *>,
     color: Color,
     topPadding: Dp,
@@ -211,20 +285,12 @@ private fun Modifier.scrollIndicatorDraw(
         val fade = alpha.value
         if (fade <= 0f) return@onDrawWithContent
         // Read in the draw scope on purpose: see the kdoc above.
-        val layout = listState.layoutInfo
-        val visible = layout.visibleItemsInfo
-        val thumb = scrollThumb(
-            firstVisibleIndex = visible.firstOrNull()?.index ?: 0,
-            visibleCount = visible.size,
-            totalCount = layout.totalItemsCount,
-            trackLength = trackLength,
-            minThumbLength = minThumbLength,
-        )
-        if (!thumb.isVisible) return@onDrawWithContent
+        val position = thumb.thumb(trackLength, minThumbLength)
+        if (!position.isVisible) return@onDrawWithContent
         drawRoundRect(
             color = color,
-            topLeft = Offset(left, trackTop + thumb.offset),
-            size = Size(thickness, thumb.length),
+            topLeft = Offset(left, trackTop + position.offset),
+            size = Size(thickness, position.length),
             cornerRadius = corner,
             alpha = fade * INDICATOR_ALPHA,
         )

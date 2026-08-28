@@ -5,6 +5,7 @@ import androidx.navigation3.runtime.NavKey
 import androidx.savedstate.serialization.SavedStateConfiguration
 import cc.hosaka.okonomi.feature.favourites.FavouritesRoute
 import cc.hosaka.okonomi.feature.libraries.LibrariesRoute
+import cc.hosaka.okonomi.feature.radical.RadicalRoute
 import cc.hosaka.okonomi.feature.search.SearchRoute
 import cc.hosaka.okonomi.feature.settings.SettingsRoute
 import cc.hosaka.okonomi.feature.word.EntryRoute
@@ -25,6 +26,7 @@ val navigationSavedStateConfiguration: SavedStateConfiguration = SavedStateConfi
             subclass(SettingsRoute::class)
             subclass(LibrariesRoute::class)
             subclass(EntryRoute::class)
+            subclass(RadicalRoute::class)
         }
     }
 }

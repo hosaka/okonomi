@@ -1,14 +1,11 @@
 package cc.hosaka.okonomi.feature.kanji
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -20,19 +17,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import cc.hosaka.okonomi.db.KanjiCharacter
+import cc.hosaka.okonomi.ui.CharacterChip
 import cc.hosaka.okonomi.ui.theme.Dimens
 import cc.hosaka.okonomi.ui.theme.horizontalPaddingFourth
-import cc.hosaka.okonomi.ui.theme.horizontalPaddingHalf
 import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
 import okonomi.shared.generated.resources.Res
 import okonomi.shared.generated.resources.entry_kanji_detail_title
@@ -210,53 +203,18 @@ private fun RadicalLine(
             verticalArrangement = Arrangement.spacedBy(Dimens.horizontalPaddingFourth),
         ) {
             radicals.forEach { radical ->
-                RadicalChip(
-                    radical = radical,
+                CharacterChip(
+                    character = radical,
+                    // Per radical, not hoisted: the label names the
+                    // character it opens, so the spoken action hint
+                    // identifies its own chip in a row of them.
+                    onClickLabel = stringResource(
+                        Res.string.entry_kanji_radical_search,
+                        radical,
+                    ),
                     onClick = { onRadicalClick(radical) },
                 )
             }
-        }
-    }
-}
-
-/**
- * Minimum side of a radical target. A chip sized to one character is
- * smaller than a fingertip, and these sit side by side.
- */
-private val RADICAL_TAP_SIZE = 48.dp
-
-@Composable
-private fun RadicalChip(
-    radical: String,
-    onClick: () -> Unit,
-) {
-    // Names the radical it searches for, because the chip's only text is
-    // the character itself and "button, 心" says nothing about the tap.
-    val label = stringResource(Res.string.entry_kanji_radical_search, radical)
-    // Clipped before the gesture, not after: `Surface` clips its own
-    // content to the shape but not a modifier applied above it, so a
-    // ripple attached outside that clip draws a rectangle over a rounded
-    // chip. The same ordering `ListCard` documents, where the enclosing
-    // `Surface` is what clips the card's ripple.
-    val shape = MaterialTheme.shapes.medium
-    Surface(
-        modifier = Modifier
-            .sizeIn(minWidth = RADICAL_TAP_SIZE, minHeight = RADICAL_TAP_SIZE)
-            .clip(shape)
-            .clickable(onClickLabel = label, role = Role.Button, onClick = onClick),
-        shape = shape,
-        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        contentColor = MaterialTheme.colorScheme.primary,
-    ) {
-        Box(
-            modifier = Modifier
-                .padding(horizontal = Dimens.horizontalPaddingHalf),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = radical,
-                style = MaterialTheme.typography.headlineSmall,
-            )
         }
     }
 }

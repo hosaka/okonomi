@@ -186,4 +186,29 @@
     <string name="libraries_back">Back</string>
     <string name="libraries_empty">No libraries found</string>
     <string name="libraries_error">The libraries list could not be loaded</string>
+    <!-- The radical screen's read-only bar. It sits where a search
+         field sits, so it has to say what it is showing rather than
+         merely echo the character: "Kanji with 口" is a heading, "口"
+         alone would read as a query someone typed. -->
+    <string name="radical_title">Kanji with %1$s</string>
+    <!-- The tap label on one kanji in the radical grid. Same wording as
+         entry_kanji_radical_search and deliberately a separate string:
+         that one is owned by the radical chip and named for it, and one
+         string serving both would tie a kanji's label to any future
+         rewording of a radical's. -->
+    <string name="radical_kanji_search">Search for %1$s</string>
+    <!-- The back arrow beside the bar. Its own string rather than
+         entry_back or libraries_back: each screen's back control is
+         owned by the screen it leaves, so rewording one never silently
+         reworders the others. -->
+    <string name="radical_back">Back</string>
+    <!-- A radical the dictionary decomposes nothing with. Not an
+         error - the lookup succeeded and the answer is none - so it
+         reads as a fact rather than as something that went wrong. -->
+    <string name="radical_empty">No kanji found for this radical</string>
+    <!-- And the failure, which is a different thing from the empty
+         above and must not be mistaken for it: the reader is offered a
+         retry rather than told there are no kanji. -->
+    <string name="radical_error">The kanji for this radical could not be loaded</string>
+    <string name="radical_retry">Try again</string>
 </resources>
