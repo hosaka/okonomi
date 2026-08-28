@@ -30,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -268,9 +269,24 @@ private fun SearchResultsList(
 ) {
     val navigation = LocalNavigationController.current
     val listState = rememberLazyListState()
-    // A new query's results start reading from the top again.
+    // A new query's results start reading from the top again — but only a
+    // NEW one. The query this list last scrolled for is remembered across
+    // the same save/restore that carries the scroll position, so returning
+    // from an entry is told apart from typing.
+    //
+    // Keyed on the query alone, this effect also ran on the first
+    // composition after coming back: pushing an entry disposes this
+    // screen's composition, and restoring it re-runs the effect, which
+    // scrolled the reader back to the top of results they had scrolled
+    // half-way down. `rememberLazyListState` had already restored the
+    // right offset; the effect overwrote it a frame later. The same
+    // distinction SearchTextField draws between a push and an echo.
+    var scrolledFor by rememberSaveable { mutableStateOf(resultsQuery) }
     LaunchedEffect(resultsQuery) {
-        listState.scrollToItem(0)
+        if (resultsQuery != scrolledFor) {
+            scrolledFor = resultsQuery
+            listState.scrollToItem(0)
+        }
     }
     LoadMoreEffect(listState = listState, onLoadMore = onShowMore)
     LazyColumn(

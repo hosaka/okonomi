@@ -1,11 +1,14 @@
 package cc.hosaka.okonomi.feature.kanji
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -17,13 +20,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import cc.hosaka.okonomi.db.KanjiCharacter
 import cc.hosaka.okonomi.ui.CharacterChip
+import cc.hosaka.okonomi.ui.screenMaxWidth
 import cc.hosaka.okonomi.ui.theme.Dimens
 import cc.hosaka.okonomi.ui.theme.horizontalPaddingFourth
 import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
@@ -46,6 +53,15 @@ import org.jetbrains.compose.resources.stringResource
  */
 internal val KanjiCharacter.hasDetailToShow: Boolean
     get() = nameReadings.isNotEmpty() || radicals.isNotEmpty()
+
+/**
+ * What the dialog surface leaves either side of itself once
+ * `usePlatformDefaultWidth` is off and the window fills the screen.
+ *
+ * Smaller than the platform's own 48.dp dialog margin, which is what was
+ * wrapping the radical row a character early.
+ */
+private val DIALOG_MARGIN = 24.dp
 
 /**
  * Which character the detail overlay is showing, or null for closed.
@@ -86,16 +102,24 @@ internal fun rememberKanjiDetailDialogState(): KanjiDetailDialogState =
  * the floating tab bar — which a scrim drawn inside the tab's own
  * subtree could never reach.
  *
- * No `properties` are passed, and all three defaults are taken
- * deliberately. `dismissOnBackPress` and `dismissOnClickOutside` are
- * both on, which is the whole dismissal behaviour; `dismissOnBackPress`
- * is also why there is no `NavigationBackHandler` here, since a second
- * handler would fight it for the same press. The third,
- * `usePlatformDefaultWidth`, is what sizes the window: it caps the
- * surface at the platform's own dialog width, which is narrower than
- * anything this content wants, so the surface states no width of its
- * own. A `widthIn` here would be dead code — the platform cap binds
- * first on every screen size the app runs at.
+ * Two of the three `DialogProperties` defaults are taken deliberately.
+ * `dismissOnBackPress` and `dismissOnClickOutside` are both on, which is
+ * the whole dismissal behaviour; `dismissOnBackPress` is also why there
+ * is no `NavigationBackHandler` here, since a second handler would fight
+ * it for the same press.
+ *
+ * The third, `usePlatformDefaultWidth`, is turned OFF, and that is what
+ * lets the surface state a width at all. Left on, the platform caps the
+ * window at its own dialog width — 315.dp on a 411.dp screen — and the
+ * radical row wraps a character early: `動`'s six radicals need 308.dp
+ * of chips and gaps, and only 283.dp survives the content padding, so
+ * `里` was pushed onto a row of its own beside a column of dead space.
+ * Off, the window fills the screen and [DIALOG_MARGIN] is what insets
+ * the surface instead, which leaves room for the sixth chip.
+ *
+ * The cost of turning it off is that the window no longer ends where the
+ * surface does, so `dismissOnClickOutside` is the one behaviour to
+ * re-check on a device after touching any of this.
  *
  * **Neither dismissal is asserted anywhere, and that is not an
  * oversight.** Nothing in this repo can dispatch a system back press,
@@ -112,12 +136,37 @@ internal fun KanjiDetailDialog(
 ) {
     val character = state.character ?: return
     val paneTitle = stringResource(Res.string.entry_kanji_detail_title, character.literal)
-    Dialog(onDismissRequest = { state.dismiss() }) {
+    Dialog(
+        onDismissRequest = { state.dismiss() },
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        // The window fills the screen once usePlatformDefaultWidth is
+        // off, so centring is this Box's job rather than the dialog's:
+        // capping the surface below the width fillMaxWidth offered it
+        // leaves it anchored to the start otherwise, which put 24.dp of
+        // margin down one side of the screen and 47.dp down the other.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = DIALOG_MARGIN),
+            contentAlignment = Alignment.Center,
+        ) {
         Surface(
             // Without a pane title the overlay arrives silently: a
             // screen reader is given a new window with nothing saying
             // what covered the screen or which character it belongs to.
+            //
+            // The width is the surface's own now that the platform cap
+            // is off: DIALOG_MARGIN either side, and never wider than
+            // the rest of the app's content, so a tablet gets a dialog
+            // rather than a full-bleed sheet.
+            // widthIn BEFORE fillMaxWidth: fillMaxWidth fixes the
+            // incoming width, after which widthIn can only coerce its
+            // max back up to that fixed value and does nothing at all.
+            // Constrain first, then fill what the constraint allows.
             modifier = Modifier
+                .widthIn(max = screenMaxWidth)
+                .fillMaxWidth()
                 .semantics { this.paneTitle = paneTitle },
             shape = MaterialTheme.shapes.extraLarge,
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -132,6 +181,7 @@ internal fun KanjiDetailDialog(
                 modifier = Modifier
                     .verticalScroll(rememberScrollState()),
             )
+        }
         }
     }
 }
@@ -199,7 +249,16 @@ private fun RadicalLine(
     ) {
         SectionLabel(stringResource(Res.string.entry_kanji_section_radical))
         FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(Dimens.horizontalPaddingFourth),
+            modifier = Modifier
+                .fillMaxWidth(),
+            // Centred. A row of fixed-width chips almost never divides
+            // the surface exactly, and start-alignment banks the whole
+            // remainder on one side, which reads as a gap after the last
+            // chip rather than as margin. Split, it is margin.
+            horizontalArrangement = Arrangement.spacedBy(
+                Dimens.horizontalPaddingFourth,
+                Alignment.CenterHorizontally,
+            ),
             verticalArrangement = Arrangement.spacedBy(Dimens.horizontalPaddingFourth),
         ) {
             radicals.forEach { radical ->
