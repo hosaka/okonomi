@@ -13,6 +13,9 @@ import androidx.compose.ui.test.v2.runComposeUiTest
 import cc.hosaka.okonomi.ui.test.ComposeUiTestBase
 import cc.hosaka.okonomi.ui.test.ScreenHost
 import cc.hosaka.okonomi.ui.test.entryDetail
+import cc.hosaka.okonomi.ui.test.entrySense
+import cc.hosaka.okonomi.db.EntryReading
+import cc.hosaka.okonomi.db.EntryForm
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import okonomi.shared.generated.resources.Res
@@ -151,7 +154,16 @@ private fun savableState(
     isFavourite: Boolean = false,
     onToggle: () -> Unit = {},
 ): EntryState {
-    val entry = entryDetail()
+    val entry = entryDetail(
+    // A word with all four tabs: kanji in it, a class that conjugates,
+    // and sentences. The default fixture is 本, a noun, which since tabs
+    // are hidden when empty has no Forms tab at all - and these tests
+    // drive the bar through Forms.
+    headword = "食べる",
+    forms = listOf(EntryForm(text = "食べる", isCommon = true)),
+    readings = listOf(EntryReading(text = "たべる", restrictions = emptyList(), isCommon = true)),
+    senses = listOf(entrySense(posCodes = listOf("v1"), glosses = listOf("to eat"))),
+)
     return EntryState(
         entryId = entry.entryId,
         content = EntryContentState.Ready(entry = entry),

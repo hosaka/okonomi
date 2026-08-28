@@ -76,6 +76,13 @@ SELECT COUNT(*) FROM entry_sentence;
 -- The sentence id comes along as the row's stable identity: the list
 -- keys on it, because two entries can show the same sentence and one
 -- entry two sentences that read almost alike.
+-- Whether the entry has any example sentences at all, which is what
+-- decides whether the entry view shows a Phrases tab. An index seek on
+-- entry_sentence(entry_id, ord) rather than a count: the tab bar only
+-- needs to know that one row exists, and EXISTS stops at the first.
+entryHasSentences:
+SELECT EXISTS(SELECT 1 FROM entry_sentence WHERE entry_id = :entryId);
+
 sentencesForEntry:
 SELECT s.id, s.japanese, s.english, s.breakdown
 FROM entry_sentence es

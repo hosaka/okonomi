@@ -10,12 +10,15 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
 import cc.hosaka.okonomi.db.EntryDetail
+import cc.hosaka.okonomi.db.EntryForm
+import cc.hosaka.okonomi.db.EntryReading
 import cc.hosaka.okonomi.ui.test.ComposeUiTestBase
 import cc.hosaka.okonomi.ui.test.ScreenHost
 import cc.hosaka.okonomi.ui.test.entryDetail
+import cc.hosaka.okonomi.ui.test.entrySense
 import kotlin.test.Test
 import okonomi.shared.generated.resources.Res
-import okonomi.shared.generated.resources.entry_forms_none
+import okonomi.shared.generated.resources.entry_forms_affirmative
 import okonomi.shared.generated.resources.entry_tab_forms
 import okonomi.shared.generated.resources.entry_tab_word
 import org.jetbrains.compose.resources.stringResource
@@ -65,29 +68,42 @@ class EntryTabSyncUiTest : ComposeUiTestBase() {
         onNodeWithContentDescription(labels.forms).performClick()
         waitForIdle()
 
-        onNodeWithText(labels.formsEmptyMessage).assertIsDisplayed()
+        // The table's own column heading: something ONLY the Forms page
+        // draws, which is what makes this an assertion about the page
+        // having come into view rather than about the tab bar.
+        onNodeWithText(labels.formsHeading).assertIsDisplayed()
     }
 }
 
 /**
- * The tab labels and the Forms page's message are string resources, so they are
- * read from the composition rather than restated as literals here.
+ * The tab labels and the Forms table's column heading are string
+ * resources, so they are read from the composition rather than restated
+ * as literals here.
  */
 private class TabLabels {
     lateinit var word: String
     lateinit var forms: String
-    lateinit var formsEmptyMessage: String
+    lateinit var formsHeading: String
 
     @Composable
     fun read() {
         word = stringResource(Res.string.entry_tab_word)
         forms = stringResource(Res.string.entry_tab_forms)
-        formsEmptyMessage = stringResource(Res.string.entry_forms_none)
+        formsHeading = stringResource(Res.string.entry_forms_affirmative)
     }
 }
 
 private fun entryState(
-    entry: EntryDetail = entryDetail(),
+    entry: EntryDetail = entryDetail(
+        // A word with all four tabs: kanji in it, a class that conjugates,
+        // and sentences. The default fixture is 本, a noun, which since tabs
+        // are hidden when empty has no Forms tab at all - and these tests
+        // drive the bar through Forms.
+        headword = "食べる",
+        forms = listOf(EntryForm(text = "食べる", isCommon = true)),
+        readings = listOf(EntryReading(text = "たべる", restrictions = emptyList(), isCommon = true)),
+        senses = listOf(entrySense(posCodes = listOf("v1"), glosses = listOf("to eat"))),
+    ),
 ) = EntryState(
     entryId = entry.entryId,
     content = EntryContentState.Ready(entry = entry),

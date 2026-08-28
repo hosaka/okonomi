@@ -152,7 +152,10 @@ private fun EntryTabs(
     onToggleFavourite: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    val tabs = EntryTab.entries
+    // Only the tabs this entry has something for. Settled before the
+    // pager is built, so the page count and the bar agree from the first
+    // frame and nothing appears or vanishes under the reader.
+    val tabs = remember(entry) { availableTabs(entry) }
     val pagerState = rememberPagerState(pageCount = { tabs.size })
     val coroutineScope = rememberCoroutineScope()
     val labels = tabs.map { tab -> stringResource(tab.label) }
@@ -225,33 +228,39 @@ private fun EntryTabs(
                 )
             }
         }
-        BottomFade()
-        FloatingTabBar(
-            items = tabBarItems,
-            // currentPage, not settledPage. This reverses the earlier
-            // decision, which read settledPage so that a half-swipe
-            // snapping back could not leave the highlight on a tab the
-            // reader never reached. On a device that costs a whole swipe
-            // of latency: the segment only lights up after the pager has
-            // finished animating, so the bar always looks a beat behind
-            // the thumb. currentPage flips at the pager's own ~50%
-            // threshold, which is the point the gesture is committed,
-            // and a drag released short of it never moves it. Do not
-            // change this back without a device in hand.
-            selectedIndex = pagerState.currentPage,
-            onSelect = { page ->
-                scrollJob.job?.cancel()
-                scrollJob.job = coroutineScope.launch {
-                    pagerState.animateScrollToPage(page)
-                }
-            },
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .windowInsetsPadding(
-                    WindowInsets.systemBars
-                        .only(WindowInsetsSides.Bottom),
-                ),
-        )
+        // Both only when there is a choice to make. A lone Word tab needs
+        // no bar, and a fade under a bar that is not there is a gradient
+        // over nothing. The content padding is NOT reduced with them: it
+        // is sized by the save button, which stays either way.
+        if (tabs.size > 1) {
+            BottomFade()
+            FloatingTabBar(
+                items = tabBarItems,
+                // currentPage, not settledPage. This reverses the earlier
+                // decision, which read settledPage so that a half-swipe
+                // snapping back could not leave the highlight on a tab the
+                // reader never reached. On a device that costs a whole swipe
+                // of latency: the segment only lights up after the pager has
+                // finished animating, so the bar always looks a beat behind
+                // the thumb. currentPage flips at the pager's own ~50%
+                // threshold, which is the point the gesture is committed,
+                // and a drag released short of it never moves it. Do not
+                // change this back without a device in hand.
+                selectedIndex = pagerState.currentPage,
+                onSelect = { page ->
+                    scrollJob.job?.cancel()
+                    scrollJob.job = coroutineScope.launch {
+                        pagerState.animateScrollToPage(page)
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(
+                        WindowInsets.systemBars
+                            .only(WindowInsetsSides.Bottom),
+                    ),
+            )
+        }
         // After the bar, so it draws above it if they ever overlap, and
         // outside the pager, so it belongs to the entry rather than to
         // whichever tab happens to be on screen.

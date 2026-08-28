@@ -119,7 +119,15 @@ private fun ConjugationTables(
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
-    // A form is something a learner copies into a note or a search box.
+    // A form is something a learner copies into a note or a search box,
+    // and here that is still text SELECTION rather than the long press
+    // every list card takes. Deliberate, not an oversight: the useful
+    // unit in this table is ONE form - 食べさせられる, not the twelve rows
+    // around it - and a long press on the card could only copy the whole
+    // table. The cards here take no long press, so nothing competes for
+    // the gesture and selection still works. If a long press ever comes
+    // to this tab it should copy the row under the finger, which is a
+    // different feature from the one the lists have.
     SelectionContainer {
         LazyColumn(
             modifier = modifier

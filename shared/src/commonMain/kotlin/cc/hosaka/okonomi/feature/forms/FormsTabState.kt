@@ -55,6 +55,13 @@ sealed interface FormsTabContentState {
      * refuses to inflect; they are looking at a noun whose verb is
      * noun + する, and the message says so instead of leaving them to
      * guess why the table is missing.
+     *
+     * **Not reachable through the tab bar any more.** `availableTabs`
+     * hides the Forms tab when `conjugations` returns nothing, which is
+     * the very call that produces this state, so a reader cannot arrive
+     * here. Kept rather than deleted: if the visibility rule and this
+     * check ever drift apart, the reader gets the explanation instead of
+     * a blank screen.
      */
     data class NotConjugable(
         val takesSuru: Boolean,

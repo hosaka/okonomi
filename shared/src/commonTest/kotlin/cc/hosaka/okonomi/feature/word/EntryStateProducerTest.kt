@@ -42,6 +42,7 @@ class EntryStateProducerTest {
         ),
         isCommon = true,
         commonRank = 125,
+        hasSentences = true,
     )
 
     private val neverInvalidate: suspend () -> Unit = {

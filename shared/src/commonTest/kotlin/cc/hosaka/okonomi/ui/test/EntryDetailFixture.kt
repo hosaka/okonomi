@@ -20,6 +20,12 @@ internal fun entryDetail(
     senses: List<EntrySense> = listOf(entrySense()),
     isCommon: Boolean = true,
     commonRank: Long = 1L,
+    /**
+     * True by default so a fixture that says nothing about sentences
+     * still gets a Phrases tab, which is what almost every test of the
+     * entry view assumes. A test about a tab being HIDDEN says so.
+     */
+    hasSentences: Boolean = true,
 ) = EntryDetail(
     entryId = entryId,
     headword = headword,
@@ -28,6 +34,7 @@ internal fun entryDetail(
     senses = senses,
     isCommon = isCommon,
     commonRank = commonRank,
+    hasSentences = hasSentences,
 )
 
 internal fun entrySense(

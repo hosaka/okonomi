@@ -123,6 +123,14 @@ data class PhrasesTabState(
  * tab's NoKanji it cannot be settled before the query — whether a word
  * has examples is a property of the data, not of the headword.
  *
+ * That last point is why `EntryDetail.hasSentences` exists: the tab bar
+ * needs the answer before it draws, so the entry load carries it. With
+ * it, [Empty] is **not reachable through the tab bar any more** — the
+ * tab is hidden instead. Kept rather than deleted because the flag and
+ * this state come from two different queries over the same table, and
+ * if they ever disagree the reader should get the sentence rather than
+ * a blank screen.
+ *
  * A null [Error.onRetry] means retrying is not offered, following the
  * project's "null callback is a disabled action" rule.
  */

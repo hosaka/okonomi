@@ -92,6 +92,17 @@ data class EntryDetail(
     val isCommon: Boolean,
     /** Best (lowest) commonness rank across the entry's forms and readings. */
     val commonRank: Long,
+    /**
+     * Whether the dictionary carries any example sentence for this
+     * entry. Loaded with the entry rather than by the Phrases tab
+     * because the TAB BAR needs it: a tab is not shown at all when it
+     * would have nothing in it, and that has to be settled before the
+     * bar is drawn or it would change shape underneath the reader.
+     *
+     * The other two hideable tabs need no such flag — whether a word has
+     * kanji or conjugates is computable from what is already here.
+     */
+    val hasSentences: Boolean,
 ) {
     /** The written forms other than the headword, in source order. */
     val alternateForms: List<EntryForm>
@@ -210,6 +221,10 @@ suspend fun DictionaryDatabase.loadEntryDetail(entryId: Long): EntryDetail? {
     // An entry row without a single form or reading cannot be shown at
     // all; the caller renders the same error state as a missing id.
     if (headword == null) return null
+    coroutineContext.ensureActive()
+    // One index seek, and it decides whether a Phrases tab is drawn at
+    // all; see EntryDetail.hasSentences.
+    val hasSentences = db.sentenceQueries.entryHasSentences(entryId).awaitOne()
     return EntryDetail(
         entryId = entryId,
         headword = headword,
@@ -220,6 +235,7 @@ suspend fun DictionaryDatabase.loadEntryDetail(entryId: Long): EntryDetail? {
         // over the forms that would only agree with it by coincidence.
         isCommon = entry.is_common != 0L,
         commonRank = entry.common_rank,
+        hasSentences = hasSentences,
     )
 }
 

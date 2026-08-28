@@ -29,6 +29,7 @@ class EntryReadingsTest {
         senses = emptyList(),
         isCommon = false,
         commonRank = 1L,
+        hasSentences = true,
     )
 
     private fun reading(
