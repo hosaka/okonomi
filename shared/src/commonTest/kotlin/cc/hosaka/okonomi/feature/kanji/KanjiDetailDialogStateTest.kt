@@ -11,11 +11,13 @@ import kotlin.test.assertTrue
  * The two pure pieces of the detail overlay: which characters have
  * anything to show, and what showing and dismissing do to the selection.
  *
- * These carry more weight than their size suggests. The gestures that
- * call [KanjiDetailDialogState.dismiss] are `DialogProperties` defaults
- * — a tap on the scrim and a system back press — and neither can be
- * driven from a host test, so this is where the transition they cause is
- * actually checked. See [KanjiDetailDialog].
+ * The dismiss tests carry more weight than their size suggests. One of
+ * the two gestures that call [KanjiDetailDialogState.dismiss] is a
+ * system back press, which arrives through `dismissOnBackPress` and
+ * cannot be dispatched from a host test, so this is where the transition
+ * it causes is actually checked. The other, a tap outside the surface,
+ * is [KanjiDetailDialog]'s own composable and is driven directly in
+ * `KanjiDetailDialogUiTest`.
  */
 class KanjiDetailDialogStateTest {
 

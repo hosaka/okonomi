@@ -1,7 +1,9 @@
 package cc.hosaka.okonomi.feature.kanji
 
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -22,9 +24,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -35,6 +41,7 @@ import cc.hosaka.okonomi.ui.theme.Dimens
 import cc.hosaka.okonomi.ui.theme.horizontalPaddingFourth
 import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
 import okonomi.shared.generated.resources.Res
+import okonomi.shared.generated.resources.entry_kanji_detail_close
 import okonomi.shared.generated.resources.entry_kanji_detail_title
 import okonomi.shared.generated.resources.entry_kanji_radical_search
 import okonomi.shared.generated.resources.entry_kanji_section_name
@@ -61,18 +68,21 @@ internal val KanjiCharacter.hasDetailToShow: Boolean
  * Smaller than the platform's own 48.dp dialog margin, which is what was
  * wrapping the radical row a character early.
  */
-private val DIALOG_MARGIN = 24.dp
+internal val DIALOG_MARGIN = 24.dp
 
 /**
  * Which character the detail overlay is showing, or null for closed.
  *
- * The selection is the only part of this feature a test can stand on.
- * Both ways the overlay closes — a tap outside it and system back — are
- * `DialogProperties` defaults fired by the framework, and neither can be
- * driven from a host test (see [KanjiDetailDialog]). Routing
+ * The selection is the only part of this feature a test can stand on,
+ * and both ways the overlay closes run through [dismiss]. A tap outside
+ * the surface is [KanjiDetailDialog]'s own gesture, so that one is
+ * driven directly in `KanjiDetailDialogUiTest`. System back is not: it
+ * arrives through `dismissOnBackPress` and nothing in this repo can
+ * dispatch the press, so what a host test can still see is the
+ * transition it causes, which is what `KanjiDetailDialogStateTest`
+ * asserts. Routing
  * `onDismissRequest` through [dismiss] rather than through a raw
- * `mutableStateOf` at the call site is what keeps the transition they
- * cause under test even though the gestures are not.
+ * `mutableStateOf` at the call site is what keeps that reachable.
  */
 @Stable
 internal class KanjiDetailDialogState {
@@ -102,32 +112,53 @@ internal fun rememberKanjiDetailDialogState(): KanjiDetailDialogState =
  * the floating tab bar — which a scrim drawn inside the tab's own
  * subtree could never reach.
  *
- * Two of the three `DialogProperties` defaults are taken deliberately.
- * `dismissOnBackPress` and `dismissOnClickOutside` are both on, which is
- * the whole dismissal behaviour; `dismissOnBackPress` is also why there
- * is no `NavigationBackHandler` here, since a second handler would fight
- * it for the same press.
+ * `dismissOnBackPress` is left on and owns system back on its own, which
+ * is why there is no `NavigationBackHandler` here: a second handler
+ * would fight it for the same press.
  *
- * The third, `usePlatformDefaultWidth`, is turned OFF, and that is what
- * lets the surface state a width at all. Left on, the platform caps the
- * window at its own dialog width — 315.dp on a 411.dp screen — and the
- * radical row wraps a character early: `動`'s six radicals need 308.dp
- * of chips and gaps, and only 283.dp survives the content padding, so
- * `里` was pushed onto a row of its own beside a column of dead space.
- * Off, the window fills the screen and [DIALOG_MARGIN] is what insets
- * the surface instead, which leaves room for the sixth chip.
+ * `usePlatformDefaultWidth` is turned OFF, and that is what lets the
+ * surface state a width at all. Left on, the platform caps the window at
+ * its own dialog width — 315.dp on a 411.dp screen — and the radical row
+ * wraps a character early: `動`'s six radicals need 308.dp of chips and
+ * gaps, and only 283.dp survives the content padding, so `里` was pushed
+ * onto a row of its own beside a column of dead space. Off, the window
+ * fills the screen and [DIALOG_MARGIN] is what insets the surface
+ * instead, which leaves room for the sixth chip.
  *
- * The cost of turning it off is that the window no longer ends where the
- * surface does, so `dismissOnClickOutside` is the one behaviour to
- * re-check on a device after touching any of this.
+ * **`dismissOnClickOutside` is inert here, and the outside tap is this
+ * composable's own.** The property is still on because it is the
+ * default, not because it does anything: it fires only for a touch
+ * outside the dialog *window*, and once `usePlatformDefaultWidth` is off
+ * the window is the whole screen, so there is nowhere left to put such a
+ * touch. What dismisses instead is [DismissLayer], the first child of
+ * the centring Box below.
  *
- * **Neither dismissal is asserted anywhere, and that is not an
- * oversight.** Nothing in this repo can dispatch a system back press,
- * and a dialog's scrim carries no semantics node for a test to tap, so
- * the honest position is to say so rather than to write an assertion
- * that would pass whether the properties were set or not. What is tested
- * is the transition they trigger, through [KanjiDetailDialogState]. The
- * gestures themselves are checked on a device.
+ * Three things about that arrangement have to survive any later layout
+ * change, and none of them is visible from the rendered result:
+ *
+ * - The layer is declared BEFORE the `Surface`, so it draws beneath and
+ *   hit testing reaches it only where the surface was missed. Material3
+ *   gives a `Surface` an empty `pointerInput` even with no `onClick`, so
+ *   a hit stops there and never falls through to a sibling below it —
+ *   read out of the Material3 source at Compose Multiplatform 1.11.1,
+ *   material3 1.11.0-alpha07, and covered by a test rather than trusted.
+ * - [DIALOG_MARGIN] is padding on the `Surface`, not on the Box. A
+ *   caller's `Modifier.padding` sits outside the surface's own pointer
+ *   node, so the margin strips miss it and reach the layer — which is
+ *   the only reason a tap beside the surface closes the overlay. Moved
+ *   back onto the Box, those strips become dead.
+ * - The gesture must stay on a child rather than moving up onto the Box
+ *   around both. The surface consumes nothing, so an ancestor's
+ *   `detectTapGestures` would fire for taps on the surface too, and the
+ *   overlay would close whenever it was touched.
+ *
+ * **System back is still asserted nowhere, and that is not an
+ * oversight.** Nothing in this repo can dispatch the press, so the
+ * honest position is to say so rather than to write an assertion that
+ * would pass whether `dismissOnBackPress` held or not; what is tested is
+ * the transition it triggers, through [KanjiDetailDialogState]. The
+ * outside tap is no longer in that category — it is a composable of our
+ * own now, and `KanjiDetailDialogUiTest` taps it.
  */
 @Composable
 internal fun KanjiDetailDialog(
@@ -138,52 +169,125 @@ internal fun KanjiDetailDialog(
     val paneTitle = stringResource(Res.string.entry_kanji_detail_title, character.literal)
     Dialog(
         onDismissRequest = { state.dismiss() },
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        // All three properties written out, defaults included. An
+        // unexamined default is what shipped an overlay that could not
+        // be dismissed by touch, so what this dialog relies on should be
+        // readable here rather than only in the KDoc. The values are
+        // exactly the defaults: dismissOnClickOutside stays ON although
+        // it is inert while the window fills the screen, because turning
+        // it off would remove a harmless idempotent second path on any
+        // platform or window where it is not.
+        properties = DialogProperties(
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true,
+            usePlatformDefaultWidth = false,
+        ),
     ) {
         // The window fills the screen once usePlatformDefaultWidth is
         // off, so centring is this Box's job rather than the dialog's:
         // capping the surface below the width fillMaxWidth offered it
         // leaves it anchored to the start otherwise, which put 24.dp of
         // margin down one side of the screen and 47.dp down the other.
+        //
+        // No pointer input on this Box. The dismiss gesture belongs to
+        // the child below it, for the reason the KDoc gives.
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = DIALOG_MARGIN),
+                .fillMaxSize(),
             contentAlignment = Alignment.Center,
         ) {
-        Surface(
-            // Without a pane title the overlay arrives silently: a
-            // screen reader is given a new window with nothing saying
-            // what covered the screen or which character it belongs to.
-            //
-            // The width is the surface's own now that the platform cap
-            // is off: DIALOG_MARGIN either side, and never wider than
-            // the rest of the app's content, so a tablet gets a dialog
-            // rather than a full-bleed sheet.
-            // widthIn BEFORE fillMaxWidth: fillMaxWidth fixes the
-            // incoming width, after which widthIn can only coerce its
-            // max back up to that fixed value and does nothing at all.
-            // Constrain first, then fill what the constraint allows.
-            modifier = Modifier
-                .widthIn(max = screenMaxWidth)
-                .fillMaxWidth()
-                .semantics { this.paneTitle = paneTitle },
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        ) {
-            KanjiDetailContent(
-                character = character,
-                onRadicalClick = onRadicalClick,
-                // The scroll belongs to the window, not to the content:
-                // kanjidic gives some characters a long nanori list, and
-                // on a short screen the surface has to give way rather
-                // than run off the bottom of it.
+            DismissLayer(literal = character.literal, onDismiss = state::dismiss)
+            Surface(
+                // Without a pane title the overlay arrives silently: a
+                // screen reader is given a new window with nothing saying
+                // what covered the screen or which character it belongs to.
+                //
+                // The width is the surface's own now that the platform cap
+                // is off: DIALOG_MARGIN either side, and never wider than
+                // the rest of the app's content, so a tablet gets a dialog
+                // rather than a full-bleed sheet.
+                //
+                // The margin is padding HERE and not on the Box, which
+                // is what gives the strips it leaves to [DismissLayer];
+                // the KDoc above says why that is load-bearing.
+                //
+                // widthIn BEFORE fillMaxWidth: fillMaxWidth fixes the
+                // incoming width, after which widthIn can only coerce its
+                // max back up to that fixed value and does nothing at all.
+                // Constrain first, then fill what the constraint allows.
                 modifier = Modifier
-                    .verticalScroll(rememberScrollState()),
-            )
-        }
+                    .padding(horizontal = DIALOG_MARGIN)
+                    .widthIn(max = screenMaxWidth)
+                    .fillMaxWidth()
+                    .semantics { this.paneTitle = paneTitle },
+                shape = MaterialTheme.shapes.extraLarge,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                KanjiDetailContent(
+                    character = character,
+                    onRadicalClick = onRadicalClick,
+                    // The scroll belongs to the window, not to the content:
+                    // kanjidic gives some characters a long nanori list, and
+                    // on a short screen the surface has to give way rather
+                    // than run off the bottom of it.
+                    modifier = Modifier
+                        .verticalScroll(rememberScrollState()),
+                )
+            }
         }
     }
+}
+
+/**
+ * Everything the overlay's surface does not cover, as one tap target
+ * that closes it.
+ *
+ * `matchParentSize` rather than `fillMaxSize`: the layer has to span the
+ * window without having any say in how big the window's Box is, and
+ * `fillMaxSize` on a child would make it a measured sibling of the
+ * surface.
+ *
+ * It carries a name and a close action as well as the gesture. A finger
+ * can aim at "outside the surface"; a screen reader cannot, so without
+ * them the overlay would offer a reader nothing but system back, and the
+ * layer would sit in the tree as an unlabelled full-screen target. It
+ * names [literal] for the same reason the pane title does: the card that
+ * said which character this is went behind the scrim when the overlay
+ * opened.
+ *
+ * `onClick` takes no label of its own. The description already names the
+ * action, and a label would have an accessibility service read it a
+ * second time as the hint — "Close 食 details, double-tap to Close 食
+ * details". Material3's own scrim passes none either. The action is a
+ * second route to the same [onDismiss] rather than the only one; the
+ * pointer gesture is what a tap uses.
+ *
+ * `traversalIndex` is meant to put the layer after the surface, so a
+ * reader hears the character's details before being offered the way out
+ * of them. That is reasoned rather than observed: Material3's `Surface`
+ * sets the deprecated `IsContainer` key rather than `IsTraversalGroup`,
+ * and iOS orders its accessibility elements through a different
+ * implementation again, so what a host test can pin is that the property
+ * is set — the resulting order is a device check on both platforms.
+ */
+@Composable
+private fun BoxScope.DismissLayer(literal: String, onDismiss: () -> Unit) {
+    val closeLabel = stringResource(Res.string.entry_kanji_detail_close, literal)
+    Box(
+        modifier = Modifier
+            .matchParentSize()
+            .pointerInput(onDismiss) {
+                detectTapGestures { onDismiss() }
+            }
+            .semantics {
+                contentDescription = closeLabel
+                traversalIndex = 1f
+                onClick {
+                    onDismiss()
+                    true
+                }
+            },
+    )
 }
 
 /**

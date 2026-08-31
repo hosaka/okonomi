@@ -77,6 +77,19 @@
          screen. It names the character because the card that opened it
          is behind the scrim and can no longer be read. -->
     <string name="entry_kanji_detail_title">%1$s details</string>
+    <!-- Names the area around the detail overlay's surface, which is
+         what a tap outside the surface dismisses it through. A finger
+         can aim at "outside"; a screen reader cannot, so the layer says
+         what it is and carries the same close action the tap performs.
+         Without it the overlay would offer a reader nothing but system
+         back, and the layer would be an unlabelled full-screen target.
+         It names the character for the same reason
+         entry_kanji_detail_title does: the card that named it is behind
+         the scrim by the time this is read. This is the region's NAME,
+         not an action hint - the close action deliberately carries no
+         label of its own, so that a service does not read the string
+         twice as "Close X details, double-tap to Close X details". -->
+    <string name="entry_kanji_detail_close">Close %1$s details</string>
     <!-- The tap label on one radical in the detail overlay. The value
          substituted in is radkfile's representative kanji, which is the
          same character the reader sees on the chip. -->
