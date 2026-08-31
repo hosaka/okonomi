@@ -1,6 +1,7 @@
 TEAM_ID=
 
 PRODUCT_NAME=okonomi
+INFOPLIST_KEY_CFBundleDisplayName=Okonomi
 PRODUCT_BUNDLE_IDENTIFIER=cc.hosaka.okonomi.okonomi$(TEAM_ID)
 
 CURRENT_PROJECT_VERSION=1
