@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Baseline Material 3 light surface (lightColorScheme().surface), the colour
+         App()'s Surface paints on API 26-30 where dynamic colour does not exist.
+         API 31-33 approximates the synthesised dynamic surface from values-v31,
+         API 34+ matches it exactly from values-v34. -->
+    <color name="splash_background">#FFFEF7FF</color>
+</resources>

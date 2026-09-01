@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- API 31-33 builds surface by luminance (neutralVariant98), so no system
+         colour equals it. system_neutral2_10 carries the wallpaper hue at tone 99;
+         in light mode a hue cast is what the eye catches, so the one-tone error
+         is the better trade. There is deliberately no values-night-v31: the night
+         qualifier outranks the version qualifier, so dark on 31-33 falls back to
+         values-night/ and keeps the exact tone-6 baseline instead of taking
+         system_neutral2_900, which is four tones lighter against near-black. -->
+    <color name="splash_background">@android:color/system_neutral2_10</color>
+</resources>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- API 34+ reads this exact colour into the dynamic scheme's surface slot,
+         so the splash and the app's first frame are the same colour. -->
+    <color name="splash_background">@android:color/system_surface_light</color>
+</resources>
