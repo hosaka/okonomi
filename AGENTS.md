@@ -14,7 +14,8 @@
 - Android SDK Platform 37 (`compileSdk` 37), AGP 9.1.1, Gradle 9.3.1 (bumped for AboutLibraries 15.0.4).
 - Assume Kotlin Multiplatform + Compose Multiplatform project conventions.
 - Do not assume Android emulator/device availability unless explicitly requested by the user.
-- `data/kanjivg/` is a build prerequisite alongside the other `data/` sources, so an existing checkout fails its next `assembleDebug` until it is populated (see README.md).
+- The `data/` dictionary sources are fetched and decompressed by the build itself (`:tools:dictgen:fetchDictionarySources`, then `:tools:dictgen:extractDictionarySources`), so a fresh checkout builds without preparation; the first build downloads about 78 MB into `data/archives/`, which is a cache and is never re-fetched (see README.md).
+- KanjiVG now extracts to `data/kanji/`, the zip's own top-level name. A checkout that predates that change keeps an orphaned `data/kanjivg/` (~90 MB) which nothing reads any more: delete it.
 
 ## High-Level Architecture Overview
 

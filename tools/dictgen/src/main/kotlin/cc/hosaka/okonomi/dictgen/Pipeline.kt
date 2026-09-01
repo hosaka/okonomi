@@ -159,7 +159,7 @@ class Pipeline(private val dataDir: File, private val out: File) {
         val jmnedict = source("JMnedict.xml")
         val kanjidic = source("kanjidic2.xml")
         val radk = source("radkfile")
-        val kanjivg = sourceDir("kanjivg")
+        val kanjivg = sourceDir("kanji")
         val tatoeba = TatoebaParser(
             japanese = source("jpn_sentences.tsv"),
             english = source("eng_sentences.tsv"),

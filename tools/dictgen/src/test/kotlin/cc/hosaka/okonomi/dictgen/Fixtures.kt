@@ -259,7 +259,7 @@ object Fixtures {
         File(dir, "jpn_sentences.tsv").writeText(jpnSentences)
         File(dir, "eng_sentences.tsv").writeText(engSentences)
         File(dir, "jpn_indices.csv").writeText(jpnIndices)
-        val kanjivg = File(dir, "kanjivg").apply { mkdirs() }
+        val kanjivg = File(dir, "kanji").apply { mkdirs() }
         File(kanjivg, "098df.svg").writeText(kanjivgShoku)
         File(kanjivg, "098df-Kaisho.svg").writeText(kanjivgShokuVariant)
     }

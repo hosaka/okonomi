@@ -30,7 +30,7 @@ class PipelineIntegrationTest {
         assertEquals(2L, summary.counts["glosses"])
         assertEquals(1L, summary.counts["kanji"])
         assertEquals(2L, summary.counts["radicals"])
-        // The kanjivg fixture directory holds two files for the same
+        // The kanji/ fixture directory holds two files for the same
         // character, one of them a -Kaisho variant. One row, not two:
         // the variant filter is the only thing keeping them apart.
         assertEquals(1L, summary.counts["diagrams"])
@@ -144,14 +144,20 @@ class PipelineIntegrationTest {
     }
 
     @Test
-    fun missingKanjivgDirectoryFailsFastWithItsName() {
+    fun missingKanjiDirectoryFailsFastWithItsName() {
         val dataDir = tempDir()
         Fixtures.writeDataDir(dataDir)
-        File(dataDir, "kanjivg").deleteRecursively()
+        File(dataDir, "kanji").deleteRecursively()
         val out = File(tempDir(), "okonomi.db")
 
         val e = assertFailsWith<PipelineException> { Pipeline(dataDir, out).run() }
-        assertTrue("kanjivg" in (e.message ?: ""), "message should name the directory: ${e.message}")
+        // Anchored on the whole phrase, and on the "(" that follows the name:
+        // a bare "kanji" also matches kanjidic2.xml and the temp path itself,
+        // so it would pass on a message naming the wrong source.
+        assertTrue(
+            "Missing source directory: kanji (" in (e.message ?: ""),
+            "message should name the directory: ${e.message}",
+        )
         assertTrue(!out.exists(), "no partial DB should be left behind")
     }
 
