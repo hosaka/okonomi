@@ -1,0 +1,52 @@
+name: Build Android release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: linux-amd64
+    # version.yml pushes its own bump commit to main. Guard on the message
+    # explicitly rather than trusting the instance to honour [skip ci]
+    # natively -- an unguarded bump would build and, worse, look normal.
+    if: "!contains(forgejo.event.head_commit.message, '[skip ci]')"
+    container:
+      image: code.hosaka.cc/hosaka/okonomi/ci:0.1.0
+
+    steps:
+      - name: Checkout repository
+        uses: https://code.forgejo.org/actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Cache Gradle
+        uses: https://code.forgejo.org/actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: okonomi-gradle-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts') }}
+          restore-keys: okonomi-gradle-
+
+      # NOT content-addressed on purpose. Cache entries are immutable once
+      # written, so this key is the lever for refreshing dictionary data:
+      # bump it to v2 to pull a newer JMdict/Tatoeba, and until then every
+      # merge reuses the archives already fetched.
+      - name: Cache dictionary archives
+        uses: https://code.forgejo.org/actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: data/archives
+          key: okonomi-data-v1
+
+      - name: Build release APK
+        run: ./gradlew --stacktrace :androidApp:assembleRelease
+
+      - name: Report the APK
+        run: |
+          apk=$(find androidApp/build/outputs/apk/release -name '*.apk' | head -1)
+          echo "Built $apk ($(du -h "$apk" | cut -f1))"
+          grep -oE '"version(Code|Name)":[^,}]*' androidApp/build/outputs/apk/release/output-metadata.json
+          apksigner verify --print-certs "$apk" | grep -i 'DN:' | head -1
+          # This APK is debug-signed and is a build check only; release.yml
+          # produces the signed artefact. Add forgejo/upload-artifact here if
+          # you ever want to download it -- note it is ~172 MB per merge.

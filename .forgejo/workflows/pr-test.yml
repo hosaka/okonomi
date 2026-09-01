@@ -1,0 +1,47 @@
+name: PR checks
+
+on:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: linux-amd64
+    if: "!contains(forgejo.event.pull_request.title, '[skip ci]')"
+    container:
+      image: code.hosaka.cc/hosaka/okonomi/ci:0.1.0
+
+    steps:
+      - name: Checkout repository
+        uses: https://code.forgejo.org/actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Cache Gradle
+        uses: https://code.forgejo.org/actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: okonomi-gradle-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts') }}
+          restore-keys: okonomi-gradle-
+
+      # Deliberately no assemble task. Packaging is the only thing that needs
+      # the dictionary, so these checks never download a source archive and
+      # never build the 175 MB database -- see the note in README.md.
+      - name: Tests, lint and compilation
+        run: |
+          ./gradlew --stacktrace \
+            :tools:dictgen:test \
+            :shared:testAndroidHostTest \
+            :shared:verifySqlDelightMigration \
+            :shared:compileKotlinIosArm64 \
+            :shared:compileTestKotlinIosSimulatorArm64 \
+            :androidApp:compileDebugKotlin \
+            :androidApp:lintDebug
+
+      - name: Assert no dictionary sources were fetched
+        run: |
+          if [ -d data/archives ]; then
+            echo "PR checks must not fetch dictionary sources, but data/archives exists:" >&2
+            ls -la data/archives >&2
+            exit 1
+          fi
+          echo "No dictionary sources fetched, as intended."

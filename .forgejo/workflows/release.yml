@@ -1,0 +1,110 @@
+name: Publish release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: linux-amd64
+    container:
+      image: code.hosaka.cc/hosaka/okonomi/ci:0.1.0
+      env:
+        FORGEJO_URL: https://code.hosaka.cc
+
+    steps:
+      - name: Checkout repository
+        uses: https://code.forgejo.org/actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Cache Gradle
+        uses: https://code.forgejo.org/actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: okonomi-gradle-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts') }}
+          restore-keys: okonomi-gradle-
+
+      - name: Cache dictionary archives
+        uses: https://code.forgejo.org/actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: data/archives
+          key: okonomi-data-v1
+
+      # Fail before building rather than after: a missing secret otherwise
+      # surfaces as a debug-signed APK that looks like a release.
+      - name: Check signing secrets are present
+        run: |
+          set -eu
+          missing=""
+          for name in OKONOMI_KEYSTORE_BASE64 OKONOMI_KEYSTORE_PASSWORD OKONOMI_KEY_ALIAS FORGEJO_TOKEN; do
+            eval "value=\${$name:-}"
+            [ -n "$value" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "Missing repository secrets:$missing" >&2
+            exit 1
+          fi
+        env:
+          OKONOMI_KEYSTORE_BASE64: ${{ secrets.OKONOMI_KEYSTORE_BASE64 }}
+          OKONOMI_KEYSTORE_PASSWORD: ${{ secrets.OKONOMI_KEYSTORE_PASSWORD }}
+          OKONOMI_KEY_ALIAS: ${{ secrets.OKONOMI_KEY_ALIAS }}
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+
+      # Outside the workspace so it cannot be picked up by a build input or
+      # left behind in an artifact.
+      - name: Restore the keystore
+        run: |
+          set -eu
+          umask 077
+          printf '%s' "${{ secrets.OKONOMI_KEYSTORE_BASE64 }}" | base64 -d > /tmp/release.jks
+          test -s /tmp/release.jks
+
+      - name: Build the signed APK
+        env:
+          OKONOMI_KEYSTORE_FILE: /tmp/release.jks
+          OKONOMI_KEYSTORE_PASSWORD: ${{ secrets.OKONOMI_KEYSTORE_PASSWORD }}
+          OKONOMI_KEY_ALIAS: ${{ secrets.OKONOMI_KEY_ALIAS }}
+        run: ./gradlew --stacktrace :androidApp:assembleRelease
+
+      - name: Verify the version and the signer
+        id: apk
+        run: |
+          set -eu
+          tag="${{ forgejo.ref_name }}"
+          expected="${tag#v}"
+          actual=$(sed -n 's/^app = "\(.*\)"/\1/p' gradle/libs.versions.toml)
+          if [ "$actual" != "$expected" ]; then
+            echo "Tag $tag does not match app version $actual in gradle/libs.versions.toml" >&2
+            exit 1
+          fi
+          src=$(find androidApp/build/outputs/apk/release -name '*.apk' | head -1)
+          apk="/tmp/okonomi-$tag.apk"
+          cp "$src" "$apk"
+          apksigner verify --print-certs "$apk" | grep -i 'DN:' | head -1
+          if apksigner verify --print-certs "$apk" | grep -qi 'CN=Android Debug'; then
+            echo "Refusing to publish a debug-signed APK" >&2
+            exit 1
+          fi
+          echo "apk=$apk" >> $FORGEJO_OUTPUT
+          echo "tag=$tag" >> $FORGEJO_OUTPUT
+
+      - name: Publish the Forgejo release
+        env:
+          TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+        run: |
+          set -eu
+          tag="${{ steps.apk.outputs.tag }}"
+          apk="${{ steps.apk.outputs.apk }}"
+          id=$(curl -sS --fail --request POST \
+            --header "Authorization: token $TOKEN" \
+            --header "Content-Type: application/json" \
+            --data "{\"tag_name\":\"$tag\",\"name\":\"okonomi $tag\"}" \
+            "$FORGEJO_URL/api/v1/repos/$FORGEJO_REPOSITORY/releases" | jq -r .id)
+          echo "Created release $id"
+          curl -sS --fail --request POST \
+            --header "Authorization: token $TOKEN" \
+            --form "attachment=@$apk" \
+            "$FORGEJO_URL/api/v1/repos/$FORGEJO_REPOSITORY/releases/$id/assets?name=$(basename "$apk")" > /dev/null
+          echo "Attached $(basename "$apk")"

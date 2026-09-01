@@ -33,6 +33,97 @@ dependencies {
     dictionary(project(":tools:dictgen"))
 }
 
+/**
+ * The app's semver, and the [versionCode] derived from it.
+ *
+ * Derived rather than stored so the two can never disagree, and derived from
+ * the version STRING rather than from git so that the same commit produces the
+ * same numbers locally and in CI — `git rev-list --count` varies with clone
+ * depth and cannot be read back as a version.
+ *
+ * The arithmetic caps minor and patch at 99. That is a real limit, so it is
+ * checked here rather than left to overflow into a lower version code than the
+ * release before it, which Android would refuse to install over.
+ */
+data class AppVersion(val name: String, val code: Int)
+
+fun appVersionFrom(raw: String): AppVersion {
+    val parts = Regex("""^(\d{1,3})\.(\d{1,3})\.(\d{1,3})$""").matchEntire(raw.trim())
+        ?: throw GradleException(
+            "app version \"$raw\" in gradle/libs.versions.toml is not major.minor.patch " +
+                "(for example 1.2.3). Pre-release and build suffixes are not supported: " +
+                "versionCode is derived arithmetically and has nowhere to put them.",
+        )
+    val (major, minor, patch) = parts.destructured.toList().map(String::toInt)
+    if (minor > 99 || patch > 99) {
+        throw GradleException(
+            "app version \"$raw\" has a component above 99. versionCode is " +
+                "major*10000 + minor*100 + patch, so a larger component would produce a " +
+                "LOWER code than the previous release and Android would refuse the upgrade.",
+        )
+    }
+    return AppVersion(raw.trim(), major * 10000 + minor * 100 + patch)
+}
+
+val appVersion = appVersionFrom(libs.versions.app.get())
+
+/**
+ * keystore.properties in the repository root, if it exists. Gitignored, and read
+ * through providers.fileContents rather than FileInputStream so the read is a
+ * declared build input -- org.gradle.configuration-cache is on, and a plain file
+ * read at configuration time is invisible to it.
+ *
+ * Keys are the ones Android Studio writes: storeFile, storePassword, keyAlias.
+ */
+val keystoreProperties: Provider<Map<String, String>> = providers.fileContents(
+    rootProject.layout.projectDirectory.file("keystore.properties"),
+).asText.map { text ->
+    text.lineSequence()
+        .map(String::trim)
+        .filterNot { it.isEmpty() || it.startsWith("#") }
+        .mapNotNull { line -> line.split("=", limit = 2).takeIf { it.size == 2 } }
+        .associate { (key, value) -> key.trim() to value.trim() }
+}.orElse(emptyMap())
+
+/**
+ * Release signing credentials. keystore.properties wins where it defines a
+ * value, so a local signed build is just `./gradlew :androidApp:assembleRelease`
+ * with no environment to remember. CI has no such file and passes the same three
+ * values as environment variables, which keeps the keystore path in release.yml
+ * next to the step that writes the keystore.
+ *
+ * All three or none: a partial set means someone intended to sign properly, and
+ * quietly falling back to the debug key would produce an APK that looks like a
+ * release and cannot be upgraded over.
+ *
+ * There is no separate key password. A PKCS12 keystore has one password that
+ * covers the store and every key in it -- keytool discards -keypass and says so
+ * -- so keyPassword below reads the same value rather than offering a second
+ * secret that can only ever hold a copy, or silently disagree with the first.
+ */
+val signingSettings = mapOf(
+    "storeFile" to "OKONOMI_KEYSTORE_FILE",
+    "storePassword" to "OKONOMI_KEYSTORE_PASSWORD",
+    "keyAlias" to "OKONOMI_KEY_ALIAS",
+)
+val signingEnv = signingSettings.mapValues { (property, variable) ->
+    val fromFile = keystoreProperties.get()[property]
+    val fromEnv = providers.environmentVariable(variable).orNull
+    (fromFile ?: fromEnv)?.takeIf(String::isNotBlank)
+}
+
+val signingProvided = signingEnv.values.count { it != null }
+if (signingProvided in 1..2) {
+    val missing = signingEnv.filterValues { it == null }.keys
+        .joinToString { property -> "$property/${signingSettings.getValue(property)}" }
+    throw GradleException(
+        "Release signing is half configured: missing $missing. Set all three, in " +
+            "keystore.properties or the environment, or none — with none, a release " +
+            "build is signed with the debug key for local use only.",
+    )
+}
+val useReleaseSigning = signingProvided == 3
+
 android {
     namespace = "cc.hosaka.okonomi"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
@@ -41,12 +132,26 @@ android {
         applicationId = "cc.hosaka.okonomi"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = appVersion.code
+        versionName = appVersion.name
     }
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
+    signingConfigs {
+        if (useReleaseSigning) {
+            create("release") {
+                // rootProject.file, not file: this script runs in androidApp/, but
+                // keystore.properties sits in the repository root, so a relative
+                // storeFile there should mean relative to the root. Absolute paths,
+                // which is what release.yml passes, are unaffected either way.
+                storeFile = rootProject.file(signingEnv.getValue("storeFile")!!)
+                storePassword = signingEnv.getValue("storePassword")
+                keyAlias = signingEnv.getValue("keyAlias")
+                keyPassword = signingEnv.getValue("storePassword")
+            }
         }
     }
     buildTypes {
@@ -56,10 +161,15 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // This is a development convenience, NOT a shipping config —
-            // a store build has to be signed with the real upload key
-            // before it goes anywhere.
-            signingConfig = signingConfigs.getByName("debug")
+            // The debug key is a LOCAL convenience so `assembleRelease` works
+            // with no secrets set. It is not a shipping config: every machine
+            // generates its own debug keystore, so APKs signed here cannot be
+            // upgraded over one another, and the key is publicly known.
+            signingConfig = if (useReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
     compileOptions {

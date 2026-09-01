@@ -13,6 +13,7 @@
 - Use JDK `21` (provisioned via `gradle/gradle-daemon-jvm.properties`).
 - Android SDK Platform 37 (`compileSdk` 37), AGP 9.1.1, Gradle 9.3.1 (bumped for AboutLibraries 15.0.4).
 - Assume Kotlin Multiplatform + Compose Multiplatform project conventions.
+- The app version is `app` in `gradle/libs.versions.toml`; `versionCode` is DERIVED from it in `androidApp/build.gradle.kts` (`major*10000 + minor*100 + patch`). Never hand-edit `versionCode`, and never add a pre-release suffix to the version — the derivation rejects both.
 - Do not assume Android emulator/device availability unless explicitly requested by the user.
 - The `data/` dictionary sources are fetched and decompressed by the build itself (`:tools:dictgen:fetchDictionarySources`, then `:tools:dictgen:extractDictionarySources`), so a fresh checkout builds without preparation; the first build downloads about 78 MB into `data/archives/`, which is a cache and is never re-fetched (see README.md).
 - KanjiVG now extracts to `data/kanji/`, the zip's own top-level name. A checkout that predates that change keeps an orphaned `data/kanjivg/` (~90 MB) which nothing reads any more: delete it.

@@ -1,0 +1,78 @@
+name: Bump version
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Which part of the version to increase
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+jobs:
+  bump:
+    runs-on: linux-amd64
+    container:
+      image: code.hosaka.cc/hosaka/okonomi/ci:0.1.0
+
+    steps:
+      # Needs a PAT, not the default job token: the bump is pushed to the
+      # default branch, and the tag it pushes has to trigger release.yml.
+      - name: Checkout repository
+        uses: https://code.forgejo.org/actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.FORGEJO_TOKEN }}
+
+      - name: Compute the next version
+        id: next
+        run: |
+          set -eu
+          current=$(sed -n 's/^app = "\(.*\)"/\1/p' gradle/libs.versions.toml)
+          if [ -z "$current" ]; then
+            echo "No 'app = \"x.y.z\"' entry in gradle/libs.versions.toml" >&2
+            exit 1
+          fi
+          major=${current%%.*}
+          rest=${current#*.}
+          minor=${rest%%.*}
+          patch=${rest##*.}
+          case "${{ inputs.bump }}" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+            *) echo "Unknown bump: ${{ inputs.bump }}" >&2; exit 1 ;;
+          esac
+          # versionCode is major*10000 + minor*100 + patch, so a component
+          # above 99 would produce a code LOWER than the previous release.
+          if [ "$minor" -gt 99 ] || [ "$patch" -gt 99 ]; then
+            echo "$major.$minor.$patch has a component above 99; bump the next part up instead." >&2
+            exit 1
+          fi
+          echo "current=$current" >> $FORGEJO_OUTPUT
+          echo "next=$major.$minor.$patch" >> $FORGEJO_OUTPUT
+          echo "Bumping $current -> $major.$minor.$patch (${{ inputs.bump }})"
+
+      - name: Commit and tag
+        run: |
+          set -eu
+          next="${{ steps.next.outputs.next }}"
+          if git rev-parse "v$next" >/dev/null 2>&1; then
+            echo "Tag v$next already exists" >&2
+            exit 1
+          fi
+          sed -i "s/^app = \".*\"/app = \"$next\"/" gradle/libs.versions.toml
+          git config user.name "Alex March"
+          git config user.email "hosaka@noreply.code.hosaka.cc"
+          git add gradle/libs.versions.toml
+          # [skip ci] is written for instances that honour it; build-android.yml
+          # guards on this same string regardless.
+          git commit -m "chore(release): v$next [skip ci]"
+          git tag -a "v$next" -m "okonomi v$next"
+          git push origin "HEAD:${{ forgejo.ref_name }}"
+          git push origin "v$next"
+          echo "Pushed v$next; release.yml takes it from here."

@@ -1,0 +1,50 @@
+# Build image for okonomi CI.
+#
+# Zulu is not an arbitrary choice: gradle/gradle-daemon-jvm.properties pins
+# toolchainVendor=AZUL, so any other JDK makes Gradle download its own Zulu
+# (~558 MB) on every cold run. Basing on Zulu 21 satisfies the criteria and
+# that download never happens.
+#
+# See README.md in this directory for the build and push commands.
+FROM docker.io/azul/zulu-openjdk-debian:21
+
+LABEL org.opencontainers.image.source=https://code.hosaka.cc/hosaka/okonomi
+
+# Pinned so a rebuild produces the same image. cmdline-tools 16111833 is
+# revision 23.0, the build "cmdline-tools;latest" resolves to.
+ARG NODE_VERSION=v24.20.0
+ARG CMDLINE_TOOLS=commandlinetools-linux-16111833_latest.zip
+ARG ANDROID_PLATFORM="platforms/android-37.0"
+ARG ANDROID_BUILD_TOOLS="build-tools/37.0.0"
+
+ENV ANDROID_HOME=/opt/android-sdk \
+    ANDROID_SDK_ROOT=/opt/android-sdk \
+    DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git curl unzip jq ca-certificates xz-utils \
+ && rm -rf /var/lib/apt/lists/*
+
+# actions/checkout and actions/cache are JavaScript actions: the runner executes
+# them with the node it finds in this image, so one has to be here.
+RUN curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-linux-x64.tar.xz" -o /tmp/node.tar.xz \
+ && tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1 \
+ && rm /tmp/node.tar.xz \
+ && node --version
+
+# cmdline-tools/latest/ is the layout Studio and AGP expect to find; the android
+# CLI itself takes the SDK root from ANDROID_HOME and ignores its own location.
+RUN curl -fsSL "https://dl.google.com/android/repository/${CMDLINE_TOOLS}" -o /tmp/cmdline-tools.zip \
+ && mkdir -p "${ANDROID_HOME}/cmdline-tools" \
+ && unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools \
+ && mv /tmp/cmdline-tools/cmdline-tools "${ANDROID_HOME}/cmdline-tools/latest" \
+ && rm -rf /tmp/cmdline-tools.zip /tmp/cmdline-tools
+
+ENV PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${PATH}"
+
+RUN android --no-metrics sdk install "platform-tools" "${ANDROID_PLATFORM}" "${ANDROID_BUILD_TOOLS}" > /dev/null \
+ && android --no-metrics sdk list \
+ && rm -rf /root/.android
+
+# apksigner and friends, so release.yml can verify what it just signed.
+ENV PATH="${ANDROID_HOME}/build-tools/37.0.0:${PATH}"
