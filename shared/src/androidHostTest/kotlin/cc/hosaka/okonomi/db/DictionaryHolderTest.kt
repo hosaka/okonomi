@@ -2,6 +2,7 @@ package cc.hosaka.okonomi.db
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -104,6 +105,9 @@ class DictionaryHolderTest {
         assertEquals(2, opens)
     }
 
+    // runCurrent() is experimental; it is what lets both callers be in
+    // flight before the gate opens, which is the whole point of the test.
+    @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun `two concurrent calls share one provision and one handle`() = runTest {
         val path = createDatabaseFile()

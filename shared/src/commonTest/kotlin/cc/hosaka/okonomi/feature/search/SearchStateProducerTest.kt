@@ -551,7 +551,7 @@ class SearchStateProducerTest {
         while (results.onShowMore != null) {
             pages++
             assertTrue(pages < 100, "paging must terminate")
-            results.onShowMore!!.invoke()
+            results.onShowMore.invoke()
             settle()
             results = assertIs<SearchResultsState.Results>(states.last().results)
         }
@@ -650,7 +650,7 @@ class SearchStateProducerTest {
         failExtensions = false
         val standing = assertIs<SearchResultsState.Results>(states.last().results)
         assertNotNull(standing.onShowMore, "a failed extension must leave the rows pageable")
-        standing.onShowMore!!.invoke()
+        standing.onShowMore.invoke()
         settle()
 
         assertEquals(
@@ -891,7 +891,7 @@ class SearchStateProducerTest {
         val results = assertIs<SearchResultsState.Results>(states.last().results)
         assertNotNull(results.onShowMore, "the names below still have pages behind them")
 
-        results.onShowMore!!.invoke()
+        results.onShowMore.invoke()
         settle()
 
         val extended = assertIs<SearchResultsState.Results>(states.last().results)
@@ -924,7 +924,7 @@ class SearchStateProducerTest {
         while (results.onShowMore != null) {
             pages++
             assertTrue(pages < 100, "paging must terminate")
-            results.onShowMore!!.invoke()
+            results.onShowMore.invoke()
             settle()
             results = assertIs<SearchResultsState.Results>(states.last().results)
         }

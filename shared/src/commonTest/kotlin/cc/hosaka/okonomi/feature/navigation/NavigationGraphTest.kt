@@ -8,7 +8,11 @@ import cc.hosaka.okonomi.feature.search.SearchRoute
 import cc.hosaka.okonomi.feature.word.EntryRoute
 import kotlin.test.Test
 import kotlin.test.assertNotNull
+import kotlinx.serialization.ExperimentalSerializationApi
 
+// SerializersModule.getPolymorphic, the only way to ask what the module
+// actually registered, is still experimental.
+@OptIn(ExperimentalSerializationApi::class)
 class NavigationGraphTest {
     @Test
     fun `every home route is registered for saved state`() {

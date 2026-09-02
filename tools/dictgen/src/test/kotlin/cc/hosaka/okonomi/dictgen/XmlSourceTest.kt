@@ -52,7 +52,9 @@ class XmlSourceTest {
 
         val declared = XmlSource(document).use { source ->
             val reader = source.reader
-            while (reader.next() != XMLStreamConstants.DTD) Unit
+            while (reader.next() != XMLStreamConstants.DTD) {
+                // Spin to the DTD event; declaredEntities reads it.
+            }
             reader.declaredEntities()
         }
 
