@@ -15,7 +15,7 @@ LABEL org.opencontainers.image.source=https://code.hosaka.cc/hosaka/okonomi
 ARG NODE_VERSION=v24.20.0
 ARG CMDLINE_TOOLS=commandlinetools-linux-16111833_latest.zip
 ARG ANDROID_PLATFORM="platforms/android-37.0"
-ARG ANDROID_BUILD_TOOLS="build-tools/37.0.0"
+ARG ANDROID_BUILD_TOOLS="build-tools/36.0.0"
 
 ENV ANDROID_HOME=/opt/android-sdk \
     ANDROID_SDK_ROOT=/opt/android-sdk \
@@ -47,4 +47,4 @@ RUN android --no-metrics sdk install "platform-tools" "${ANDROID_PLATFORM}" "${A
  && rm -rf /root/.android
 
 # apksigner and friends, so release.yml can verify what it just signed.
-ENV PATH="${ANDROID_HOME}/build-tools/37.0.0:${PATH}"
+ENV PATH="${ANDROID_HOME}/build-tools/36.0.0:${PATH}"

@@ -24,7 +24,7 @@ In order to show the image as a package under the repository's "Packages" Forgej
 | Node | `v24.20.0` | `actions/checkout` and `actions/cache` actions and need a NodeJS in the image |
 | cmdline-tools | `16111833` | `cmdline-tools;latest` currently resolves to rev `23.0` |
 | Platform | `platforms/android-37.0` | `compileSdk = 37`, the SDK publishes `37.0`/`37.1`/`37.2`, not a bare `37` |
-| Build tools | `build-tools/37.0.0` | Matches the platform and also provides `apksigner` for release verification |
+| Build tools | `build-tools/36.0.0` | `android-buildTools` Tracks AGP, **not** `compileSdk`, also provides `apksigner` for release verification |
 
 ## Verifying a build
 

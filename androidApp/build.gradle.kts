@@ -127,6 +127,7 @@ val useReleaseSigning = signingProvided == 3
 android {
     namespace = "cc.hosaka.okonomi"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
+    buildToolsVersion = libs.versions.android.buildTools.get()
 
     defaultConfig {
         applicationId = "cc.hosaka.okonomi"

@@ -79,6 +79,7 @@ kotlin {
        namespace = "cc.hosaka.okonomi.shared"
        compileSdk = libs.versions.android.compileSdk.get().toInt()
        minSdk = libs.versions.android.minSdk.get().toInt()
+       buildToolsVersion = libs.versions.android.buildTools.get()
     
        compilerOptions {
            jvmTarget = JvmTarget.JVM_11

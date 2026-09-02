@@ -32,9 +32,14 @@ jobs:
           path: data/archives
           key: okonomi-data-v1
 
-      # Fail before building rather than after: a missing secret otherwise
+      # Fail before building rather than after: a missing value otherwise
       # surfaces as a debug-signed APK that looks like a release.
-      - name: Check signing secrets are present
+      #
+      # The alias is a variable, not a secret. It is not sensitive without the
+      # keystore, and the runner redacts every secret value wherever it appears
+      # in a log -- an alias of "okonomi" would blank the cache key, the APK
+      # name, the release title and every path that contains it.
+      - name: Check signing credentials are present
         run: |
           set -eu
           missing=""
@@ -43,13 +48,13 @@ jobs:
             [ -n "$value" ] || missing="$missing $name"
           done
           if [ -n "$missing" ]; then
-            echo "Missing repository secrets:$missing" >&2
+            echo "Missing repository secrets or variables:$missing" >&2
             exit 1
           fi
         env:
           OKONOMI_KEYSTORE_BASE64: ${{ secrets.OKONOMI_KEYSTORE_BASE64 }}
           OKONOMI_KEYSTORE_PASSWORD: ${{ secrets.OKONOMI_KEYSTORE_PASSWORD }}
-          OKONOMI_KEY_ALIAS: ${{ secrets.OKONOMI_KEY_ALIAS }}
+          OKONOMI_KEY_ALIAS: ${{ vars.OKONOMI_KEY_ALIAS }}
           FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
 
       # Outside the workspace so it cannot be picked up by a build input or
@@ -65,7 +70,7 @@ jobs:
         env:
           OKONOMI_KEYSTORE_FILE: /tmp/release.jks
           OKONOMI_KEYSTORE_PASSWORD: ${{ secrets.OKONOMI_KEYSTORE_PASSWORD }}
-          OKONOMI_KEY_ALIAS: ${{ secrets.OKONOMI_KEY_ALIAS }}
+          OKONOMI_KEY_ALIAS: ${{ vars.OKONOMI_KEY_ALIAS }}
         run: ./gradlew --stacktrace :androidApp:assembleRelease
 
       - name: Verify the version and the signer
