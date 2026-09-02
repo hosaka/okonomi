@@ -5,6 +5,7 @@ import java.io.File
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.sql.DriverManager
 import java.time.Instant
 
 /**
@@ -106,6 +107,22 @@ import java.time.Instant
 const val DICTIONARY_FORMAT_VERSION = 8
 
 /**
+ * The POS code sidecar, written beside the database and copied into :shared's
+ * host-test resources by `:tools:dictgen:syncPosCodes`. See [Pipeline].
+ */
+const val POS_CODES_NAME = "pos-codes.tsv"
+
+private val POS_CODES_HEADER = """
+    |# Tag codes the shipped dictionary declares, one per line, as
+    |# code<TAB>declared|used. "used" means some sense actually carries it.
+    |#
+    |# Generated from the database by :tools:dictgen. Regenerate with
+    |# ./gradlew :tools:dictgen:syncPosCodes and commit the diff -- a code
+    |# JMdict retires is meant to be visible in review, not a surprise in CI.
+    |
+""".trimMargin()
+
+/**
  * Fingerprint of the schema DDL, as a guard on the counter above.
  *
  * The failure mode this exists for: change the schema, forget to bump
@@ -145,7 +162,14 @@ internal fun mergedEntities(vararg sources: Map<String, String>): Map<String, St
     return merged
 }
 
-class Pipeline(private val dataDir: File, private val out: File) {
+class Pipeline(
+    private val dataDir: File,
+    private val out: File,
+    // Deliberately not defaulted beside the database: that directory is
+    // packaged into the APK verbatim, and SyncDictionaryAssets asserts its
+    // contents are exactly the database and its version sidecar.
+    private val posCodes: File = File(out.absoluteFile.parentFile, POS_CODES_NAME),
+) {
 
     data class Summary(val counts: Map<String, Long>, val sizeBytes: Long, val out: File) {
         fun report(): String = buildString {
@@ -227,7 +251,50 @@ class Pipeline(private val dataDir: File, private val out: File) {
         val sidecarTmp = File(sidecar.parentFile, sidecar.name + ".tmp")
         sidecarTmp.writeText("$jmdictDate:${OkonomiDb.Schema.version}:$DICTIONARY_FORMAT_VERSION")
         atomicReplace(sidecarTmp, sidecar)
+        // A second sidecar, for the tappable-word rule's guard tests. Read back
+        // from the finished database rather than accumulated while writing it,
+        // so it describes what actually shipped and cannot drift from it.
+        writePosCodes(posCodes)
         return Summary(counts, out.length(), out)
+    }
+
+    /**
+     * Writes the tag codes this dictionary declares, and which of them a sense
+     * actually carries, one per line as `code<TAB>declared|used`.
+     *
+     * `:tools:dictgen:syncPosCodes` copies this into :shared's host-test
+     * resources, where it is committed. That is what lets BreakdownPosCodesTest
+     * hold the rule to real data without the 184 MB database, and what turns a
+     * code JMdict retires into a reviewable line in a diff.
+     *
+     * Every declared code is listed, not just the used ones: the two tests ask
+     * different questions, and a code that stops being carried is exactly the
+     * kind of quiet change worth seeing in review.
+     */
+    private fun writePosCodes(target: File) {
+        val declared = mutableSetOf<String>()
+        val used = mutableSetOf<String>()
+        DriverManager.getConnection("jdbc:sqlite:${out.absolutePath}").use { database ->
+            database.createStatement().use { statement ->
+                statement.executeQuery("SELECT code FROM tag_label").use { rows ->
+                    while (rows.next()) declared += rows.getString(1)
+                }
+            }
+            database.createStatement().use { statement ->
+                statement.executeQuery("SELECT pos FROM sense WHERE pos IS NOT NULL").use { rows ->
+                    while (rows.next()) {
+                        rows.getString(1).split(',').forEach { used += it.trim() }
+                    }
+                }
+            }
+        }
+        check(declared.isNotEmpty()) { "tag_label is empty; the POS sidecar would assert nothing." }
+        val body = (declared + used).sorted().joinToString("\n") { code ->
+            "$code\t" + if (code in used) "used" else "declared"
+        }
+        val tmp = File(target.parentFile, target.name + ".tmp")
+        tmp.writeText(POS_CODES_HEADER + body + "\n")
+        atomicReplace(tmp, target)
     }
 
     private fun source(name: String): File {

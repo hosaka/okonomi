@@ -486,6 +486,11 @@ tasks.named<JavaExec>("run") {
 
 val dictionaryOutputDir = layout.buildDirectory.dir("generated/dictionary")
 
+// Kept out of dictionaryOutputDir on purpose: that directory is published to
+// :androidApp and packaged as assets verbatim, and SyncDictionaryAssets fails
+// on anything in it that is not the database or its version sidecar.
+val posCodesFile = layout.buildDirectory.file("generated/dictionary-meta/pos-codes.tsv")
+
 val generateDictionary = tasks.register<JavaExec>("generateDictionary") {
     group = "build"
     description = "Generates the bundled dictionary database and its version sidecar from data/."
@@ -512,6 +517,7 @@ val generateDictionary = tasks.register<JavaExec>("generateDictionary") {
     val sourceDirNames = listOf("kanji")
     val dataDir = dictionaryDataDir
     val outputDir = dictionaryOutputDir
+    val posCodes = posCodesFile
     val fetchTaskPath = "${project.path}:fetchDictionarySources"
     inputs.files(sourceNames.map { dataDir.resolve(it) })
         .withPropertyName("dictionarySources")
@@ -530,11 +536,13 @@ val generateDictionary = tasks.register<JavaExec>("generateDictionary") {
         .withPropertyName("dictionarySourceDirs")
         .withPathSensitivity(PathSensitivity.RELATIVE)
     outputs.dir(outputDir).withPropertyName("dictionaryOutputDir")
+    outputs.file(posCodes).withPropertyName("posCodesFile")
     argumentProviders.add(
         CommandLineArgumentProvider {
             listOf(
                 "--data", dataDir.absolutePath,
                 "--out", outputDir.get().asFile.resolve("okonomi.db").absolutePath,
+                "--pos-codes", posCodes.get().asFile.absolutePath,
             )
         },
     )
@@ -555,6 +563,25 @@ val generateDictionary = tasks.register<JavaExec>("generateDictionary") {
             )
         }
     }
+}
+
+/**
+ * Refreshes the committed POS code sidecar from the generated dictionary.
+ *
+ * The file lives in :shared's host-test resources rather than in a build
+ * directory because BreakdownPosCodesTest has to hold on a clean checkout:
+ * pr-test.yml deliberately never builds the dictionary, and a guard that
+ * cannot run in PR checks is a guard that stops guarding.
+ *
+ * Run this whenever the dictionary is regenerated and commit what changes.
+ * A code JMdict has retired shows up here as a diff, which is the point.
+ */
+tasks.register<Copy>("syncPosCodes") {
+    group = "build"
+    description = "Refreshes shared/src/androidHostTest/resources/pos-codes.tsv from the generated dictionary."
+    dependsOn(generateDictionary)
+    from(posCodesFile)
+    into(rootProject.layout.projectDirectory.dir("shared/src/androidHostTest/resources"))
 }
 
 // Exposes the generated database + sidecar directory to :androidApp (asset packaging).

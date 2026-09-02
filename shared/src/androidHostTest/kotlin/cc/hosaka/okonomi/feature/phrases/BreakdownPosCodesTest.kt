@@ -1,8 +1,5 @@
 package cc.hosaka.okonomi.feature.phrases
 
-import java.io.File
-import java.sql.Connection
-import java.sql.DriverManager
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -28,6 +25,19 @@ import kotlin.test.assertTrue
  *
  * Reads the real sets rather than a copy of them. A copy would go stale
  * in exactly the same silence this exists to break.
+ *
+ * The dictionary's side of that comparison is `pos-codes.tsv`, written
+ * by `:tools:dictgen` from the finished database and copied here by
+ * `:tools:dictgen:syncPosCodes`. It is read from the classpath, so these
+ * tests need neither the 184 MB database nor a dictgen run and hold on a
+ * clean checkout — which `pr-test.yml` requires, since it deliberately
+ * never builds the dictionary.
+ *
+ * That the sidecar is committed is the design, not a compromise: a code
+ * JMdict retires arrives as a reviewable line in a diff the next time the
+ * dictionary is regenerated, rather than as a CI failure nobody expected.
+ * Regenerate it, never hand-edit it — a hand-edited copy is the stale
+ * copy this exists to prevent.
  */
 class BreakdownPosCodesTest {
 
@@ -36,15 +46,13 @@ class BreakdownPosCodesTest {
 
     @Test
     fun `every code the rule tests is one the dictionary declares`() {
-        val declared = connection().use { it.column("SELECT code FROM tag_label") }
-
         // A code JMdict never declared cannot come back from anything a
         // sense says either, so this is the cheap half and it names the
         // culprit outright.
         assertEquals(
             emptySet(),
-            ruleCodes - declared,
-            "these codes are in the rule but not in the shipped dictionary's tag_label; " +
+            ruleCodes - posCodes().keys,
+            "these codes are in the rule but not declared by the shipped dictionary; " +
                 "JMdict does not issue them, so they filter nothing",
         )
     }
@@ -52,12 +60,8 @@ class BreakdownPosCodesTest {
     @Test
     fun `every code the rule tests is one some sense actually carries`() {
         // Declared is not the same as used: a code JMdict still declares
-        // but no longer applies to anything is just as inert in the
-        // rule. One pass over sense.pos rather than a LIKE per code.
-        val used = connection().use { database ->
-            database.column("SELECT pos FROM sense WHERE pos IS NOT NULL")
-                .flatMapTo(mutableSetOf()) { column -> column.split(',').map { it.trim() } }
-        }
+        // but no longer applies to anything is just as inert in the rule.
+        val used = posCodes().filterValues { carried -> carried }.keys
 
         assertEquals(
             emptySet(),
@@ -84,49 +88,33 @@ class BreakdownPosCodesTest {
     }
 }
 
-private fun connection(): Connection = DriverManager.getConnection("jdbc:sqlite:${dictionaryFile().absolutePath}")
-
-private fun Connection.column(sql: String): Set<String> = createStatement().use { statement ->
-    statement.executeQuery(sql).use { rows ->
-        buildSet {
-            while (rows.next()) {
-                add(rows.getString(1))
-            }
-        }
-    }
-}
+private const val POS_CODES = "pos-codes.tsv"
 
 /**
- * The generated dictionary. The two-candidate lookup is borrowed from
- * `PhrasesStringsTest`, because the test JVM's working directory is
- * either the module or the repository root depending on how the build
- * is invoked.
+ * The sidecar, as declared code to whether a sense carries it.
  *
- * What is NOT borrowed, and is new here: that test reads a source file
- * which is always present in a checkout, whereas this one reads a build
- * artifact. This is the only test under `shared/src` that depends on
- * `:tools:dictgen` output, so `:shared:testAndroidHostTest` now fails on
- * a clean tree until the dictionary has been generated — which it was
- * not before. Nothing in Gradle wires that ordering; the full
- * verification baseline happens to generate it via `assembleDebug`.
- *
- * A missing file fails rather than skips, deliberately. A guard that
+ * A missing resource fails rather than skips, deliberately. A guard that
  * quietly does nothing is the exact shape of the problem this test was
  * written to remove — `cop-da` sat in the rule unused precisely because
- * nothing checked it against the data. If the ordering ever becomes a
- * real obstacle (CI running tests without dictgen), wire the task
- * dependency; do not convert this into a skip.
+ * nothing checked it against the data.
  */
-private fun dictionaryFile(): File {
-    val candidates = listOf(
-        File("../tools/dictgen/build/generated/dictionary/okonomi.db"),
-        File("tools/dictgen/build/generated/dictionary/okonomi.db"),
-    )
-    val file = candidates.firstOrNull { it.isFile }
+private fun posCodes(): Map<String, Boolean> {
+    val text = BreakdownPosCodesTest::class.java
+        .getResourceAsStream("/$POS_CODES")
+        ?.bufferedReader()
+        ?.use { it.readText() }
     assertNotNull(
-        file,
-        "the generated dictionary is missing; run :tools:dictgen:generateDictionary " +
-            "(tried ${candidates.map { it.absolutePath }})",
+        text,
+        "$POS_CODES is not on the test classpath; regenerate it with " +
+            ":tools:dictgen:syncPosCodes and commit it",
     )
-    return file
+    val codes = text.lineSequence()
+        .map(String::trim)
+        .filterNot { it.isEmpty() || it.startsWith("#") }
+        .associate { line ->
+            val fields = line.split('\t', limit = 2)
+            fields[0] to (fields.getOrNull(1) == "used")
+        }
+    assertTrue(codes.isNotEmpty(), "$POS_CODES parsed to nothing; the format has drifted")
+    return codes
 }
