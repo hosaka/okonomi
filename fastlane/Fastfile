@@ -5,6 +5,28 @@ require 'tmpdir'
 # No analytics please.
 opt_out_usage
 
+# Checks
+
+UNIT_TEST_TASKS = %w[
+  :tools:dictgen:test
+  :shared:testAndroidHostTest
+].freeze
+
+MIGRATION_TASKS = %w[:shared:verifySqlDelightMigration].freeze
+
+COMPILE_TASKS = %w[
+  :shared:compileKotlinIosArm64
+  :shared:compileTestKotlinIosSimulatorArm64
+  :androidApp:compileDebugKotlin
+].freeze
+
+LINT_TASKS = %w[:androidApp:lintDebug].freeze
+
+# Not part of `test`: this needs a simulator and a macOS host.
+IOS_TEST_TASKS = %w[:shared:iosSimulatorArm64Test].freeze
+
+# Screenshots
+
 # Where the AVD lives.
 ENV['ANDROID_AVD_HOME'] ||= File.expand_path('~/.android/avd')
 
@@ -55,6 +77,44 @@ DEMO_COMMANDS = [
 ].freeze
 
 default_platform(:android)
+
+# The check lanes sit outside the platform blocks on purpose.
+desc 'All the checks: unit tests, migration verification, compilation and lint.'
+lane :test do
+  run_gradle(UNIT_TEST_TASKS + MIGRATION_TASKS + COMPILE_TASKS + LINT_TASKS)
+end
+
+desc 'The unit tests: :tools:dictgen, and the shared tests on the JVM.'
+lane :unit_tests do
+  run_gradle(UNIT_TEST_TASKS)
+end
+
+desc "Replays the user database's migrations against the checked-in schema snapshots."
+lane :migrations do
+  run_gradle(MIGRATION_TASKS)
+end
+
+desc 'Compiles both targets, commonTest for Kotlin/Native included.'
+lane :compile do
+  run_gradle(COMPILE_TASKS)
+end
+
+desc 'Runs AGP lint over the debug variant.'
+lane :lint do
+  run_gradle(LINT_TASKS)
+end
+
+desc 'Runs the shared tests on an iOS simulator. Needs a macOS host.'
+lane :ios_tests do
+  unless macos?
+    UI.user_error!(
+      "#{IOS_TEST_TASKS.first} needs an iOS simulator, which only a macOS host has. " \
+      'Run `fastlane compile` here instead; it builds the same test sources for Kotlin/Native.'
+    )
+  end
+
+  run_gradle(IOS_TEST_TASKS)
+end
 
 platform :android do
   desc 'Creates the okonomi-screenshots AVD the screenshots lane drives.'
@@ -134,6 +194,16 @@ platform :android do
       "`#{adb_bin} -s #{serial} emu kill`; its log is #{emulator_log}."
     )
   end
+end
+
+# One Gradle run, with the stacktrace CI asks for so a failure here reads the
+# same as a failure there.
+def run_gradle(tasks)
+  gradle(tasks: tasks, flags: '--stacktrace')
+end
+
+def macos?
+  RbConfig::CONFIG['host_os'].match?(/darwin/)
 end
 
 # A repository path, absolute.

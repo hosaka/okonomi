@@ -41,6 +41,8 @@ Practical rule: for new screens, follow the same split (see `feature/search/`):
 
 Verification: `./gradlew :androidApp:assembleDebug :shared:compileKotlinIosArm64 :shared:compileTestKotlinIosSimulatorArm64 :shared:testAndroidHostTest :tools:dictgen:test :shared:verifySqlDelightMigration`.
 
+`fastlane test` runs all of that except `:androidApp:assembleDebug`, plus `:androidApp:lintDebug`; `fastlane unit_tests`, `migrations`, `compile` and `lint` are its parts, and the task lists live at the top of `fastlane/Fastfile`. Add `:androidApp:assembleDebug` separately when a change can affect packaging — it is the only step that needs the dictionary and therefore the only slow one.
+
 `:shared:verifySqlDelightMigration` is in the list because the user database
 (`user.db`, the reader's saved words) is migrated rather than replaced. It
 replays the checked-in `<version>.db` snapshots through the `.sqm` files and
