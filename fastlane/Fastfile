@@ -25,6 +25,17 @@ LINT_TASKS = %w[:androidApp:lintDebug].freeze
 # Not part of `test`: this needs a simulator and a macOS host.
 IOS_TEST_TASKS = %w[:shared:iosSimulatorArm64Test].freeze
 
+# Builds
+
+BUILD_TYPES = %w[debug release].freeze
+
+IOS_PROJECT = File.join('iosApp', 'iosApp.xcodeproj').freeze
+IOS_TARGET = 'iosApp'.freeze
+
+# androidApp/build.gradle.kts falls back to the local debug key unless all
+# three of these are set, or keystore.properties is present.
+SIGNING_ENV = %w[OKONOMI_KEYSTORE_FILE OKONOMI_KEYSTORE_PASSWORD OKONOMI_KEY_ALIAS].freeze
+
 # Screenshots
 
 # Where the AVD lives.
@@ -117,6 +128,13 @@ lane :ios_tests do
 end
 
 platform :android do
+  desc 'Assembles the app. `type:release` for the release variant.'
+  lane :build do |options|
+    type = build_type(options)
+    run_gradle([":androidApp:assemble#{type.capitalize}"])
+    report_apk(type)
+  end
+
   desc 'Creates the okonomi-screenshots AVD the screenshots lane drives.'
   lane :create_avd do
     if avd_names.include?(AVD_NAME)
@@ -196,6 +214,23 @@ platform :android do
   end
 end
 
+platform :ios do
+  desc 'Builds the app for the simulator. `type:release` for the Release configuration. Needs macOS.'
+  lane :build do |options|
+    type = build_type(options)
+    UI.user_error!('Building the iOS app needs Xcode, and therefore a macOS host.') unless macos?
+
+    xcodebuild(
+      build: true,
+      project: repo_path(IOS_PROJECT),
+      target: IOS_TARGET,
+      configuration: type.capitalize,
+      sdk: 'iphonesimulator',
+      build_settings: { 'CODE_SIGNING_ALLOWED' => 'NO' }
+    )
+  end
+end
+
 # One Gradle run, with the stacktrace CI asks for so a failure here reads the
 # same as a failure there.
 def run_gradle(tasks)
@@ -204,6 +239,32 @@ end
 
 def macos?
   RbConfig::CONFIG['host_os'].match?(/darwin/)
+end
+
+# The `type:` a build lane was given, debug unless release was asked for.
+def build_type(options)
+  type = options[:type].to_s.downcase
+  return 'debug' if type.empty?
+
+  UI.user_error!("Unknown type:#{type}. Use #{BUILD_TYPES.join(' or ')}.") unless BUILD_TYPES.include?(type)
+  type
+end
+
+def report_apk(type)
+  apk = Dir.glob(repo_path('androidApp', 'build', 'outputs', 'apk', type, '*.apk')).max_by { |path| File.mtime(path) }
+  UI.user_error!("assemble#{type.capitalize} produced no APK under androidApp/build/outputs/apk/#{type}.") unless apk
+
+  UI.success("#{apk} (#{(File.size(apk) / 1024.0 / 1024).round(1)} MB)")
+  return unless type == 'release' && !release_signing_configured?
+
+  UI.important(
+    'Signed with the local debug key: no keystore.properties and no ' \
+    "#{SIGNING_ENV.join('/')}. Local use only -- see README.md."
+  )
+end
+
+def release_signing_configured?
+  File.exist?(repo_path('keystore.properties')) || SIGNING_ENV.all? { |name| !ENV[name].to_s.empty? }
 end
 
 # A repository path, absolute.
