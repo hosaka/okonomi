@@ -584,6 +584,41 @@ tasks.register<Copy>("syncPosCodes") {
     into(rootProject.layout.projectDirectory.dir("shared/src/androidHostTest/resources"))
 }
 
+/**
+ * Refreshes :shared's committed conjugation corpus fixture from the generated
+ * dictionary.
+ *
+ * Separate from `generateDictionary` for the same reason `syncPosCodes` is:
+ * it writes a checked-in source file, and a build that rewrites sources
+ * whenever the dictionary is rebuilt is a surprise. Run it when the
+ * dictionary moves and commit what changes -- an entry JMdict has retired
+ * shows up here as a diff, which is the point.
+ */
+tasks.register<JavaExec>("generateConjugationCorpus") {
+    group = "build"
+    description = "Refreshes shared/src/commonTest/.../ConjugationCorpus.kt from the generated dictionary."
+    mainClass.set("cc.hosaka.okonomi.dictgen.ConjugationCorpusMainKt")
+    classpath = sourceSets.main.get().runtimeClasspath
+    dependsOn(generateDictionary)
+    // Locals only: the providers below must not capture the build script object.
+    val database = dictionaryOutputDir.map { it.file("okonomi.db") }
+    val corpus = rootProject.layout.projectDirectory
+        .file("shared/src/commonTest/kotlin/cc/hosaka/okonomi/lang/ConjugationCorpus.kt")
+    inputs.file(database).withPropertyName("dictionaryDatabase").withPathSensitivity(PathSensitivity.NONE)
+    outputs.file(corpus).withPropertyName("conjugationCorpus")
+    // The whole sense table is held in memory to pick the sample in one pass,
+    // rather than re-querying per candidate entry as the Python it replaced did.
+    maxHeapSize = "2g"
+    argumentProviders.add(
+        CommandLineArgumentProvider {
+            listOf(
+                "--db", database.get().asFile.absolutePath,
+                "--out", corpus.asFile.absolutePath,
+            )
+        },
+    )
+}
+
 // Exposes the generated database + sidecar directory to :androidApp (asset packaging).
 val dictionaryElements: Configuration by configurations.creating {
     isCanBeConsumed = true

@@ -15,9 +15,9 @@ package cc.hosaka.okonomi.lang
  * group being negative controls, which must produce no table at all.
  * Every entry the review round named is pinned by id on top of that.
  *
- * Regenerate with `tools/extract-conjugation-corpus.py`; every
- * selection is ordered and ties break by entry id, so the same JMdict
- * build reproduces this file.
+ * Regenerate with `./gradlew :tools:dictgen:generateConjugationCorpus`;
+ * every selection is ordered and ties break by entry id, so the same
+ * JMdict build reproduces this file.
  *
  * [headword] is what `EntryDetail.headword` resolves to (first kanji
  * form by ord, else first reading) and [posCodes] what
@@ -31,7 +31,7 @@ internal data class CorpusEntry(
 )
 
 /**
- * 2236 entries; see the file header for how they were chosen.
+ * 2237 entries; see the file header for how they were chosen.
  *
  * Split across several functions because a single list literal this
  * long overruns the JVM's 64KB limit on a class initializer.
@@ -543,7 +543,7 @@ private fun corpusPart1(): List<CorpusEntry> = listOf(
     CorpusEntry(1254380, "決定", listOf("n", "vs", "vt", "vi")),
     CorpusEntry(1254500, "穴だらけにする", listOf("exp", "vs-i")),
     CorpusEntry(1254670, "結ぶ", listOf("v5b", "vt")),
-    CorpusEntry(1254690, "結果", listOf("n", "adv", "vs", "vi")),
+    CorpusEntry(1254690, "結果", listOf("n", "vs", "vt", "vi", "adv", "prt", "conj")),
     CorpusEntry(1254730, "結局", listOf("adv", "n", "adj-no")),
     CorpusEntry(1256170, "健康", listOf("n", "adj-na")),
     CorpusEntry(1256500, "兼す", listOf("vs-c")),
@@ -715,7 +715,7 @@ private fun corpusPart2(): List<CorpusEntry> = listOf(
     CorpusEntry(1320830, "実は", listOf("exp", "adv")),
     CorpusEntry(1321110, "実際", listOf("n", "adj-no", "adv")),
     CorpusEntry(1321140, "実施", listOf("n", "vs", "vt")),
-    CorpusEntry(1321590, "偲ぶ", listOf("v5b", "vt")),
+    CorpusEntry(1321590, "偲ぶ", listOf("v5b", "vt", "v4b")),
     CorpusEntry(1321820, "写る", listOf("v5r", "vi")),
     CorpusEntry(1322540, "煮る", listOf("v1", "vt")),
     CorpusEntry(1322580, "煮込む", listOf("v5m", "vt")),
@@ -1702,8 +1702,8 @@ private fun corpusPart5(): List<CorpusEntry> = listOf(
     CorpusEntry(2167970, "しっくり行く", listOf("v5k-s")),
     CorpusEntry(2168340, "天は自ら助くる者を助く", listOf("exp", "v5k")),
     CorpusEntry(2172760, "行ってくる", listOf("exp", "int", "vk")),
-    CorpusEntry(2173500, "頭に浮かぶ", listOf("exp", "vi", "v5b")),
-    CorpusEntry(2173510, "胸に浮かぶ", listOf("exp", "vi", "v5b")),
+    CorpusEntry(2173500, "頭に浮かぶ", listOf("exp", "v5b")),
+    CorpusEntry(2173510, "胸に浮かぶ", listOf("exp", "v5b")),
     CorpusEntry(2174380, "難ずる", listOf("vz", "vt")),
     CorpusEntry(2175450, "兄弟牆に鬩ぐ", listOf("exp", "v5g")),
     CorpusEntry(2176330, "過ちを観て斯に仁を知る", listOf("exp", "v5r")),
@@ -2303,6 +2303,7 @@ private fun corpusPart7(): List<CorpusEntry> = listOf(
     CorpusEntry(2872052, "務める", listOf("v1", "vt")),
     CorpusEntry(2872109, "お帰りなさいませ", listOf("exp", "int")),
     CorpusEntry(2872578, "漁る", listOf("v4r", "vt")),
+    CorpusEntry(2872911, "あてぃし", listOf("pn")),
     CorpusEntry(5057839, "ナショナルランプーンクリスマスバケーション", listOf("n")),
     CorpusEntry(5057840, "ナショナルランプーンヨーロピアンヴァケーション", listOf("n")),
 )
