@@ -69,9 +69,11 @@ jobs:
           git config user.name "Alex March"
           git config user.email "hosaka@noreply.code.hosaka.cc"
           git add gradle/libs.versions.toml
-          # [skip ci] is written for instances that honour it; build-android.yml
-          # guards on this same string regardless.
-          git commit -m "chore(release): v$next [skip ci]"
+          # No [skip ci] marker, deliberately. Forgejo applies its native
+          # skip-ci check to every push event, and a tag push is a push event
+          # whose commit is this one -- the marker would suppress release.yml
+          # along with the build. build-android.yml matches on the subject.
+          git commit -m "chore(release): v$next"
           git tag -a "v$next" -m "okonomi v$next"
           git push origin "HEAD:${{ forgejo.ref_name }}"
           git push origin "v$next"
