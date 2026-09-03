@@ -1,2 +1,4 @@
 [tools]
+android-cli = "1.0.16251017"
 ruby = "3.3"
+java = "21"
