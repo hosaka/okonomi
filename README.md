@@ -95,3 +95,7 @@ Workflows run inside [a purpose-built image](./.forgejo/ci-image) carrying Zulu 
 - Tatoeba files under Tatoeba's [terms of use](https://tatoeba.org/en/terms_of_use)
 - [KanjiVG](https://kanjivg.tagaini.net/) files are under [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/).
 
+## Mirrors
+This repository is hosted on <img src="https://codeberg.org/delightful-commons/delightful-humane-design/raw/branch/main/logo/forgejo.svg" width="16"/>[Forgejo](https://code.hosaka.cc/hosaka/okonomi) which mirrors to the following git forges:
+- [<img src="https://codeberg.org/delightful-commons/delightful-humane-design/raw/branch/main/logo/codeberg.svg" width="16"/>](https://codeberg.org/hosaka/okonomi) - https://codeberg.org/hosaka/okonomi
+- [<img src="https://codeberg.org/delightful-commons/delightful-humane-design/raw/branch/main/logo/github.svg" width="16"/>](https://github.com/hosaka/okonomi) - https://github.com/hosaka/okonomi
