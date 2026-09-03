@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The permissions screengrab's setup asks the app under test to declare,
+    in the debug build type only so that the release manifest keeps the
+    empty permission set src/main declares. The screenshot run installs the
+    debug APK, so this is the manifest the instrumentation actually sees.
+
+    Screengrab's runner also grants CHANGE_CONFIGURATION, which is what its
+    LocaleTestRule needs to switch the device locale mid-run. This project
+    captures a single locale and uses no such rule, so the permission is not
+    declared; the grant is issued with errors ignored and logs a warning.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+        Declared because screengrab's setup asks for them, not because
+        anything here exercises them: the lane wakes the device and clears
+        the keyguard from the host with `input keyevent 82` before the
+        instrumentation starts, and the test itself does neither. They are
+        kept so the app matches what screengrab documents for a device that
+        boots locked or sleeps mid-run, which a machine other than this
+        AVD may well do.
+    -->
+    <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!--
+        Where screengrab writes the PNGs before the lane pulls them off the
+        device, on the old storage model.
+
+        Capped at API 28 on purpose. From API 29 these are not grantable at
+        all under scoped storage, so screengrab's `pm grant` for them fails
+        the same silent way the CHANGE_CONFIGURATION one does above, and
+        without the cap they also raise two ScopedStorage lint warnings
+        against a targetSdk of 36. Capture does not need them there:
+        screengrab falls back to the app's own internal directory and the
+        lane pulls it with `run-as`, which is how the API 35 runs work.
+    -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+</manifest>

@@ -1,0 +1,446 @@
+require 'fileutils'
+require 'rbconfig'
+require 'tmpdir'
+
+# No analytics please.
+opt_out_usage
+
+# Where the AVD lives.
+ENV['ANDROID_AVD_HOME'] ||= File.expand_path('~/.android/avd')
+
+AVD_NAME = 'okonomi-screenshots'.freeze
+SYSTEM_IMAGE_API = 'android-35'.freeze
+SYSTEM_IMAGE_TAG = 'default'.freeze
+AVD_DEVICE_PROFILE = 'medium_phone'.freeze
+
+# How long a cold boot of that AVD is allowed to take before the lane gives up.
+BOOT_TIMEOUT_SECONDS = 300
+
+# The screens the test captures and the themes it captures them under. The
+# eight file names the lane insists on are the product of these two, so
+# adding a screen is one line here and one stop in ScreenshotTest.
+SCREEN_NAMES = %w[1_search 2_word 3_kanji 4_phrases].freeze
+THEMES = %w[light dark].freeze
+
+APP_APK = File.join('androidApp', 'build', 'outputs', 'apk', 'debug', 'androidApp-debug.apk').freeze
+TESTS_APK = File.join(
+  'androidApp', 'build', 'outputs', 'apk', 'androidTest', 'debug', 'androidApp-debug-androidTest.apk'
+).freeze
+
+# The root of the tracked images. The locale and device-type segments below
+# it are determined by screengrab.
+SCREENSHOT_METADATA_DIR = File.join('fastlane', 'metadata', 'android').freeze
+
+# Device globals the lane changes and therefore has to put back. The three
+# animation scales stop a screenshot landing mid-transition, the fourth is
+# what lets SystemUI accept demo commands.
+DEVICE_SETTINGS = %w[
+  window_animation_scale
+  transition_animation_scale
+  animator_duration_scale
+  sysui_demo_allowed
+].freeze
+
+NAVBAR_OVERLAY_PREFIX = 'com.android.internal.systemui.navbar.'.freeze
+GESTURAL_NAVBAR_OVERLAY = "#{NAVBAR_OVERLAY_PREFIX}gestural".freeze
+
+# The status bar every screenshot shows: a fixed clock, no notifications, a
+# full wi-fi icon and nothing else in the radio group, and a full battery
+# that is not charging.
+DEMO_COMMANDS = [
+  'clock -e hhmm 1200',
+  'notifications -e visible false',
+  'network -e wifi show -e level 4 -e fully true -e mobile hide -e ethernet hide',
+  'battery -e level 100 -e plugged false'
+].freeze
+
+default_platform(:android)
+
+platform :android do
+  desc 'Creates the okonomi-screenshots AVD the screenshots lane drives.'
+  lane :create_avd do
+    if avd_names.include?(AVD_NAME)
+      UI.success("AVD #{AVD_NAME} already exists.")
+      next
+    end
+
+    unless File.directory?(system_image_dir)
+      UI.user_error!(
+        "The #{system_image} system image is not installed. Install it with:\n" \
+        "  #{sdkmanager_bin} \"#{system_image}\""
+      )
+    end
+
+    UI.message("Creating AVD #{AVD_NAME} from #{system_image}")
+    # avdmanager asks whether to customise the hardware profile, the device
+    # profile already answers that, so decline rather than hang on the prompt.
+    sh("echo no | #{avdmanager_bin.shellescape} create avd " \
+       "--name #{AVD_NAME.shellescape} " \
+       "--package #{system_image.shellescape} " \
+       "--device #{AVD_DEVICE_PROFILE.shellescape}")
+    UI.success("Created #{AVD_NAME}. `#{emulator_bin} -list-avds` now names it.")
+  end
+
+  desc 'Captures the README screenshots in light and dark on the okonomi-screenshots AVD.'
+  lane :screenshots do
+    unless avd_names.include?(AVD_NAME)
+      UI.user_error!(
+        "No #{AVD_NAME} AVD. Create it first:\n" \
+        '  mise exec -- bundle exec fastlane create_avd'
+      )
+    end
+
+    # Before the build, so a machine that cannot produce a device finds out
+    # in seconds rather than after a full assemble.
+    serial = boot_emulator
+
+    device_state = prepare_device(serial)
+    begin
+      gradle(tasks: [':androidApp:assembleDebug', ':androidApp:assembleDebugAndroidTest'])
+      verify_apks
+
+      staging = Dir.mktmpdir('okonomi-screenshots')
+      begin
+        enter_demo_mode(serial)
+        # Both themes come from the same flow. Night mode is set here rather
+        # than inside the test because MainActivity declares no configChanges
+        # for uiMode, so changing it mid-test would recreate the activity out
+        # from under the compose rule. The test reads the matching `theme`
+        # argument, names its files with it, and fails if the device is not
+        # actually in that mode.
+        THEMES.each_with_index do |theme, index|
+          adb_shell(serial, "cmd uimode night #{theme == 'dark' ? 'yes' : 'no'}")
+          capture_android_screenshots(
+            specific_device: serial,
+            output_directory: staging,
+            app_apk_path: repo_path(APP_APK),
+            tests_apk_path: repo_path(TESTS_APK),
+            launch_arguments: ["theme #{theme}"],
+            clear_previous_screenshots: index.zero?
+          )
+        end
+
+        published = publish_screenshots(verify_captured(staging))
+        UI.success("#{expected_screenshot_names.size} screenshots written to #{published}.")
+      ensure
+        FileUtils.remove_entry(staging, true)
+      end
+    ensure
+      restore_device(serial, device_state)
+    end
+
+    UI.message(
+      "#{AVD_NAME} is still running on #{serial}. Stop it with " \
+      "`#{adb_bin} -s #{serial} emu kill`; its log is #{emulator_log}."
+    )
+  end
+end
+
+# A repository path, absolute.
+def repo_path(*segments)
+  File.expand_path(File.join(*segments), repo_root)
+end
+
+def repo_root
+  fastlane_dir = FastlaneCore::FastlaneFolder.path
+  fastlane_dir ? File.expand_path('..', fastlane_dir) : Dir.pwd
+end
+
+# The Android SDK. The tools below live inside it and are not on PATH.
+def android_sdk_root
+  root = ENV['ANDROID_HOME'] || ENV['ANDROID_SDK_ROOT'] || File.expand_path('~/Android/Sdk')
+  UI.user_error!("No Android SDK at #{root}. Set ANDROID_HOME to it.") unless File.directory?(root)
+  root
+end
+
+def sdk_tool(*segments)
+  path = File.join(android_sdk_root, *segments)
+  unless File.executable?(path)
+    UI.user_error!("#{File.basename(path)} not found at #{path}. Install it through the SDK manager.")
+  end
+  path
+end
+
+def emulator_bin
+  sdk_tool('emulator', 'emulator')
+end
+
+def adb_bin
+  sdk_tool('platform-tools', 'adb')
+end
+
+def avdmanager_bin
+  sdk_tool('cmdline-tools', 'latest', 'bin', 'avdmanager')
+end
+
+def sdkmanager_bin
+  sdk_tool('cmdline-tools', 'latest', 'bin', 'sdkmanager')
+end
+
+# The system image, with the ABI the host can actually run. An x86_64 image
+# will not boot on Apple Silicon or arm64 Linux, and hardcoding one made
+# create_avd fail there with an SDK error rather than build the AVD.
+def system_image_abi
+  RbConfig::CONFIG['host_cpu'].match?(/arm64|aarch64/) ? 'arm64-v8a' : 'x86_64'
+end
+
+def system_image
+  "system-images;#{SYSTEM_IMAGE_API};#{SYSTEM_IMAGE_TAG};#{system_image_abi}"
+end
+
+# Where the SDK unpacks it. An sdkmanager package name is its own directory
+# path with semicolons where the separators go.
+def system_image_dir
+  File.join(android_sdk_root, *system_image.split(';'))
+end
+
+# The AVDs the emulator can see.
+#
+# Only lines that look like an AVD name survive: `emulator -list-avds` also
+# prints `INFO | ...` and `WARNING | ...` diagnostics on some setups, and a
+# diagnostic taken for an AVD name makes both lanes' guards lie. avdmanager
+# restricts names to this character set, so nothing real is filtered out.
+def avd_names
+  sh("#{emulator_bin.shellescape} -list-avds", log: false)
+    .split("\n")
+    .map(&:strip)
+    .grep(/\A[A-Za-z0-9._-]+\z/)
+end
+
+def emulator_serials
+  sh("#{adb_bin.shellescape} devices", log: false)
+    .split("\n")
+    .drop(1)
+    .map { |line| line.split("\t") }
+    .select { |serial, state| serial.to_s.start_with?('emulator-') && state.to_s.strip == 'device' }
+    .map(&:first)
+end
+
+# The AVD behind a running emulator. `adb emu avd name` answers with the
+# name and then `OK` on its own line.
+def emulator_avd_name(serial)
+  sh("#{adb_bin.shellescape} -s #{serial.shellescape} emu avd name",
+     log: false, error_callback: ->(_output) {})
+    .to_s
+    .split("\n")
+    .map(&:strip)
+    .reject { |line| line.empty? || line == 'OK' }
+    .first
+end
+
+# The serial of a running AVD_NAME emulator, or nil.
+def running_avd_serial
+  emulator_serials.find { |serial| emulator_avd_name(serial) == AVD_NAME }
+end
+
+# Boots AVD_NAME unless it is already running, and returns its serial.
+def boot_emulator
+  existing = running_avd_serial
+  if existing
+    UI.message("Using #{AVD_NAME}, already running on #{existing}.")
+    return existing
+  end
+
+  UI.message("Booting #{AVD_NAME} headless. First boot takes a while.")
+  # No window, deliberately.
+  waiter = Process.detach(
+    Process.spawn(
+      emulator_bin, '-avd', AVD_NAME,
+      '-no-window', '-gpu', 'swiftshader_indirect',
+      '-no-boot-anim', '-no-snapshot',
+      out: emulator_log, err: [emulator_log, 'a']
+    )
+  )
+
+  deadline = Time.now + BOOT_TIMEOUT_SECONDS
+  loop do
+    serial = running_avd_serial
+    if serial && device_ready?(serial)
+      UI.success("#{AVD_NAME} booted on #{serial}.")
+      return serial
+    end
+
+    unless waiter.alive?
+      UI.user_error!(
+        "The emulator exited (status #{waiter.value.exitstatus}) before #{AVD_NAME} finished " \
+        "booting. Its output is in #{emulator_log}."
+      )
+    end
+
+    if Time.now > deadline
+      UI.user_error!(
+        "#{AVD_NAME} did not finish booting within #{BOOT_TIMEOUT_SECONDS}s. " \
+        "Its output is in #{emulator_log}."
+      )
+    end
+    sleep(5)
+  end
+end
+
+# Whether the device can be installed onto and driven.
+def device_ready?(serial)
+  return false unless device_property(serial, 'sys.boot_completed') == '1'
+  return false unless device_property(serial, 'init.svc.bootanim') == 'stopped'
+
+  adb_shell_quiet(serial, 'pm path android').include?('package:')
+end
+
+# Where the spawned emulator's own output goes.
+def emulator_log
+  File.join(Dir.tmpdir, 'okonomi-screenshots-emulator.log')
+end
+
+def device_property(serial, name)
+  adb_shell_quiet(serial, "getprop #{name.shellescape}").strip
+end
+
+def verify_apks
+  missing = [APP_APK, TESTS_APK].reject { |path| File.file?(repo_path(path)) }
+  return if missing.empty?
+
+  UI.user_error!(
+    "The build did not produce #{missing.join(' and ')}. Either the assemble tasks above did not " \
+    'run them, or AGP changed where it writes them and the paths in this Fastfile need updating.'
+  )
+end
+
+# Quiets the device down for capture and returns what has to be put back.
+def prepare_device(serial)
+  # The freshly booted image shows a swipe keyguard over the launcher.
+  adb_shell(serial, 'input keyevent 82')
+
+  state = {
+    settings: DEVICE_SETTINGS.to_h { |setting| [setting, device_setting(serial, setting)] },
+    night: night_mode(serial),
+    navbar: enabled_navbar_overlay(serial)
+  }
+  # A screenshot taken during a transition is a half-drawn frame. With the
+  # scales at zero there are no transitions to land in the middle of.
+  %w[window_animation_scale transition_animation_scale animator_duration_scale].each do |scale|
+    adb_shell(serial, "settings put global #{scale} 0")
+  end
+  adb_shell(serial, "cmd overlay enable #{GESTURAL_NAVBAR_OVERLAY.shellescape}")
+  state
+end
+
+# The navbar overlay that is enabled, or nil when none is.
+def enabled_navbar_overlay(serial)
+  adb_shell_quiet(serial, 'cmd overlay list android')
+    .split("\n")
+    .map(&:strip)
+    .select { |line| line.include?(NAVBAR_OVERLAY_PREFIX) }
+    .find { |line| line.start_with?('[x]') }
+    &.split(' ')
+    &.last
+end
+
+def restore_navbar_overlay(serial, overlay)
+  return if overlay == GESTURAL_NAVBAR_OVERLAY
+
+  adb_shell(serial, "cmd overlay disable #{GESTURAL_NAVBAR_OVERLAY.shellescape}")
+  adb_shell(serial, "cmd overlay enable #{overlay.shellescape}") if overlay
+end
+
+# Puts back everything prepare_device and the capture changed.
+def restore_device(serial, state)
+  exit_demo_mode(serial)
+  state[:settings].each { |setting, value| put_device_setting(serial, setting, value) }
+  adb_shell(serial, "cmd uimode night #{state[:night]}")
+  restore_navbar_overlay(serial, state[:navbar])
+rescue StandardError => e
+  UI.error("Could not put the device back the way it was: #{e.message}")
+end
+
+# A global setting, or nil when it has never been written. `settings get`
+# prints the string "null" for that case.
+def device_setting(serial, name)
+  value = adb_shell_quiet(serial, "settings get global #{name.shellescape}").strip
+  value.empty? || value == 'null' ? nil : value
+end
+
+# Deleting is how a setting that was never written is put back.
+def put_device_setting(serial, name, value)
+  if value.nil?
+    adb_shell(serial, "settings delete global #{name.shellescape}")
+  else
+    adb_shell(serial, "settings put global #{name.shellescape} #{value.shellescape}")
+  end
+end
+
+# `cmd uimode night` answers "Night mode: no". Anything unparseable falls
+# back to `no`, which is the shipped AVD's state.
+def night_mode(serial)
+  answer = adb_shell_quiet(serial, 'cmd uimode night').split(':').last.to_s.strip
+  %w[yes no auto custom].include?(answer) ? answer : 'no'
+end
+
+# SystemUI demo mode: the status bar shows fixed values rather than the
+# emulator's real clock and battery, so a rerun produces the same picture.
+def enter_demo_mode(serial)
+  adb_shell(serial, 'settings put global sysui_demo_allowed 1')
+  send_demo_command(serial, 'enter')
+  DEMO_COMMANDS.each { |command| send_demo_command(serial, command) }
+end
+
+def exit_demo_mode(serial)
+  send_demo_command(serial, 'exit')
+end
+
+def send_demo_command(serial, command)
+  adb_shell(serial, "am broadcast -a com.android.systemui.demo -e command #{command}")
+end
+
+def expected_screenshot_names
+  THEMES.product(SCREEN_NAMES).map { |theme, screen| "#{screen}_#{theme}.png" }.sort
+end
+
+# Where screengrab places pulled PNGs, under `root`.
+def screengrab_dir(root)
+  config = Screengrab.config
+  File.join(root, config[:locales].first, 'images', "#{config[:device_type]}Screenshots")
+end
+
+# Fails unless the run produced all images, and returns where they are.
+def verify_captured(staging)
+  dir = screengrab_dir(staging)
+  present = Dir.glob(File.join(dir, '*.png')).map { |path| File.basename(path) }
+
+  missing = expected_screenshot_names - present
+  unless missing.empty?
+    UI.user_error!(
+      "The capture produced #{present.size} of #{expected_screenshot_names.size} screenshots. " \
+      "Missing: #{missing.join(', ')}."
+    )
+  end
+
+  empty = expected_screenshot_names.reject { |name| File.size?(File.join(dir, name)) }
+  UI.user_error!("Screenshots written but empty: #{empty.join(', ')}.") unless empty.empty?
+
+  dir
+end
+
+# Replaces the tracked images with a verified full set, and returns where
+# they went.
+def publish_screenshots(captured_dir)
+  target = screengrab_dir(repo_path(SCREENSHOT_METADATA_DIR))
+  FileUtils.rm_rf(target)
+  FileUtils.mkdir_p(target)
+  paths = expected_screenshot_names.map do |name|
+    File.join(target, name).tap { |path| FileUtils.cp(File.join(captured_dir, name), path) }
+  end
+  # `adb pull` leaves them 0600
+  FileUtils.chmod(0o644, paths)
+  target
+end
+
+# The command is deliberately not escaped as one word: its parts are the
+# arguments the device-side shell is meant to see.
+def adb_shell(serial, command)
+  sh("#{adb_bin.shellescape} -s #{serial.shellescape} shell #{command}", log: false).to_s
+end
+
+# The same, for a device that is booting or a command that is allowed to fail.
+def adb_shell_quiet(serial, command)
+  sh("#{adb_bin.shellescape} -s #{serial.shellescape} shell #{command}",
+     log: false, error_callback: ->(_output) {}).to_s
+end

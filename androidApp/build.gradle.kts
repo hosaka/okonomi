@@ -30,6 +30,14 @@ dependencies {
     implementation(libs.compose.uiToolingPreview)
     debugImplementation(libs.compose.uiTooling)
 
+    // The screenshot test (src/androidTest) runs here rather than in :shared
+    // because only the app APK carries the okonomi.db asset the screens read.
+    androidTestImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.testExt.junit)
+    androidTestImplementation(libs.androidx.compose.uiTestJunit4)
+    androidTestImplementation(libs.screengrab)
+
     dictionary(project(":tools:dictgen"))
 }
 
@@ -135,6 +143,7 @@ android {
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = appVersion.code
         versionName = appVersion.name
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     packaging {
         resources {

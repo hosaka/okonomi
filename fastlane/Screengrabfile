@@ -1,0 +1,29 @@
+# Options shared by both passes of the `screenshots` lane, so the lane
+# itself carries only what differs between them: the theme, and where that
+# pass's images are staged.
+#
+# Run it as `mise exec -- bundle exec fastlane screenshots`.
+
+app_package_name('cc.hosaka.okonomi')
+# AGP derives the instrumentation package from applicationId. Spelled out
+# rather than left to screengrab's own default so a change to either name
+# fails here instead of installing nothing and finding no screenshots.
+tests_package_name('cc.hosaka.okonomi.test')
+
+# The one class, not its package. A package filter would sweep in any
+# instrumentation test added under cc.hosaka.okonomi later: a slow or
+# failing test that has nothing to do with screenshots would then fail the
+# lane.
+use_tests_in_classes(['cc.hosaka.okonomi.ScreenshotTest'])
+
+# One locale. Screengrab splits its output directory by locale and by
+# nothing else, which is why the theme is part of each file's name. The lane
+# reads this back off the resolved config to work out where the PNGs land,
+# so this is the only place the locale is stated.
+locales(['en-US'])
+
+# The README links these files by name, so the names have to be stable.
+use_timestamp_suffix(false)
+
+# No need to open the browser.
+skip_open_summary(true)

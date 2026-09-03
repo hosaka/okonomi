@@ -120,15 +120,16 @@ Carthage/Build/
 
 # fastlane
 #
-# It is recommended to not store the screenshots in the git repo.
-# Instead, use fastlane to re-generate the screenshots whenever they are needed.
-# For more information about the recommended setup visit:
-# https://docs.fastlane.tools/best-practices/source-control/#source-control
+# The screenshots under fastlane/metadata/android/en-US/images/ are tracked on purpose
+# because the README links them.
 
 fastlane/report.xml
 fastlane/Preview.html
-fastlane/screenshots/**/*.png
+fastlane/screenshots
 fastlane/test_output
+fastlane/README.md
+fastlane/**/screenshots.html
+!fastlane/metadata/android/en-US/images/phoneScreenshots/*.png
 
 # os junk
 .DS_Store

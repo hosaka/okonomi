@@ -13,6 +13,16 @@
   </a>
 </div>
 
+## Screenshots
+<div align="center">
+
+|                | Search | Word | Kanji | Phrases |
+|----------------|--------|------|-------|---------|
+| **Light** | [<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1_search_light.png" alt="Search results for がんば (light theme)" width="180">](fastlane/metadata/android/en-US/images/phoneScreenshots/1_search_light.png) | [<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2_word_light.png" alt="The 頑張る entry, Word tab (light theme)" width="180">](fastlane/metadata/android/en-US/images/phoneScreenshots/2_word_light.png) | [<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/3_kanji_light.png" alt="The 頑張る entry, Kanji tab (light theme)" width="180">](fastlane/metadata/android/en-US/images/phoneScreenshots/3_kanji_light.png) | [<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/4_phrases_light.png" alt="The 頑張る entry, Phrases tab (light theme)" width="180">](fastlane/metadata/android/en-US/images/phoneScreenshots/4_phrases_light.png) |
+| **Dark** | [<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1_search_dark.png" alt="Search results for がんば (dark theme)" width="180">](fastlane/metadata/android/en-US/images/phoneScreenshots/1_search_dark.png) | [<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2_word_dark.png" alt="The 頑張る entry, Word tab (dark theme)" width="180">](fastlane/metadata/android/en-US/images/phoneScreenshots/2_word_dark.png) | [<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/3_kanji_dark.png" alt="The 頑張る entry, Kanji tab (dark theme)" width="180">](fastlane/metadata/android/en-US/images/phoneScreenshots/3_kanji_dark.png) | [<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/4_phrases_dark.png" alt="The 頑張る entry, Phrases tab (dark theme)" width="180">](fastlane/metadata/android/en-US/images/phoneScreenshots/4_phrases_dark.png) |
+
+</div>
+
 ## Building
 
 - Android Debug app: `./gradlew :androidApp:assembleDebug`.
