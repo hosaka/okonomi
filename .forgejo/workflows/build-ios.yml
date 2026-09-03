@@ -1,32 +1,21 @@
 name: Build iOS
 
-# Manual only. There is no macOS runner, and a scheduled or push-triggered job
-# that cannot succeed is worse than no job at all: it trains you to ignore red.
-#
-# This is NOT the iOS safety net. Kotlin/Native compiles the iOS targets on
-# linux-amd64, so pr-test.yml already builds :shared:compileKotlinIosArm64 and
-# :shared:compileTestKotlinIosSimulatorArm64 on every pull request. What needs
-# a Mac is linking the framework and driving Xcode -- that is what this stub is
-# a placeholder for.
 on:
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: linux-amd64
+    if: "!startsWith(forgejo.event.head_commit.message, 'chore(release): v')"
     steps:
       - name: Explain what is missing
         run: |
           cat <<'MSG'
           No macOS runner is registered, so the iOS app cannot be built here.
 
-          Already covered on linux-amd64 by pr-test.yml:
-            :shared:compileKotlinIosArm64
-            :shared:compileTestKotlinIosSimulatorArm64
-
           When a macOS runner exists, replace this job with roughly:
             runs-on: macos-arm64
-            - ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64
-            - xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp \
-                -destination 'generic/platform=iOS Simulator' build
+            - xcodebuild -project iosApp/iosApp.xcodeproj -target iosApp \
+                -configuration Debug -sdk iphonesimulator -arch arm64 \
+                CODE_SIGNING_ALLOWED=NO build
           MSG

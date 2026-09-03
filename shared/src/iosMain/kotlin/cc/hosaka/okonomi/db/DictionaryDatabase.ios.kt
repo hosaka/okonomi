@@ -35,13 +35,13 @@ import platform.Foundation.writeToFile
 /**
  * iOS provisioning of the bundled dictionary.
  *
- * Xcode wiring (pending, to be done on a macOS host): add the
- * `tools/dictgen/build/generated/dictionary` output files `okonomi.db`
- * and `okonomi.db.version` to the iosApp target's Copy Bundle Resources
- * build phase (or a Run Script phase invoking
- * `./gradlew :tools:dictgen:generateDictionary` and copying the two
- * files into the app bundle). Until then the bundle lookup fails and the
- * caller degrades to the non-crashing load-failure path.
+ * The two bundled files arrive via the iosApp target's "Bundle
+ * Dictionary" run-script phase, which runs
+ * `:tools:dictgen:generateDictionary` and copies `okonomi.db` and
+ * `okonomi.db.version` into the app bundle. That phase carries the same
+ * name-drift guard as :androidApp's `SyncDictionaryAssets`, so a rename
+ * on either side fails the build rather than leaving the bundle lookup
+ * below to degrade to the load-failure path.
  *
  * The copied database lives in Application Support and is excluded from
  * iCloud/iTunes backup since it is regenerable from the bundled asset.
@@ -151,7 +151,7 @@ private inline fun requireFileOperation(
 
 private fun bundledResourcePath(name: String): String =
     NSBundle.mainBundle.pathForResource(name, ofType = null)
-        ?: error("$name is not in the app bundle; wire the dictgen output into Copy Bundle Resources")
+        ?: error("$name is not in the app bundle; the \"Bundle Dictionary\" build phase did not run")
 
 private fun readText(path: String): String? {
     val data = NSData.dataWithContentsOfFile(path) ?: return null

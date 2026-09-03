@@ -71,6 +71,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = E94A1AF35467871A21EBC674 /* Build configuration list for PBXNativeTarget "iosApp" */;
 			buildPhases = (
+				1F7B4C9A0D3E5628B4A17C0F /* Bundle Dictionary */,
 				6A8F8B2AE467FD365679223A /* Compile Kotlin Framework */,
 				8B3BE9E54D70C7DB35033D4E /* Sources */,
 				99CF6680FBAB8B3F24323506 /* Frameworks */,
@@ -153,6 +154,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "if [ \"YES\" = \"$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED\" ]; then\n  echo \"Skipping Gradle build task invocation due to OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED environment variable set to \\\"YES\\\"\"\n  exit 0\nfi\ncd \"$SRCROOT/..\"\n./gradlew :shared:embedAndSignAppleFrameworkForXcode\n";
+		};
+		1F7B4C9A0D3E5628B4A17C0F /* Bundle Dictionary */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Bundle Dictionary";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Packages the generated dictionary into the app bundle: the iOS\n# counterpart of :androidApp's SyncDictionaryAssets, guard included. A\n# missing or renamed file fails the build here rather than surfacing as an\n# empty dictionary on the device.\n#\n# Deliberately does NOT honour OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED. That\n# flag means the IDE builds the Kotlin framework itself; it says nothing\n# about the dictionary, and skipping this phase would ship a bundle\n# without one.\n#\n# Ordered FIRST, ahead of the Kotlin framework phase, so the ~500MB source\n# download starts straight away instead of after a full compile and link.\n# Nothing here needs an earlier phase: it creates its own destination\n# directory rather than relying on Copy Bundle Resources having run, and\n# codesign happens after every phase, so the files are still signed.\nset -eu\n\ncd \"$SRCROOT/..\"\n./gradlew :tools:dictgen:generateDictionary\n\nDICT_DIR=\"tools/dictgen/build/generated/dictionary\"\nDEST=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\n\n# Guard against silent name drift between dictgen and the runtime asset\n# constants in DictionaryDatabase.kt. SyncDictionaryAssets makes exactly\n# this check for the APK; without it a rename shows up only as a\n# dictionary that will not load.\nEXPECTED=\"okonomi.db okonomi.db.version\"\nACTUAL=\"$(ls \"$DICT_DIR\" | sort | tr '\\n' ' ' | sed 's/ $//')\"\nif [ \"$ACTUAL\" != \"$EXPECTED\" ]; then\n  echo \"error: Dictionary asset mismatch: expected exactly [$EXPECTED] in $DICT_DIR but found [$ACTUAL]. The dictgen output names and the app's asset name constants must stay in lockstep.\" >&2\n  exit 1\nfi\n\nmkdir -p \"$DEST\"\n# rsync rather than cp: its size+mtime quick check leaves an unchanged\n# database alone, so an incremental build does not recopy and re-sign a\n# multi-hundred-megabyte file on every run.\nrsync -a \"$DICT_DIR/okonomi.db\" \"$DICT_DIR/okonomi.db.version\" \"$DEST/\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
