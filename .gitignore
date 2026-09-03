@@ -130,6 +130,9 @@ fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
 
+# os junk
+.DS_Store
+
 # agent
 .claude/
 _bmad/
