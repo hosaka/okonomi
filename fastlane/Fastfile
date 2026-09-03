@@ -29,6 +29,8 @@ IOS_TEST_TASKS = %w[:shared:iosSimulatorArm64Test].freeze
 
 BUILD_TYPES = %w[debug release].freeze
 
+APPLICATION_ID = 'cc.hosaka.okonomi'.freeze
+
 IOS_PROJECT = File.join('iosApp', 'iosApp.xcodeproj').freeze
 IOS_TARGET = 'iosApp'.freeze
 
@@ -133,6 +135,13 @@ platform :android do
     type = build_type(options)
     run_gradle([":androidApp:assemble#{type.capitalize}"])
     report_apk(type)
+  end
+
+  desc 'Builds and installs the app. `type:release` for the release APK, `serial:` to pick a device.'
+  lane :install do |options|
+    # Resolved before the build so a run with no device says so in seconds.
+    serial = install_serial(options[:serial])
+    install_apk(serial, build(options))
   end
 
   desc 'Creates the okonomi-screenshots AVD the screenshots lane drives.'
@@ -255,12 +264,43 @@ def report_apk(type)
   UI.user_error!("assemble#{type.capitalize} produced no APK under androidApp/build/outputs/apk/#{type}.") unless apk
 
   UI.success("#{apk} (#{(File.size(apk) / 1024.0 / 1024).round(1)} MB)")
-  return unless type == 'release' && !release_signing_configured?
+  if type == 'release' && !release_signing_configured?
+    UI.important(
+      'Signed with the local debug key: no keystore.properties and no ' \
+      "#{SIGNING_ENV.join('/')}. Local use only -- see README.md."
+    )
+  end
+  apk
+end
 
-  UI.important(
-    'Signed with the local debug key: no keystore.properties and no ' \
-    "#{SIGNING_ENV.join('/')}. Local use only -- see README.md."
-  )
+# The device to install onto: the one named, or the only one connected.
+def install_serial(requested)
+  serials = connected_serials
+  UI.user_error!("No device: `#{adb_bin} devices` sees none.") if serials.empty?
+
+  if requested
+    UI.user_error!("No device #{requested}. adb sees #{serials.join(', ')}.") unless serials.include?(requested)
+    return requested
+  end
+
+  return serials.first if serials.one?
+
+  UI.user_error!("#{serials.size} devices connected. Name one: serial:#{serials.first}.")
+end
+
+def install_apk(serial, apk)
+  # -r keeps the installed app's data across the reinstall.
+  output = sh("#{adb_bin.shellescape} -s #{serial.shellescape} install -r #{apk.shellescape}",
+              error_callback: ->(_output) {}).to_s
+  return UI.success("Installed #{File.basename(apk)} on #{serial}.") if output.include?('Success')
+
+  # A debug APK and a release one carry different signatures, so neither can
+  # replace the other in place.
+  if output.match?(/INSTALL_FAILED_UPDATE_INCOMPATIBLE|signatures do not match/)
+    UI.important("The other build is installed. Remove it: #{adb_bin} -s #{serial} uninstall #{APPLICATION_ID}")
+  end
+
+  UI.user_error!("adb install failed: #{output.strip}")
 end
 
 def release_signing_configured?
@@ -338,13 +378,19 @@ def avd_names
     .grep(/\A[A-Za-z0-9._-]+\z/)
 end
 
-def emulator_serials
+# Every device adb is ready to talk to, hardware and emulators both. States
+# other than `device` -- offline, unauthorized, no permissions -- are not.
+def connected_serials
   sh("#{adb_bin.shellescape} devices", log: false)
     .split("\n")
     .drop(1)
     .map { |line| line.split("\t") }
-    .select { |serial, state| serial.to_s.start_with?('emulator-') && state.to_s.strip == 'device' }
+    .select { |_serial, state| state.to_s.strip == 'device' }
     .map(&:first)
+end
+
+def emulator_serials
+  connected_serials.select { |serial| serial.start_with?('emulator-') }
 end
 
 # The AVD behind a running emulator. `adb emu avd name` answers with the
