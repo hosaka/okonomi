@@ -1,4 +1,12 @@
 [tools]
 android-cli = "1.0.16251017"
 ruby = "3.3"
-java = "21"
+java = "zulu-21"
+
+[tasks.prep]
+description = "Prepare development environment"
+run = '''
+android --no-metrics sdk install platform-tools platforms/android-37.0 build-tools/36.0.0
+bundle install
+git config remote.origin.prune true
+'''
