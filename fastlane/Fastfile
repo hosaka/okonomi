@@ -28,9 +28,6 @@ IOS_TEST_TASKS = %w[:shared:iosSimulatorArm64Test].freeze
 # Builds
 
 BUILD_TYPES = %w[debug release].freeze
-
-APPLICATION_ID = 'cc.hosaka.okonomi'.freeze
-
 IOS_PROJECT = File.join('iosApp', 'iosApp.xcodeproj').freeze
 IOS_TARGET = 'iosApp'.freeze
 
@@ -139,9 +136,22 @@ platform :android do
 
   desc 'Builds and installs the app. `type:release` for the release APK, `serial:` to pick a device.'
   lane :install do |options|
-    # Resolved before the build so a run with no device says so in seconds.
+    type = build_type(options)
     serial = install_serial(options[:serial])
-    install_apk(serial, build(options))
+
+    on_device(serial) { run_gradle([":androidApp:install#{type.capitalize}"]) }
+
+    report_apk(type)
+    UI.success("Installed on #{serial}.")
+  end
+
+  desc 'Uninstalls the app. `serial:` to pick a device.'
+  lane :uninstall do |options|
+    serial = install_serial(options[:serial])
+    # Both variants carry the same applicationId, so either task removes
+    # whichever of the two is installed.
+    on_device(serial) { run_gradle([':androidApp:uninstallDebug']) }
+    UI.success("Uninstalled from #{serial}.")
   end
 
   desc 'Creates the okonomi-screenshots AVD the screenshots lane drives.'
@@ -288,19 +298,13 @@ def install_serial(requested)
   UI.user_error!("#{serials.size} devices connected. Name one: serial:#{serials.first}.")
 end
 
-def install_apk(serial, apk)
-  # -r keeps the installed app's data across the reinstall.
-  output = sh("#{adb_bin.shellescape} -s #{serial.shellescape} install -r #{apk.shellescape}",
-              error_callback: ->(_output) {}).to_s
-  return UI.success("Installed #{File.basename(apk)} on #{serial}.") if output.include?('Success')
-
-  # A debug APK and a release one carry different signatures, so neither can
-  # replace the other in place.
-  if output.match?(/INSTALL_FAILED_UPDATE_INCOMPATIBLE|signatures do not match/)
-    UI.important("The other build is installed. Remove it: #{adb_bin} -s #{serial} uninstall #{APPLICATION_ID}")
-  end
-
-  UI.user_error!("adb install failed: #{output.strip}")
+# Runs a block against one device, and puts ANDROID_SERIAL back afterwards.
+def on_device(serial)
+  previous = ENV['ANDROID_SERIAL']
+  ENV['ANDROID_SERIAL'] = serial
+  yield
+ensure
+  ENV['ANDROID_SERIAL'] = previous
 end
 
 def release_signing_configured?

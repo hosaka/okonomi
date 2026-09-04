@@ -29,10 +29,13 @@ The apps are built with [fastlane](./fastlane/Fastfile) lanes which uses Gradle 
 
 | Lane | Builds |
 |---|---|
-| `fastlane android build` | the debug APK, and reports where it landed |
-| `fastlane android build type:release` | the release APK, and warns when it is debug-signed |
-| `fastlane ios build` | the app for the simulator |
-| `fastlane ios build type:release` | the app for the simulator, in the Release configuration |
+| `fastlane android build` | builds the debug APK, and reports where it landed |
+| `fastlane android build type:release` | builds the release APK, and warns when it is debug-signed |
+| `fastlane android install` | builds the debug APK and installs it, `serial:` picks the device |
+| `fastlane android install type:release` | the same for the release APK |
+| `fastlane android uninstall` | removes whichever build is installed, `serial:` picks the device |
+| `fastlane ios build` | builds the app for the simulator |
+| `fastlane ios build type:release` | builds the app for the simulator, in the Release configuration |
 
 If you don't want to pull in mise/ruby/fastlane into your environment, you can build with Gradle directly:
 
