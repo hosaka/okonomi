@@ -8,11 +8,6 @@ on:
 jobs:
   build:
     runs-on: linux-amd64
-    # version.yml pushes a bump commit to main and its tag at the same time,
-    # so without this guard the bump would build here while release.yml builds
-    # the identical tree, racing for the same cache keys. It cannot use a
-    # [skip ci] marker to say so: that is honoured natively on every push
-    # event, and would suppress the tag push release.yml needs.
     if: "!startsWith(forgejo.event.head_commit.message, 'chore(release): v')"
     container:
       image: code.hosaka.cc/hosaka/okonomi/ci:0.1.0
@@ -49,6 +44,3 @@ jobs:
           echo "Built $apk ($(du -h "$apk" | cut -f1))"
           grep -oE '"version(Code|Name)":[^,}]*' androidApp/build/outputs/apk/release/output-metadata.json
           apksigner verify --print-certs "$apk" | grep -i 'DN:' | head -1
-          # This APK is debug-signed and is a build check only; release.yml
-          # produces the signed artefact. Add forgejo/upload-artifact here if
-          # you ever want to download it -- note it is ~172 MB per merge.

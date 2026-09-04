@@ -1,4 +1,4 @@
-name: Bump version
+name: Bump version and release
 
 on:
   workflow_dispatch:
@@ -18,15 +18,14 @@ jobs:
     runs-on: linux-amd64
     container:
       image: code.hosaka.cc/hosaka/okonomi/ci:0.1.0
+    outputs:
+      tag: ${{ steps.next.outputs.tag }}
 
     steps:
-      # Needs a PAT, not the default job token: the bump is pushed to the
-      # default branch, and the tag it pushes has to trigger release.yml.
       - name: Checkout repository
         uses: https://code.forgejo.org/actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          token: ${{ secrets.FORGEJO_TOKEN }}
 
       - name: Compute the next version
         id: next
@@ -55,6 +54,7 @@ jobs:
           fi
           echo "current=$current" >> $FORGEJO_OUTPUT
           echo "next=$major.$minor.$patch" >> $FORGEJO_OUTPUT
+          echo "tag=v$major.$minor.$patch" >> $FORGEJO_OUTPUT
           echo "Bumping $current -> $major.$minor.$patch (${{ inputs.bump }})"
 
       - name: Commit and tag
@@ -66,15 +66,18 @@ jobs:
             exit 1
           fi
           sed -i "s/^app = \".*\"/app = \"$next\"/" gradle/libs.versions.toml
-          git config user.name "Alex March"
-          git config user.email "hosaka@noreply.code.hosaka.cc"
+          git config user.name "okonomi[bot]"
+          git config user.email "noreply@code.hosaka.cc"
           git add gradle/libs.versions.toml
-          # No [skip ci] marker, deliberately. Forgejo applies its native
-          # skip-ci check to every push event, and a tag push is a push event
-          # whose commit is this one -- the marker would suppress release.yml
-          # along with the build. build-android.yml matches on the subject.
           git commit -m "chore(release): v$next"
           git tag -a "v$next" -m "okonomi v$next"
           git push origin "HEAD:${{ forgejo.ref_name }}"
           git push origin "v$next"
-          echo "Pushed v$next; release.yml takes it from here."
+          echo "Pushed v$next; the release job builds and publishes it."
+
+  release:
+    needs: bump
+    uses: ./.forgejo/workflows/release.yml
+    with:
+      tag: ${{ needs.bump.outputs.tag }}
+    secrets: inherit

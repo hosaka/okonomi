@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_call:
+    inputs:
+      tag:
+        description: The release tag to build and publish
+        required: true
+        type: string
 
 jobs:
   release:
@@ -14,8 +20,25 @@ jobs:
         FORGEJO_URL: https://code.hosaka.cc
 
     steps:
+      - name: Resolve the tag
+        id: tag
+        run: |
+          set -eu
+          tag="${INPUT_TAG:-}"
+          [ -n "$tag" ] || tag="${{ forgejo.ref_name }}"
+          case "$tag" in
+            v*) ;;
+            *) echo "Not a release tag: $tag" >&2; exit 1 ;;
+          esac
+          echo "tag=$tag" >> $FORGEJO_OUTPUT
+          echo "Releasing $tag"
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+
       - name: Checkout repository
         uses: https://code.forgejo.org/actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
 
       - name: Cache Gradle
         uses: https://code.forgejo.org/actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -34,16 +57,11 @@ jobs:
 
       # Fail before building rather than after: a missing value otherwise
       # surfaces as a debug-signed APK that looks like a release.
-      #
-      # The alias is a variable, not a secret. It is not sensitive without the
-      # keystore, and the runner redacts every secret value wherever it appears
-      # in a log -- an alias of "okonomi" would blank the cache key, the APK
-      # name, the release title and every path that contains it.
       - name: Check signing credentials are present
         run: |
           set -eu
           missing=""
-          for name in OKONOMI_KEYSTORE_BASE64 OKONOMI_KEYSTORE_PASSWORD OKONOMI_KEY_ALIAS FORGEJO_TOKEN; do
+          for name in OKONOMI_KEYSTORE_BASE64 OKONOMI_KEYSTORE_PASSWORD OKONOMI_KEY_ALIAS; do
             eval "value=\${$name:-}"
             [ -n "$value" ] || missing="$missing $name"
           done
@@ -55,7 +73,6 @@ jobs:
           OKONOMI_KEYSTORE_BASE64: ${{ secrets.OKONOMI_KEYSTORE_BASE64 }}
           OKONOMI_KEYSTORE_PASSWORD: ${{ secrets.OKONOMI_KEYSTORE_PASSWORD }}
           OKONOMI_KEY_ALIAS: ${{ vars.OKONOMI_KEY_ALIAS }}
-          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
 
       # Outside the workspace so it cannot be picked up by a build input or
       # left behind in an artifact.
@@ -77,7 +94,7 @@ jobs:
         id: apk
         run: |
           set -eu
-          tag="${{ forgejo.ref_name }}"
+          tag="${{ steps.tag.outputs.tag }}"
           expected="${tag#v}"
           actual=$(sed -n 's/^app = "\(.*\)"/\1/p' gradle/libs.versions.toml)
           if [ "$actual" != "$expected" ]; then
@@ -93,14 +110,13 @@ jobs:
             exit 1
           fi
           echo "apk=$apk" >> $FORGEJO_OUTPUT
-          echo "tag=$tag" >> $FORGEJO_OUTPUT
 
       - name: Publish the Forgejo release
         env:
           TOKEN: ${{ secrets.FORGEJO_TOKEN }}
         run: |
           set -eu
-          tag="${{ steps.apk.outputs.tag }}"
+          tag="${{ steps.tag.outputs.tag }}"
           apk="${{ steps.apk.outputs.apk }}"
           id=$(curl -sS --fail --request POST \
             --header "Authorization: token $TOKEN" \
