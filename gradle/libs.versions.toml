@@ -1,7 +1,7 @@
 [versions]
 # The app's own semver. versionCode is derived from it in androidApp/build.gradle.kts,
 # so this is the only place a release version is written. Bumped by version.yml.
-app = "0.1.1"
+app = "0.2.0"
 aboutLibraries = "15.0.4"
 agp = "9.1.1"
 android-buildTools = "36.0.0"
