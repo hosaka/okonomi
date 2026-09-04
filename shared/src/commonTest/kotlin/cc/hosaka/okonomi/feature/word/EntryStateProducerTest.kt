@@ -290,4 +290,6 @@ private class SilentFavouritesStore : FavouritesStore {
     override fun isFavourite(entryId: Long): Flow<Boolean> = emptyFlow()
 
     override fun toggleFavourite(entryId: Long) = Unit
+
+    override fun replaceFavourites(entryIds: List<Long>) = Unit
 }

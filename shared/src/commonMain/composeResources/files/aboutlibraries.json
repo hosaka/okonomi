@@ -52,10 +52,10 @@
         },
         {
             "uniqueId": "androidx.activity:activity-ktx",
-            "artifactVersion": "1.12.0",
+            "artifactVersion": "1.13.0",
             "name": "Activity Kotlin Extensions",
             "description": "Kotlin extensions for 'activity' artifact",
-            "website": "https://developer.android.com/jetpack/androidx/releases/activity#1.12.0",
+            "website": "https://developer.android.com/jetpack/androidx/releases/activity#1.13.0",
             "developers": [
                 {
                     "name": "The Android Open Source Project"
@@ -987,18 +987,21 @@
         },
         {
             "uniqueId": "androidx.documentfile:documentfile",
-            "artifactVersion": "1.0.0",
-            "name": "Support Document File",
+            "artifactVersion": "1.1.0",
+            "name": "Document File",
             "description": "The Support Library is a static library that you can add to your Android application in order to use APIs that are either not available for older platform versions or utility APIs that aren't a part of the framework APIs. Compatible on devices running API 14 or later.",
-            "website": "http://developer.android.com/tools/extras/support-library.html",
+            "website": "https://developer.android.com/jetpack/androidx/releases/documentfile#1.1.0",
             "developers": [
                 {
                     "name": "The Android Open Source Project"
                 }
             ],
+            "organization": {
+                "name": "The Android Open Source Project"
+            },
             "scm": {
                 "connection": "scm:git:https://android.googlesource.com/platform/frameworks/support",
-                "url": "http://source.android.com"
+                "url": "https://cs.android.com/androidx/platform/frameworks/support"
             },
             "licenses": [
                 "Apache-2.0"
@@ -1040,6 +1043,31 @@
                     "name": "The Android Open Source Project"
                 }
             ],
+            "scm": {
+                "connection": "scm:git:https://android.googlesource.com/platform/frameworks/support",
+                "url": "https://cs.android.com/androidx/platform/frameworks/support"
+            },
+            "licenses": [
+                "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "androidx.exifinterface:exifinterface",
+            "artifactVersion": "1.4.2",
+            "name": "ExifInterface",
+            "description": "Android Support ExifInterface",
+            "website": "https://developer.android.com/jetpack/androidx/releases/exifinterface#1.4.2",
+            "developers": [
+                {
+                    "name": "The Android Open Source Project"
+                }
+            ],
+            "organization": {
+                "name": "The Android Open Source Project"
+            },
             "scm": {
                 "connection": "scm:git:https://android.googlesource.com/platform/frameworks/support",
                 "url": "https://cs.android.com/androidx/platform/frameworks/support"
@@ -1838,15 +1866,18 @@
         },
         {
             "uniqueId": "androidx.startup:startup-runtime",
-            "artifactVersion": "1.1.1",
-            "name": "Android App Startup Runtime",
+            "artifactVersion": "1.2.0",
+            "name": "Startup Runtime",
             "description": "Android App Startup Runtime",
-            "website": "https://developer.android.com/jetpack/androidx/releases/startup#1.1.1",
+            "website": "https://developer.android.com/jetpack/androidx/releases/startup#1.2.0",
             "developers": [
                 {
                     "name": "The Android Open Source Project"
                 }
             ],
+            "organization": {
+                "name": "The Android Open Source Project"
+            },
             "scm": {
                 "connection": "scm:git:https://android.googlesource.com/platform/frameworks/support",
                 "url": "https://cs.android.com/androidx/platform/frameworks/support"
@@ -2157,6 +2188,29 @@
             },
             "licenses": [
                 "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "io.github.vinceglb:filekit-core-android",
+            "artifactVersion": "0.15.0",
+            "name": "FileKit",
+            "description": "Files, Media, Folder Picker and File saver library for Kotlin Multiplatform and Compose Multiplatform",
+            "website": "https://github.com/vinceglb/FileKit",
+            "developers": [
+                {
+                    "name": "Vincent Guillebaud"
+                }
+            ],
+            "scm": {
+                "connection": "scm:git:git://github.com/vinceglb/FileKit.git",
+                "developerConnection": "scm:git:ssh://git@github.com:vinceglb/FileKit.git",
+                "url": "https://github.com/vinceglb/FileKit"
+            },
+            "licenses": [
+                "MIT"
             ],
             "funding": [
                 
@@ -3150,6 +3204,50 @@
             ],
             "scm": {
                 "url": "https://github.com/Kotlin/kotlinx-datetime"
+            },
+            "licenses": [
+                "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "org.jetbrains.kotlinx:kotlinx-io-bytestring-jvm",
+            "artifactVersion": "0.9.1",
+            "name": "kotlinx-io-bytestring",
+            "description": "IO support for Kotlin",
+            "website": "https://github.com/Kotlin/kotlinx-io",
+            "developers": [
+                {
+                    "name": "JetBrains Team",
+                    "organisationUrl": "https://www.jetbrains.com"
+                }
+            ],
+            "scm": {
+                "url": "https://github.com/Kotlin/kotlinx-io"
+            },
+            "licenses": [
+                "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "org.jetbrains.kotlinx:kotlinx-io-core-jvm",
+            "artifactVersion": "0.9.1",
+            "name": "kotlinx-io-core",
+            "description": "IO support for Kotlin",
+            "website": "https://github.com/Kotlin/kotlinx-io",
+            "developers": [
+                {
+                    "name": "JetBrains Team",
+                    "organisationUrl": "https://www.jetbrains.com"
+                }
+            ],
+            "scm": {
+                "url": "https://github.com/Kotlin/kotlinx-io"
             },
             "licenses": [
                 "Apache-2.0"

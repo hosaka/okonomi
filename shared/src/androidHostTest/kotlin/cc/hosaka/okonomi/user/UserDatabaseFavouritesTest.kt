@@ -2,6 +2,7 @@ package cc.hosaka.okonomi.user
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import cc.hosaka.okonomi.db.awaitList
+import cc.hosaka.okonomi.db.awaitOne
 import cc.hosaka.okonomi.db.awaitOneOrNull
 import cc.hosaka.okonomi.user.db.UserDb
 import java.io.File
@@ -176,6 +177,173 @@ class UserDatabaseFavouritesTest {
             listOf(42L, 7L),
             database.storedEntryIds(),
             "a word saved again is a new save and belongs at the top",
+        )
+    }
+
+    /**
+     * Import, against the file rather than against the flow. The order
+     * is the assertion that matters: the file's first id has to read
+     * back first, which is a claim about the `ord` the writer computes
+     * and about `entriesInList`'s `ORDER BY ord DESC` agreeing with it.
+     */
+    @Test
+    fun `an import replaces the stored list and keeps the order it was given`() = runTest {
+        val database = openOver(tempFile())
+        val store = storeOver(database, backgroundScope)
+
+        store.toggleFavourite(42L)
+        store.favouriteEntryIds().first { it == listOf(42L) }
+
+        store.replaceFavourites(listOf(7L, 8L, 9L))
+
+        assertEquals(listOf(7L, 8L, 9L), store.favouriteEntryIds().first { it.size == 3 })
+        assertEquals(
+            listOf(7L, 8L, 9L),
+            database.storedEntryIds(),
+            "the imported rows have to be in the database, and 42 has to be gone from it",
+        )
+    }
+
+    @Test
+    fun `an import empties only the list it is importing into`() = runTest {
+        // clearList is an unqualified DELETE with a list_id predicate,
+        // and this database ships exactly one list, so every other test
+        // here would stay green if that predicate were dropped — while
+        // an import silently emptied every list the reader owns. Named
+        // lists are planned, so the guard is written before they arrive
+        // rather than after the first import destroys one.
+        val database = openOver(tempFile())
+        val store = storeOver(database, backgroundScope)
+        val other = database.db.listQueries.let { lists ->
+            lists.insertList(slug = "another", name = "Another", ord = 1, created_at = 1L)
+            lists.listBySlug("another").awaitOne().id
+        }
+        database.db.list_entryQueries.addToList(
+            list_id = other,
+            entry_id = 99L,
+            ord = 1L,
+            created_at = 1L,
+        )
+
+        store.toggleFavourite(42L)
+        store.favouriteEntryIds().first { it == listOf(42L) }
+        store.replaceFavourites(listOf(7L))
+
+        assertEquals(listOf(7L), store.favouriteEntryIds().first { it == listOf(7L) })
+        assertEquals(
+            listOf(99L),
+            database.db.list_entryQueries.entriesInList(other).awaitList(),
+            "the other list must not have been touched by an import into Favourites",
+        )
+    }
+
+    @Test
+    fun `importing an empty list empties the stored list`() = runTest {
+        val database = openOver(tempFile())
+        val store = storeOver(database, backgroundScope)
+
+        store.toggleFavourite(42L)
+        store.favouriteEntryIds().first { it.isNotEmpty() }
+
+        store.replaceFavourites(emptyList())
+
+        assertEquals(emptyList(), store.favouriteEntryIds().first { it.isEmpty() })
+        assertEquals(emptyList(), database.storedEntryIds())
+    }
+
+    /**
+     * A file may repeat an id. `addToList` is INSERT OR IGNORE against
+     * the `(list_id, entry_id)` primary key, so the second one is a
+     * no-op and the first keeps its higher `ord` — which is to say its
+     * earlier place in the list.
+     */
+    @Test
+    fun `a repeated id in an import is stored once, where it first appeared`() = runTest {
+        val database = openOver(tempFile())
+        val store = storeOver(database, backgroundScope)
+
+        store.replaceFavourites(listOf(5L, 5L, 9L))
+
+        assertEquals(listOf(5L, 9L), store.favouriteEntryIds().first { it.isNotEmpty() })
+        assertEquals(listOf(5L, 9L), database.storedEntryIds())
+    }
+
+    @Test
+    fun `an imported list survives the store being rebuilt over the same file`() = runTest {
+        val file = tempFile()
+        storeOver(openOver(file), backgroundScope).let { first ->
+            first.replaceFavourites(listOf(3L, 2L, 1L))
+            first.favouriteEntryIds().first { it.isNotEmpty() }
+        }
+
+        val reopened = storeOver(openOver(file), backgroundScope)
+
+        assertEquals(listOf(3L, 2L, 1L), reopened.favouriteEntryIds().first())
+    }
+
+    /**
+     * The reason an import is queued behind the same writer as a heart
+     * tap rather than launched on its own.
+     *
+     * A tap that lands before an import must be replaced by it, and a
+     * tap that lands after must be applied on top of what it wrote. On
+     * separate scopes the two could reach SQLite in either order, and
+     * the reader's saved word would survive or not by luck. Asserted on
+     * disk, because the flow could be showing either write's result
+     * while the other is still in the queue.
+     */
+    @Test
+    fun `an import and the taps around it land in the order they were asked`() = runTest {
+        val database = openOver(tempFile())
+        val store = storeOver(database, backgroundScope)
+
+        store.toggleFavourite(1L)
+        store.replaceFavourites(listOf(7L, 8L))
+        store.toggleFavourite(9L)
+
+        store.favouriteEntryIds().first { it.size == 3 }
+
+        assertEquals(
+            listOf(9L, 7L, 8L),
+            database.storedEntryIds(),
+            "the tap before the import must be gone, and the one after it must sit on top",
+        )
+    }
+
+    @Test
+    fun `an import that cannot reach storage is reported and leaves the list alone`() = runTest {
+        val database = openOver(tempFile())
+        // Fail every open until the import has been reported, rather
+        // than failing "the first call". Which caller reaches the opener
+        // first is not this test's to decide — nothing collects the read
+        // flow before the assertions below, but that is a property of
+        // the test rather than of the store, and counting calls quietly
+        // depended on it.
+        val storageGone = MutableStateFlow(true)
+        val reports = MutableStateFlow(emptyList<String>())
+        val store = UserDatabaseFavourites(
+            database = { if (storageGone.value) error("storage is gone") else database },
+            now = { 1L },
+            report = { message, _ -> reports.value = reports.value + message },
+            scope = backgroundScope,
+        )
+
+        store.replaceFavourites(listOf(7L, 8L))
+        // Waiting on the report rather than on the opener: the opener is
+        // entered before it throws, so a counter can be satisfied while
+        // the failure it is standing in for has not been recorded yet.
+        reports.first { messages ->
+            messages.any { it.contains("import") && it.contains("could not be written") }
+        }
+        // The import has been through the opener and failed; everything
+        // after this sees a working database.
+        storageGone.value = false
+        store.toggleFavourite(2L)
+
+        assertEquals(
+            listOf(2L),
+            store.favouriteEntryIds().first { it.isNotEmpty() },
+            "the failed import must be dropped and the next write must still land",
         )
     }
 

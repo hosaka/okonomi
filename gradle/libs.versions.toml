@@ -19,6 +19,7 @@ androidx-testRunner = "1.7.0"
 androidxComposeUiTest = "1.11.2"
 androidxSqlite = "2.7.0"
 composeMultiplatform = "1.11.1"
+filekit = "0.15.0"
 junit = "4.13.2"
 kotlin = "2.4.10"
 kotlinxCoroutines = "1.9.0"
@@ -54,6 +55,7 @@ compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "composeMul
 compose-components-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "composeMultiplatform" }
 compose-uiToolingPreview = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "composeMultiplatform" }
 compose-uiTest = { module = "org.jetbrains.compose.ui:ui-test", version.ref = "composeMultiplatform" }
+filekit-dialogsCompose = { module = "io.github.vinceglb:filekit-dialogs-compose", version.ref = "filekit" }
 androidx-compose-uiTestManifest = { module = "androidx.compose.ui:ui-test-manifest", version.ref = "androidxComposeUiTest" }
 androidx-compose-uiTestJunit4 = { module = "androidx.compose.ui:ui-test-junit4", version.ref = "androidxComposeUiTest" }
 androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidx-testRunner" }
@@ -61,6 +63,7 @@ compose-materialIconsCore = { module = "org.jetbrains.compose.material:material-
 androidx-navigation3-ui = { module = "org.jetbrains.androidx.navigation3:navigation3-ui", version.ref = "navigation3" }
 androidx-lifecycle-viewmodelNavigation3 = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-navigation3", version.ref = "androidx-lifecycle" }
 kotlinx-serialization-core = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core", version.ref = "kotlinxSerialization" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
 org-json = { module = "org.json:json", version.ref = "orgJson" }
@@ -87,4 +90,3 @@ kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
-

@@ -117,7 +117,15 @@ kotlin {
             implementation(libs.androidx.navigation3.ui)
             implementation(libs.compose.materialIconsCore)
             implementation(libs.kotlinx.serialization.core)
+            // The export file format; see encodeFavourites/decodeFavourites
+            // in cc.hosaka.okonomi.user (FavouritesTransfer.kt).
+            implementation(libs.kotlinx.serialization.json)
             implementation(libs.kotlinx.coroutines.core)
+            // The system save/open dialogs behind the Favourites export and
+            // import. The Compose artifact initialises itself on Android and
+            // uses SAF, so there is no FileKit.init() call and no manifest
+            // permission anywhere in this project.
+            implementation(libs.filekit.dialogsCompose)
             implementation(libs.aboutlibraries.core)
             implementation(libs.aboutlibraries.compose.m3)
             implementation(libs.sqldelight.runtime)

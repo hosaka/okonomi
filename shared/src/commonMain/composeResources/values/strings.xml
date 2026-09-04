@@ -178,6 +178,28 @@
     <string name="favourites_empty">Nothing saved yet. Look a word up and tap the heart to keep it here.</string>
     <string name="favourites_error">Your saved words could not be loaded</string>
     <string name="favourites_retry">Try again</string>
+    <!-- The Favourites toolbar's overflow menu, and the export and
+         import behind it. Text-only items: material-icons-core carries
+         no upload, download or file icon, and the two rows read
+         perfectly well without one. -->
+    <string name="favourites_options">Favourites options</string>
+    <string name="favourites_export">Export list</string>
+    <string name="favourites_import">Import list</string>
+    <!-- The only destructive confirmation in the app. It has to name
+         what is lost rather than ask a polite question: import replaces
+         the whole list and there is no undo. -->
+    <string name="favourites_import_replace_title">Replace your saved words?</string>
+    <string name="favourites_import_replace_message">Importing replaces everything in Favourites with the words in this file. This cannot be undone.</string>
+    <string name="favourites_import_replace_confirm">Replace</string>
+    <string name="favourites_import_replace_cancel">Cancel</string>
+    <!-- Reached by a file that is not an export of this app, one that
+         was written by a later version, and one that could not be read
+         at all. They are one message on purpose: the reader's next step
+         is the same in every case, and nothing was changed in any of
+         them. -->
+    <string name="favourites_import_unreadable_title">That file could not be read</string>
+    <string name="favourites_import_unreadable_message">It is not a saved words file this version of okonomi can read. Nothing has changed.</string>
+    <string name="favourites_import_unreadable_dismiss">OK</string>
     <string name="settings_title">Settings</string>
     <string name="settings_dictionary_label">Dictionary</string>
     <string name="settings_dictionary_value">JMdict %1$s · %2$s entries</string>

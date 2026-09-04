@@ -70,4 +70,20 @@ interface FavouritesStore {
      * say so. Deciding inside the transaction removes both.
      */
     fun toggleFavourite(entryId: Long)
+
+    /**
+     * Replaces everything saved with [entryIds], whose first element is
+     * the one shown first. An empty list empties the store.
+     *
+     * This is import, and import replaces: there is no merge and no
+     * undo, and warning the reader first is the caller's job rather than
+     * this one's. Duplicates in [entryIds] are stored once, keeping the
+     * first occurrence's position.
+     *
+     * Non-suspending and silent for the reason [toggleFavourite] is, and
+     * ordered against it for a reason of its own: an import and a heart
+     * tap that land together must not interleave, so both go through the
+     * same single writer.
+     */
+    fun replaceFavourites(entryIds: List<Long>)
 }

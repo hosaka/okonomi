@@ -26,6 +26,22 @@ class BundledLibrariesJsonTest {
         assertTrue(ids.isNotEmpty())
         assertTrue(ids.any { it.startsWith("com.mikepenz:aboutlibraries-core") }, ids.toString())
         assertTrue(ids.any { it.startsWith("org.jetbrains.androidx.navigation3") }, ids.toString())
+        // The newest dependency, and the one a stale export would miss
+        // first: FileKit is MIT and has to be in the credits the app
+        // ships. The two above have been in the export since it was
+        // first generated, so neither of them can catch that.
+        val filekit = libs.libraries.filter { it.uniqueId.startsWith("io.github.vinceglb") }
+        assertTrue(filekit.isNotEmpty(), ids.toString())
+        // The coordinate alone was not the claim: what the credits owe
+        // FileKit is its licence, and an export that carried the
+        // dependency with an empty licence set would have satisfied a
+        // name-only assertion while shipping the attribution empty.
+        assertTrue(
+            filekit.all { library -> library.licenses.any { it.name.contains("MIT") } },
+            filekit.joinToString { library ->
+                "${library.uniqueId}: ${library.licenses.joinToString { it.name }}"
+            },
+        )
     }
 
     @Test

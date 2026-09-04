@@ -30,6 +30,9 @@ internal class FakeFavouritesStore(
     /** Every id [toggleFavourite] was asked for, in order. */
     val writes = mutableListOf<Long>()
 
+    /** Every list [replaceFavourites] was asked for, in order. */
+    val replacements = mutableListOf<List<Long>>()
+
     override fun favouriteEntryIds(): Flow<List<Long>> = saved
 
     override fun isFavourite(entryId: Long): Flow<Boolean> = saved.map { entryId in it }
@@ -41,5 +44,15 @@ internal class FakeFavouritesStore(
         } else {
             listOf(entryId) + saved.value
         }
+    }
+
+    override fun replaceFavourites(entryIds: List<Long>) {
+        replacements += entryIds
+        // `distinct` rather than the list as given, for the reason
+        // `toggleFavourite` leaves a re-saved id where it is: the
+        // production store inserts these against a primary key, so a
+        // duplicate keeps its first, earlier position and no second row
+        // appears.
+        saved.value = entryIds.distinct()
     }
 }

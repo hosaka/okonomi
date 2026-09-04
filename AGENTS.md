@@ -30,6 +30,25 @@
 - Screen state (`feature/navigation/state/ProduceScreenState.kt`): `produceScreenState(key, initial) { ... }` runs a producer inside a `ScreenStateScope` (`navigation: NavigationController`, `mutablePersistedFlow(key, initial)`) and shares the resulting flow through a `ViewModel` scoped to the back stack entry (in-memory only, no disk persistence).
 - Features live in `shared/src/commonMain/kotlin/cc/hosaka/okonomi/feature/*`; user-visible strings live in `shared/src/commonMain/composeResources/values/strings.xml` and are read via `Res.string.*`.
 - Two databases, and the split is load-bearing. `shared/src/commonMain/sqldelight/dictionary/` is the bundled read-only dictionary (`okonomi.db`), regenerated wholesale by `:tools:dictgen` and never migrated. `shared/src/commonMain/sqldelight/user/` is the reader's own data (`user.db`: lists and their entries), which can never be regenerated and therefore carries real `.sqm` migrations with verification on. Each database names its own `srcDirs`; putting a `.sq` file in the wrong one compiles it into the wrong database and moves `DICTIONARY_SCHEMA_FINGERPRINT`. `user.db` sits beside the dictionary copy in the same directory, which is only safe because provisioning deletes the dictionary **by name** — never by clearing the directory. `cc.hosaka.okonomi.user.FavouritesStore` is the seam screens use over it.
+That seam carries one destructive operation, `replaceFavourites`, which an
+import uses to clear the list and rewrite it in a single transaction. It is
+queued behind the same single writer as `toggleFavourite`, so an import can
+never interleave with a heart tap; anything else that needs to write in bulk
+belongs on that queue too, never on a second writer. The interchange format
+is `FavouritesTransfer.kt` in the same package: entry ids and a list name,
+behind a `version` field that decoding requires to be 1. Export writes the
+name, import discards it and always lands in the `favourites` list, because
+named lists do not exist yet.
+
+The file dialogs behind that come from FileKit (`filekit-dialogs-compose`,
+MIT), the project's first and only file-picker dependency. Its Compose
+launchers need no `FileKit.init` and no manifest permission. Remember them at
+a route's root, never inside a dropdown or dialog: FileKit's own docs warn
+they are disposed with the surface that holds them on iOS. Note also that the
+system dialog is another activity, so the screen behind it stops being
+collected and its state producer is cancelled five seconds later — anything a
+dialog result must come back to has to outlive that, which is what
+`mutablePersistedFlow` is for (see `FavouritesStateProducer`).
 - Persisted settings (`prefs/`): `PreferenceStore` is the seam every screen uses; `appPreferences()` is the app-lifetime instance over `androidx.datastore` (one per process — DataStore rejects two over one file). Reads that fail yield the default and writes that fail are dropped, so a broken store can never take a screen down. Tests inject `FakePreferenceStore`.
 
 Practical rule: for new screens, follow the same split (see `feature/search/`):

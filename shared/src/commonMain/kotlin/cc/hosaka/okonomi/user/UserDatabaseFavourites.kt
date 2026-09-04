@@ -45,7 +45,10 @@ private const val WRITE_QUEUE_CAPACITY = 64
  * Writes are **ordered**. Each one is queued to a single writer rather
  * than launched on its own: SQLite serialises its writers, but the order
  * independent coroutines reach it is not the order they were asked in,
- * so two quick taps could both read "not saved" and both save.
+ * so two quick taps could both read "not saved" and both save. An
+ * import is queued behind the same writer for the same reason: it
+ * replaces the whole list, so a heart tap that landed beside it must
+ * fall clearly before or clearly after, never inside.
  *
  * The writer **survives what a write throws**, including an `Error`. It
  * is a single `for` over a channel, and a loop that ends never starts
@@ -136,13 +139,20 @@ internal class UserDatabaseFavourites(
         .distinctUntilChanged()
 
     override fun toggleFavourite(entryId: Long) {
+        queue(Write.Toggle(entryId = entryId, at = now()))
+    }
+
+    override fun replaceFavourites(entryIds: List<Long>) {
+        queue(Write.Replace(entryIds = entryIds, at = now()))
+    }
+
+    private fun queue(write: Write) {
         // trySend rather than a launch, so the tap returns in the frame
         // it landed in. A full queue means the writer is not draining;
         // the caller has no way to act on that, but a bug report does.
-        val queued = writes.trySend(Write(entryId = entryId, at = now())).isSuccess
-        if (!queued) {
+        if (!writes.trySend(write).isSuccess) {
             report(
-                "a favourite change for entry $entryId was dropped: " +
+                "${write.description} was dropped: " +
                     "the write queue is full ($WRITE_QUEUE_CAPACITY unwritten changes)",
                 null,
             )
@@ -170,22 +180,9 @@ internal class UserDatabaseFavourites(
         val db = database().db
         db.transaction {
             val listId = db.ensureFavouritesList(write.at)
-            // Read inside the transaction, so what the toggle flips is
-            // what is stored at this instant rather than what a screen
-            // was showing when the reader tapped. See
-            // FavouritesStore.toggleFavourite.
-            if (db.list_entryQueries.isInList(list_id = listId, entry_id = write.entryId).awaitOne()) {
-                db.list_entryQueries.removeFromList(list_id = listId, entry_id = write.entryId)
-            } else {
-                // The append counter, read inside the transaction so two
-                // saves cannot compute the same position.
-                val ord = db.list_entryQueries.nextOrdInList(listId).awaitOne()
-                db.list_entryQueries.addToList(
-                    list_id = listId,
-                    entry_id = write.entryId,
-                    ord = ord,
-                    created_at = write.at,
-                )
+            when (write) {
+                is Write.Toggle -> db.applyToggle(listId, write)
+                is Write.Replace -> db.applyReplace(listId, write)
             }
             db.listQueries.touchList(updated_at = write.at, id = listId)
         }
@@ -195,14 +192,92 @@ internal class UserDatabaseFavourites(
     } catch (e: Exception) {
         // The reads keep reporting what is actually stored, so the
         // button is seen to refuse rather than seen to lie.
-        report("a favourite change for entry ${write.entryId} could not be written", e)
+        report("${write.description} could not be written", e)
         false
     }
 
-    private class Write(
-        val entryId: Long,
-        val at: Long,
-    )
+    private suspend fun UserDb.applyToggle(listId: Long, write: Write.Toggle) {
+        // Read inside the transaction, so what the toggle flips is what
+        // is stored at this instant rather than what a screen was
+        // showing when the reader tapped. See
+        // FavouritesStore.toggleFavourite.
+        if (list_entryQueries.isInList(list_id = listId, entry_id = write.entryId).awaitOne()) {
+            list_entryQueries.removeFromList(list_id = listId, entry_id = write.entryId)
+        } else {
+            // The append counter, read inside the transaction so two
+            // saves cannot compute the same position.
+            val ord = list_entryQueries.nextOrdInList(listId).awaitOne()
+            list_entryQueries.addToList(
+                list_id = listId,
+                entry_id = write.entryId,
+                ord = ord,
+                created_at = write.at,
+            )
+        }
+    }
+
+    /**
+     * Clear and rewrite, in the one transaction the caller is already
+     * inside: nothing ever observes the list emptied, and a failure
+     * anywhere in it leaves the reader's saved words exactly as they
+     * were.
+     *
+     * `ord` counts down from the size, so the file's first id gets the
+     * highest one and `entriesInList`, which reads `ORDER BY ord DESC`,
+     * hands it back first. A duplicate is an INSERT OR IGNORE no-op
+     * against the primary key, which leaves the first occurrence with
+     * its higher position.
+     *
+     * `created_at` is **restamped**, including for ids that were already
+     * saved. `list_entry.sq` states the opposite invariant for saving —
+     * re-saving an entry keeps its original `created_at` — and this is
+     * the one write that does not honour it: an import is a new list
+     * rather than an edit to the old one, and the rows it clears are
+     * gone before the rows it writes exist, so there is no earlier
+     * timestamp left to carry over. Nothing renders `created_at` today.
+     * Anything that comes to depend on it — "saved this week", say —
+     * needs to know that re-importing your own export moves every date
+     * to the import.
+     */
+    private suspend fun UserDb.applyReplace(listId: Long, write: Write.Replace) {
+        list_entryQueries.clearList(listId)
+        write.entryIds.forEachIndexed { index, entryId ->
+            list_entryQueries.addToList(
+                list_id = listId,
+                entry_id = entryId,
+                ord = (write.entryIds.size - index).toLong(),
+                created_at = write.at,
+            )
+        }
+    }
+
+    /**
+     * One queued change. Sealed rather than two channels: order between
+     * an import and a heart tap is exactly the thing the single writer
+     * exists to fix, and two queues would put it back.
+     */
+    private sealed class Write {
+        abstract val at: Long
+
+        /** How a report names this write; the reader never sees it. */
+        abstract val description: String
+
+        class Toggle(
+            val entryId: Long,
+            override val at: Long,
+        ) : Write() {
+            override val description: String
+                get() = "a favourite change for entry $entryId"
+        }
+
+        class Replace(
+            val entryIds: List<Long>,
+            override val at: Long,
+        ) : Write() {
+            override val description: String
+                get() = "an import of ${entryIds.size} saved words"
+        }
+    }
 }
 
 /**
