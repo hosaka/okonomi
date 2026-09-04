@@ -3,7 +3,6 @@ package cc.hosaka.okonomi.feature.search
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -14,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import cc.hosaka.okonomi.ui.OverflowMenu
 import okonomi.shared.generated.resources.Res
 import okonomi.shared.generated.resources.search_names_toggle
 import okonomi.shared.generated.resources.search_options
@@ -58,7 +58,7 @@ internal fun SearchOverflowMenu(
                 contentDescription = stringResource(Res.string.search_options),
             )
         }
-        DropdownMenu(
+        OverflowMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
         ) {

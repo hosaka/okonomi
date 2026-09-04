@@ -1,22 +1,18 @@
 package cc.hosaka.okonomi.feature.favourites
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import cc.hosaka.okonomi.ui.OverflowMenu
 import okonomi.shared.generated.resources.Res
 import okonomi.shared.generated.resources.favourites_export
 import okonomi.shared.generated.resources.favourites_import
@@ -57,21 +53,9 @@ internal fun FavouritesOverflowMenu(
                 contentDescription = stringResource(Res.string.favourites_options),
             )
         }
-        DropdownMenu(
+        OverflowMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            // The same shape token the list rows are cut with, so the
-            // panel that opens over them reads as part of the same
-            // screen rather than as a system menu that happens to be
-            // there. Named rather than a radius in dp for the reason
-            // ListCard names its colour: change the token and the cards
-            // and this move together.
-            shape = MaterialTheme.shapes.large,
-            // Two short labels leave the menu hugging the text, which at
-            // this corner radius looks like a mistake rather than a
-            // choice. A floor gives the rounding something to work with;
-            // a longer label still grows past it.
-            modifier = Modifier.widthIn(min = MENU_MIN_WIDTH),
         ) {
             DropdownMenuItem(
                 text = { Text(text = stringResource(Res.string.favourites_export)) },
@@ -92,10 +76,3 @@ internal fun FavouritesOverflowMenu(
         }
     }
 }
-
-/**
- * The floor the menu opens to. Material's own menu minimum is 112dp,
- * which is narrower than either label here and leaves the rounded
- * corners crowding the text.
- */
-private val MENU_MIN_WIDTH = 200.dp
