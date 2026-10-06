@@ -8,11 +8,17 @@
     <string name="search_placeholder">Search</string>
     <string name="search_clear">Clear</string>
     <string name="search_no_results">No results</string>
-    <!-- The overflow menu on the search field, and the one setting in
+    <!-- The filters button on the search screen, and the one filter in
          it. "Names" rather than "Person names": the database holds
-         nothing else, since dictgen drops the places and companies. -->
+         nothing else, since dictgen drops the places and companies.
+         "Close search options" is the button's label while the menu is
+         open. The last two are the button's state as a screen reader
+         says it: which filters are on, or that none are. -->
     <string name="search_options">Search options</string>
+    <string name="search_options_close">Close search options</string>
     <string name="search_names_toggle">Names</string>
+    <string name="search_filters_names_on">Names on</string>
+    <string name="search_filters_default">Default search</string>
     <!-- Chips on a name row. JMnedict's own DTD expansions ("family or
          surname", "given name or forename, gender not specified") are
          sentences rather than labels, so the four person-name codes get

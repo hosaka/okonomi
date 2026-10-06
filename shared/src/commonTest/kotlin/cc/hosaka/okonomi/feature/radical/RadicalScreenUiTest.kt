@@ -48,7 +48,7 @@ private val HITS = listOf(
  *
  * The bar's claims are asserted three different ways because they are
  * three different facts. Not editable is a semantics fact (`hasSetText`,
- * and the field reporting itself disabled); no clear and no overflow are
+ * and the field reporting itself disabled); no clear and no options are
  * absences of nodes carrying known content descriptions; no search icon
  * is a test tag, because the icon is decorative and puts nothing else in
  * the tree — see `SearchFieldIcon`.
@@ -186,7 +186,7 @@ class RadicalScreenUiTest : ComposeUiTestBase() {
     }
 
     @Test
-    fun `the bar carries no search icon no clear action and no overflow menu`() = runComposeUiTest {
+    fun `the bar carries no search icon no clear action and no options control`() = runComposeUiTest {
         val labels = Labels()
         setContent {
             labels.read()

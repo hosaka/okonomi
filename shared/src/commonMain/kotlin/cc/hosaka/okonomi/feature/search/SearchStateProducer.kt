@@ -157,6 +157,10 @@ suspend fun ScreenStateScope.searchScreenStateProducer(
     // What has already been fetched for the current query, so a page
     // asks only for what is new. Same single-writer argument as above.
     val memory = SearchMemory()
+    // The outcome last handed downstream, so a flipped toggle can be shown
+    // at once against the rows already on screen. Same single-writer
+    // argument as above; the seed is what onStart below emits first.
+    var shown = SearchOutcome(NAMES_IN_SEARCH_DEFAULT, SearchResultsState.Idle)
     // transformLatest gives the debounce its latest-wins behavior: a
     // newer query cancels the delay and the in-flight search, so stale
     // results can never overwrite newer ones. While a search is in
@@ -169,8 +173,22 @@ suspend fun ScreenStateScope.searchScreenStateProducer(
             if (query.isBlank()) {
                 standing = null
                 memory.forget()
-                emit(SearchOutcome(names, SearchResultsState.Idle))
+                val idle = SearchOutcome(names, SearchResultsState.Idle)
+                emit(idle)
+                shown = idle
             } else {
+                // A flipped toggle reaches the state now, not after the
+                // debounce and the search behind it. The filters menu
+                // stays open across taps, so a pill still showing the
+                // old value for that window would make a second tap ask
+                // for the same thing again and the flip back would be
+                // lost. The rows on screen stay, as they do while any
+                // newer search is in flight, and are replaced below.
+                if (names != shown.namesEnabled) {
+                    val flipped = shown.copy(namesEnabled = names)
+                    emit(flipped)
+                    shown = flipped
+                }
                 // Only the first page waits out the debounce. An
                 // extension comes from a scroll that has already
                 // happened, not from a keystroke that another one may
@@ -186,12 +204,12 @@ suspend fun ScreenStateScope.searchScreenStateProducer(
                     // of the results. onShowMore goes null for the
                     // duration — the page it would ask for is the one
                     // already coming.
-                    emit(
-                        SearchOutcome(
-                            names,
-                            onScreen.copy(onShowMore = null, footer = PagingFooterState.Loading),
-                        ),
+                    val extending = SearchOutcome(
+                        names,
+                        onScreen.copy(onShowMore = null, footer = PagingFooterState.Loading),
                     )
+                    emit(extending)
+                    shown = extending
                 }
                 // One ceiling for both lists (Alex, 2026-08-26: "Cap at
                 // 400 like words" — see the spec's change log). Names
@@ -270,7 +288,9 @@ suspend fun ScreenStateScope.searchScreenStateProducer(
                 if (outcome is SearchResultsState.Results) {
                     standing = outcome
                 }
-                emit(SearchOutcome(names, next))
+                val landed = SearchOutcome(names, next)
+                emit(landed)
+                shown = landed
             }
         }
         // combine waits for every source, so without a value up front a

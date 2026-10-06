@@ -2,8 +2,8 @@ package cc.hosaka.okonomi.feature.search
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -92,7 +92,7 @@ fun SearchScreen(
         modifier = Modifier
             .fillMaxSize(),
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(
@@ -100,14 +100,29 @@ fun SearchScreen(
                         .union(WindowInsets.ime),
                 ),
         ) {
-            val focusRequester = remember { FocusRequester() }
-            SearchFieldFocusEffect(focusRequester)
-            SearchField(
-                state = state,
-                focusRequester = focusRequester,
-            )
-            SearchResultsContent(
-                state = state,
+            Column(
+                modifier = Modifier
+                    .fillMaxSize(),
+            ) {
+                val focusRequester = remember { FocusRequester() }
+                SearchFieldFocusEffect(focusRequester)
+                SearchField(
+                    state = state,
+                    focusRequester = focusRequester,
+                )
+                SearchResultsContent(
+                    state = state,
+                )
+            }
+            // Inside the inset padding, so it rides above the keyboard
+            // and the tab bar the same way the results do. Drawn over
+            // every results state, and never hidden on scroll: the list
+            // leaves room for it at its end instead.
+            SearchFiltersButton(
+                namesEnabled = state.namesEnabled,
+                onNamesEnabledChange = state.onNamesEnabledChange,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd),
             )
         }
     }
@@ -115,14 +130,13 @@ fun SearchScreen(
 
 /**
  * The query field, with a back control in front of it when this search
- * is not its section's root, and the overflow menu at its trailing edge
- * in both cases.
+ * is not its section's root.
  *
- * What the root case still does not get is the Row and the leading space
- * a back control would need — that is the part the pushed case adds and
- * the tab's own search does without. The menu is not part of that split:
- * the Names toggle belongs to searching, not to how this screen was
- * reached, so both branches carry it.
+ * What the root case does not get is the Row and the leading space a
+ * back control would need — that is the part the pushed case adds and
+ * the tab's own search does without. The field carries no options
+ * control in either case: the filters live in [SearchFiltersButton] at
+ * the bottom of the screen, where the thumb is.
  */
 @Composable
 private fun SearchField(
@@ -130,12 +144,6 @@ private fun SearchField(
     focusRequester: FocusRequester,
 ) {
     val onBack = state.onBack
-    val overflow: @Composable RowScope.() -> Unit = {
-        SearchOverflowMenu(
-            namesEnabled = state.namesEnabled,
-            onNamesEnabledChange = state.onNamesEnabledChange,
-        )
-    }
     if (onBack == null) {
         SearchTextField(
             modifier = Modifier
@@ -146,7 +154,6 @@ private fun SearchField(
             onTextChange = state.onQueryChange,
             onClear = state.onClear,
             focusRequester = focusRequester,
-            trailing = overflow,
         )
     } else {
         Row(
@@ -169,7 +176,6 @@ private fun SearchField(
                 onTextChange = state.onQueryChange,
                 onClear = state.onClear,
                 focusRequester = focusRequester,
-                trailing = overflow,
             )
         }
     }
@@ -294,6 +300,7 @@ private fun SearchResultsList(
             .fillMaxSize()
             .scrollIndicator(listState),
         state = listState,
+        contentPadding = PaddingValues(bottom = SearchFiltersButtonDefaults.contentBottomPadding),
     ) {
         if (isFallback) {
             item(key = "fallback-note") {

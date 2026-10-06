@@ -789,6 +789,53 @@ class SearchStateProducerTest {
     }
 
     /**
+     * The filters menu stays open across taps, and each tap asks for the
+     * opposite of the state it is drawn from. So the toggle has to reach
+     * the state before the debounce and the search behind it, or a second
+     * tap in that window reads the old value and asks for the same thing
+     * again. The search here never finishes, so nothing but the toggle
+     * itself can be what moved the state.
+     */
+    @Test
+    fun `a flipped names toggle reaches the state before the search behind it lands`() = runTest {
+        val scope = FakeScreenStateScope()
+        val preferences = FakePreferenceStore()
+        var slow = false
+        val states = collectStates(
+            scope.producerUnderTest(
+                search = { _, _ ->
+                    if (slow) awaitCancellation()
+                    SearchResults(listOf(hit(1)))
+                },
+                nameSearch = { _, _, _ -> NameResults(emptyList()) },
+                preferences = preferences,
+            ),
+        )
+        states.last().onQueryChange!!.invoke("たなか")
+        settle()
+        assertFalse(states.last().namesEnabled)
+        slow = true
+
+        // The tap the pill makes: the opposite of what it is showing.
+        states.last().let { it.onNamesEnabledChange!!.invoke(!it.namesEnabled) }
+        runCurrent()
+
+        assertTrue(states.last().namesEnabled, "the flip must show before the search lands")
+        val standing = assertIs<SearchResultsState.Results>(states.last().results)
+        assertEquals(listOf(1L), standing.hits.map { it.entryId }, "the rows on screen stay while it runs")
+
+        states.last().let { it.onNamesEnabledChange!!.invoke(!it.namesEnabled) }
+        runCurrent()
+
+        assertFalse(states.last().namesEnabled)
+        assertEquals(
+            listOf(NAMES_IN_SEARCH_PREFERENCE to true, NAMES_IN_SEARCH_PREFERENCE to false),
+            preferences.writes,
+            "two taps in a row must land as on and then off",
+        )
+    }
+
+    /**
      * The matrix's "toggle persists" row. A later run of the producer is
      * what a relaunch looks like from here: the store outlives it, the
      * producer does not.

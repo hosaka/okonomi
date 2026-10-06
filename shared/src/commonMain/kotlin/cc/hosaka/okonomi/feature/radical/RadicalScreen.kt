@@ -58,8 +58,9 @@ import org.jetbrains.compose.resources.stringResource
  *
  * The bar is where a search field would be, and it is deliberately not
  * one: nothing can be typed into it, it carries no leading search icon,
- * no clear action and no overflow menu, and it wears the recessed tone
- * [SearchTextField] gives a field nothing can be typed into. It is a
+ * no clear action and nothing at its trailing edge, and it wears the
+ * recessed tone [SearchTextField] gives a field nothing can be typed
+ * into. It is a
  * heading that happens to sit in the toolbar's place, so the screen
  * reads as a continuation of the search chrome without offering a search
  * that would answer the wrong question.
@@ -156,7 +157,7 @@ private fun RadicalBar(
             // The three nulls are the whole point. No text change means
             // no editing and the recessed read-only tone; no clear means
             // the clear action is not drawn at all; and nothing is
-            // passed for `trailing`, so there is no overflow menu.
+            // passed for `trailing`, so nothing follows the title.
             onTextChange = null,
             onClear = null,
             leading = {},

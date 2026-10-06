@@ -23,8 +23,7 @@ import org.jetbrains.compose.resources.stringResource
  * The Favourites toolbar's overflow menu: the way a saved list gets out
  * of the app and back in.
  *
- * Built like `SearchOverflowMenu`, the app's only other one, down to a
- * null callback rendering its item disabled. Text-only items because
+ * A null callback renders its item disabled. Text-only items because
  * only `material-icons-core` is a dependency and it carries no upload,
  * download or file icon; adding an icon set for two menu rows would be
  * a large dependency for a small decoration.

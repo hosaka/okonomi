@@ -91,8 +91,10 @@ import org.jetbrains.compose.resources.stringResource
  *
  * [trailing] is drawn at the trailing edge, after the clear action rather
  * than in place of it: clear is the action the reader reaches for while
- * typing and it keeps the position it has always had. A caller that
- * passes nothing gets exactly the field it always got.
+ * typing and it keeps the position it has always had. No caller passes
+ * anything there today — the search screen's options live in a floating
+ * button rather than on the field — and a caller that passes nothing gets
+ * exactly the field it always got.
  */
 @Composable
 fun SearchTextField(
