@@ -16,9 +16,11 @@ import androidx.compose.material3.ToggleFloatingActionButton
 import androidx.compose.material3.ToggleFloatingActionButtonDefaults
 import androidx.compose.material3.ToggleFloatingActionButtonDefaults.animateIcon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -34,6 +36,8 @@ import androidx.compose.ui.unit.dp
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
+import cc.hosaka.okonomi.ui.coach.CoachTarget
+import cc.hosaka.okonomi.ui.coach.coachMarkTarget
 import okonomi.shared.generated.resources.Res
 import okonomi.shared.generated.resources.search_filters_default
 import okonomi.shared.generated.resources.search_filters_names_on
@@ -91,20 +95,37 @@ internal const val SEARCH_FILTERS_BADGE_TAG = "search-filters-badge"
  * A null [onNamesEnabledChange] draws nothing at all. A floating action
  * button has no disabled state, and one that does nothing when tapped
  * would be worse than none.
+ *
+ * [onExpandedChange] hears every open and close, so the screen can hide
+ * the idle coach marks while the menu is up. The menu still owns its own
+ * state; leaving composition while open reports it closed.
+ * [isCoachMarkTarget] makes the button the filters coach mark's target.
  */
 @Composable
 internal fun SearchFiltersButton(
     namesEnabled: Boolean,
     onNamesEnabledChange: ((Boolean) -> Unit)?,
     modifier: Modifier = Modifier,
+    onExpandedChange: (Boolean) -> Unit = {},
+    isCoachMarkTarget: Boolean = false,
 ) {
     if (onNamesEnabledChange == null) return
 
     var expanded by remember { mutableStateOf(false) }
+    val currentOnExpandedChange by rememberUpdatedState(onExpandedChange)
+    val setExpanded = { value: Boolean ->
+        expanded = value
+        currentOnExpandedChange(value)
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            if (expanded) currentOnExpandedChange(false)
+        }
+    }
     NavigationBackHandler(
         state = rememberNavigationEventState(NavigationEventInfo.None),
         isBackEnabled = expanded,
-        onBackCompleted = { expanded = false },
+        onBackCompleted = { setExpanded(false) },
     )
 
     // Named for what a tap does next: open the options, or close them.
@@ -130,8 +151,9 @@ internal fun SearchFiltersButton(
             ) {
                 ToggleFloatingActionButton(
                     checked = expanded,
-                    onCheckedChange = { expanded = it },
+                    onCheckedChange = { setExpanded(it) },
                     modifier = Modifier
+                        .then(if (isCoachMarkTarget) Modifier.coachMarkTarget(CoachTarget.Filters) else Modifier)
                         .semantics {
                             stateDescription = filtersState
                         },

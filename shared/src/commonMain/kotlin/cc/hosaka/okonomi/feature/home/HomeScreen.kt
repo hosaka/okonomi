@@ -61,7 +61,9 @@ import androidx.navigationevent.compose.rememberNavigationEventState
 import cc.hosaka.okonomi.feature.home.navigation.HomeNavigationItem
 import cc.hosaka.okonomi.feature.home.navigation.HomeSelectAction
 import cc.hosaka.okonomi.feature.home.navigation.LocalHomeReselect
+import cc.hosaka.okonomi.feature.home.navigation.homeFavouritesItem
 import cc.hosaka.okonomi.feature.home.navigation.homeNavigationItems
+import cc.hosaka.okonomi.feature.home.navigation.homeSearchItem
 import cc.hosaka.okonomi.feature.home.navigation.homeSelectAction
 import cc.hosaka.okonomi.feature.home.navigation.isAtRoot
 import cc.hosaka.okonomi.feature.home.navigation.popToRootCount
@@ -71,6 +73,11 @@ import cc.hosaka.okonomi.feature.navigation.LocalNavigationController
 import cc.hosaka.okonomi.feature.navigation.NavigationController
 import cc.hosaka.okonomi.feature.navigation.navigationSavedStateConfiguration
 import cc.hosaka.okonomi.feature.navigation.routeEntryProvider
+import cc.hosaka.okonomi.ui.coach.CoachMarkRegistry
+import cc.hosaka.okonomi.ui.coach.CoachMarksHost
+import cc.hosaka.okonomi.ui.coach.CoachNavigation
+import cc.hosaka.okonomi.ui.coach.CoachTarget
+import cc.hosaka.okonomi.ui.coach.coachMarkTarget
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -129,10 +136,29 @@ private val predictiveScreenTransitionSpec:
  * The shell of the app: a navigation bar (portrait) or a navigation
  * rail (landscape) that switches between the top-level sections,
  * each of which keeps its own back stack.
+ *
+ * Over the idle Search tab the shell draws the coach marks, which point
+ * at Search's field and filters button and at the shell's own Favourites
+ * tab.
  */
 @Composable
 fun HomeScreen(
     items: List<HomeNavigationItem> = homeNavigationItems,
+) {
+    HomeScreen(
+        items = items,
+        coachMarks = remember { CoachMarkRegistry() },
+    )
+}
+
+/**
+ * [HomeScreen] with the registry the coach marks report into handed in,
+ * so tests can read where the targets landed and what was laid out.
+ */
+@Composable
+internal fun HomeScreen(
+    items: List<HomeNavigationItem> = homeNavigationItems,
+    coachMarks: CoachMarkRegistry,
 ) {
     require(items.isNotEmpty()) { "Home needs at least one section" }
     require(items.distinctBy { it.key }.size == items.size) { "Home section keys must be unique" }
@@ -194,71 +220,81 @@ fun HomeScreen(
         val horizontalInsets = WindowInsets.systemBars
             .union(WindowInsets.displayCutout)
             .only(WindowInsetsSides.Start)
-        Row(
-            modifier = Modifier
-                .windowInsetsPadding(horizontalInsets),
+        CoachMarksHost(
+            searchSelected = selectedItem.key == homeSearchItem.key,
+            atRoot = showNavigation,
+            navigation = when (LocalHomeLayout.current) {
+                HomeLayout.Vertical -> CoachNavigation.BottomBar
+                HomeLayout.Horizontal -> CoachNavigation.Rail
+            },
+            registry = coachMarks,
         ) {
-            val layout = LocalHomeLayout.current
-            if (layout is HomeLayout.Horizontal) {
-                AnimatedVisibility(
-                    visible = showNavigation,
-                    enter = expandHorizontally(tween(NAVIGATION_ANIMATION_MILLIS)) +
-                        fadeIn(tween(NAVIGATION_ANIMATION_MILLIS)),
-                    exit = shrinkHorizontally(tween(NAVIGATION_ANIMATION_MILLIS)) +
-                        fadeOut(tween(NAVIGATION_ANIMATION_MILLIS)),
-                ) {
-                    HomeNavigationRail(
-                        items = items,
-                        selectedItem = selectedItem,
-                        onSelect = onSelect,
-                        enabled = showNavigation,
-                    )
-                }
-            }
-            Column(
+            Row(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight(),
+                    .windowInsetsPadding(horizontalInsets),
             ) {
-                val bottomInset = WindowInsets.systemBars
-                    .union(WindowInsets.displayCutout)
-                    .only(WindowInsetsSides.Bottom)
-                    .asPaddingValues()
-                    .calculateBottomPadding()
-                // The bar below handles the bottom insets while it is
-                // there; with it gone the pushed screen owns that edge and
-                // needs them back. Handing them over in the same tween the
-                // bar animates in keeps the content from jumping by the
-                // inset height at either end of the transition.
-                val consumedBottom by animateDpAsState(
-                    targetValue = if (layout is HomeLayout.Vertical && showNavigation) bottomInset else 0.dp,
-                    animationSpec = tween(NAVIGATION_ANIMATION_MILLIS),
-                    label = "consumed bottom inset",
-                )
-                HomeNavigationContent(
-                    section = selectedSection,
-                    reselectCount = selection.reselectionsOf(selectedItem.key),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .consumeWindowInsets(PaddingValues(bottom = consumedBottom)),
-                )
-                if (layout is HomeLayout.Vertical) {
+                val layout = LocalHomeLayout.current
+                if (layout is HomeLayout.Horizontal) {
                     AnimatedVisibility(
                         visible = showNavigation,
-                        enter = expandVertically(tween(NAVIGATION_ANIMATION_MILLIS)) +
+                        enter = expandHorizontally(tween(NAVIGATION_ANIMATION_MILLIS)) +
                             fadeIn(tween(NAVIGATION_ANIMATION_MILLIS)),
-                        exit = shrinkVertically(tween(NAVIGATION_ANIMATION_MILLIS)) +
+                        exit = shrinkHorizontally(tween(NAVIGATION_ANIMATION_MILLIS)) +
                             fadeOut(tween(NAVIGATION_ANIMATION_MILLIS)),
                     ) {
-                        HomeNavigationBar(
+                        HomeNavigationRail(
                             items = items,
                             selectedItem = selectedItem,
                             onSelect = onSelect,
-                            // A bar on its way out must not switch section
-                            // under the screen that just pushed over it.
                             enabled = showNavigation,
                         )
+                    }
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                ) {
+                    val bottomInset = WindowInsets.systemBars
+                        .union(WindowInsets.displayCutout)
+                        .only(WindowInsetsSides.Bottom)
+                        .asPaddingValues()
+                        .calculateBottomPadding()
+                    // The bar below handles the bottom insets while it is
+                    // there; with it gone the pushed screen owns that edge and
+                    // needs them back. Handing them over in the same tween the
+                    // bar animates in keeps the content from jumping by the
+                    // inset height at either end of the transition.
+                    val consumedBottom by animateDpAsState(
+                        targetValue = if (layout is HomeLayout.Vertical && showNavigation) bottomInset else 0.dp,
+                        animationSpec = tween(NAVIGATION_ANIMATION_MILLIS),
+                        label = "consumed bottom inset",
+                    )
+                    HomeNavigationContent(
+                        section = selectedSection,
+                        reselectCount = selection.reselectionsOf(selectedItem.key),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .consumeWindowInsets(PaddingValues(bottom = consumedBottom)),
+                    )
+                    if (layout is HomeLayout.Vertical) {
+                        AnimatedVisibility(
+                            visible = showNavigation,
+                            enter = expandVertically(tween(NAVIGATION_ANIMATION_MILLIS)) +
+                                fadeIn(tween(NAVIGATION_ANIMATION_MILLIS)),
+                            exit = shrinkVertically(tween(NAVIGATION_ANIMATION_MILLIS)) +
+                                fadeOut(tween(NAVIGATION_ANIMATION_MILLIS)),
+                        ) {
+                            HomeNavigationBar(
+                                items = items,
+                                selectedItem = selectedItem,
+                                onSelect = onSelect,
+                                // A bar on its way out must not switch section
+                                // under the screen that just pushed over it.
+                                enabled = showNavigation,
+                            )
+                        }
                     }
                 }
             }
@@ -363,6 +399,8 @@ private fun HomeNavigationRail(
                             selected = selected,
                             icon = item.icon,
                             iconSelected = item.iconSelected,
+                            modifier = Modifier
+                                .favouritesCoachMarkTarget(item),
                         )
                     },
                     label = {
@@ -401,6 +439,8 @@ private fun HomeNavigationBar(
                             selected = selected,
                             icon = item.icon,
                             iconSelected = item.iconSelected,
+                            modifier = Modifier
+                                .favouritesCoachMarkTarget(item),
                         )
                     },
                     label = {
@@ -430,8 +470,12 @@ private fun NavigationIcon(
     selected: Boolean,
     icon: ImageVector,
     iconSelected: ImageVector,
+    modifier: Modifier = Modifier,
 ) {
-    Crossfade(targetState = selected) {
+    Crossfade(
+        targetState = selected,
+        modifier = modifier,
+    ) {
         val vector = if (it) {
             iconSelected
         } else {
@@ -440,3 +484,12 @@ private fun NavigationIcon(
         Icon(vector, null)
     }
 }
+
+/**
+ * The Favourites tab's icon, in the bar or the rail, is what its coach
+ * mark points at: the icon rather than the whole item, whose top edge is
+ * the bar's own, so an arrow aimed at the item stopped above the bar
+ * instead of on the heart.
+ */
+private fun Modifier.favouritesCoachMarkTarget(item: HomeNavigationItem): Modifier =
+    if (item.key == homeFavouritesItem.key) coachMarkTarget(CoachTarget.Favourites) else this

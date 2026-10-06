@@ -19,6 +19,13 @@
     <string name="search_names_toggle">Names</string>
     <string name="search_filters_names_on">Names on</string>
     <string name="search_filters_default">Default search</string>
+    <!-- Hand-drawn notes over the idle Search tab, pointing at the
+         field, the filters button and the Favourites tab. Lower case on
+         purpose: they read as scribbles, not as labels. Drawn, never
+         announced; screen readers reach the real elements instead. -->
+    <string name="coach_search_field">press to search, or tap the search tab again!</string>
+    <string name="coach_search_filters">change your search settings</string>
+    <string name="coach_favourites">view your saved words here</string>
     <!-- Chips on a name row. JMnedict's own DTD expansions ("family or
          surname", "given name or forename, gender not specified") are
          sentences rather than labels, so the four person-name codes get

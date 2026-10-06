@@ -56,6 +56,10 @@ import cc.hosaka.okonomi.ui.SearchTextField
 import cc.hosaka.okonomi.ui.ListCard
 import cc.hosaka.okonomi.ui.rememberClipboardCopy
 import cc.hosaka.okonomi.ui.TagChip
+import cc.hosaka.okonomi.ui.coach.CoachMarksWanted
+import cc.hosaka.okonomi.ui.coach.CoachTarget
+import cc.hosaka.okonomi.ui.coach.coachMarkTarget
+import cc.hosaka.okonomi.ui.coach.coachMarksWanted
 import cc.hosaka.okonomi.ui.furigana.FuriganaText
 import cc.hosaka.okonomi.ui.pagingFooterItem
 import cc.hosaka.okonomi.ui.scrollIndicator
@@ -88,6 +92,15 @@ private val ROW_GAP = 8.dp
 fun SearchScreen(
     state: SearchState,
 ) {
+    var filtersOpen by remember { mutableStateOf(false) }
+    CoachMarksWanted(
+        coachMarksWanted(
+            queryEmpty = state.query.isEmpty(),
+            resultsIdle = state.results is SearchResultsState.Idle,
+            isRoot = state.onBack == null,
+            filtersOpen = filtersOpen,
+        ),
+    )
     Surface(
         modifier = Modifier
             .fillMaxSize(),
@@ -121,6 +134,11 @@ fun SearchScreen(
             SearchFiltersButton(
                 namesEnabled = state.namesEnabled,
                 onNamesEnabledChange = state.onNamesEnabledChange,
+                onExpandedChange = { filtersOpen = it },
+                // Only the tab's own search is pointed at. A search pushed
+                // over an entry is composed beside the root during the
+                // transition, and two reporters would race for the target.
+                isCoachMarkTarget = state.onBack == null,
                 modifier = Modifier
                     .align(Alignment.BottomEnd),
             )
@@ -148,7 +166,8 @@ private fun SearchField(
         SearchTextField(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = Dimens.verticalPaddingHalf),
+                .padding(top = Dimens.verticalPaddingHalf)
+                .coachMarkTarget(CoachTarget.SearchField),
             text = state.query,
             placeholder = stringResource(Res.string.search_placeholder),
             onTextChange = state.onQueryChange,
