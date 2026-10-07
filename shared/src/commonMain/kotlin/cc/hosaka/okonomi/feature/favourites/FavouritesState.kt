@@ -1,6 +1,7 @@
 package cc.hosaka.okonomi.feature.favourites
 
 import androidx.compose.runtime.Immutable
+import cc.hosaka.okonomi.anki.AnkiSendResult
 import cc.hosaka.okonomi.db.SearchHit
 import cc.hosaka.okonomi.user.UserList
 
@@ -35,6 +36,15 @@ import cc.hosaka.okonomi.user.UserList
  * @property clearPrompt the Clear list confirmation, if one is standing.
  * @property onRemoveEntry takes one row out of [list] and out of no
  * other list. Null only on the seeded first frame.
+ * @property showSendToAnki whether the menu offers "Send to AnkiDroid"
+ * at all: only on Android, and only on Favourites.
+ * @property onSendToAnki sends every row on show to AnkiDroid. Null
+ * while there is nothing to send, while a send is already under way,
+ * and while any dialog stands.
+ * @property onAnkiPermissionResult non-null while a send waits on the
+ * reader granting AnkiDroid access: the route asks for the permission
+ * and hands the answer here.
+ * @property ankiPrompt how the last send ended, until it is dismissed.
  */
 @Immutable
 data class FavouritesState(
@@ -47,6 +57,21 @@ data class FavouritesState(
     val onClearList: (() -> Unit)? = null,
     val clearPrompt: FavouritesClearPrompt? = null,
     val onRemoveEntry: ((Long) -> Unit)? = null,
+    val showSendToAnki: Boolean = false,
+    val onSendToAnki: (() -> Unit)? = null,
+    val onAnkiPermissionResult: ((Boolean) -> Unit)? = null,
+    val ankiPrompt: FavouritesAnkiPrompt? = null,
+)
+
+/**
+ * How a send to AnkiDroid ended. Every outcome is a dialog, success
+ * included: unlike an import, a send changes nothing on this screen, so
+ * without one the reader would have no way to tell it happened.
+ */
+@Immutable
+data class FavouritesAnkiPrompt(
+    val result: AnkiSendResult,
+    val onDismiss: () -> Unit,
 )
 
 /**

@@ -18,6 +18,7 @@ import okonomi.shared.generated.resources.favourites_clear
 import okonomi.shared.generated.resources.favourites_export
 import okonomi.shared.generated.resources.favourites_import
 import okonomi.shared.generated.resources.favourites_options
+import okonomi.shared.generated.resources.favourites_send_to_anki
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -38,17 +39,26 @@ import org.jetbrains.compose.resources.stringResource
  * it is "Export list" and "Clear list" that render disabled, with
  * nothing in the list. The seeded first frame carries no callback at all
  * until the producer replaces it, and the button is disabled with them.
+ *
+ * Favourites on Android has a fourth, "Send to AnkiDroid", present only
+ * when [showSendToAnki] says so: on iOS and on History there is nothing
+ * to send to, so it is absent rather than disabled.
  */
 @Composable
 internal fun FavouritesOverflowMenu(
     onExportClick: (() -> Unit)?,
     onImportClick: (() -> Unit)?,
     onClearClick: (() -> Unit)?,
+    showSendToAnki: Boolean = false,
+    onSendToAnkiClick: (() -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         IconButton(
-            enabled = onClearClick != null || onExportClick != null || onImportClick != null,
+            enabled = onClearClick != null ||
+                onExportClick != null ||
+                onImportClick != null ||
+                (showSendToAnki && onSendToAnkiClick != null),
             onClick = { expanded = true },
         ) {
             Icon(
@@ -68,6 +78,16 @@ internal fun FavouritesOverflowMenu(
                     onExportClick?.invoke()
                 },
             )
+            if (showSendToAnki) {
+                DropdownMenuItem(
+                    text = { Text(text = stringResource(Res.string.favourites_send_to_anki)) },
+                    enabled = onSendToAnkiClick != null,
+                    onClick = {
+                        expanded = false
+                        onSendToAnkiClick?.invoke()
+                    },
+                )
+            }
             DropdownMenuItem(
                 text = { Text(text = stringResource(Res.string.favourites_import)) },
                 enabled = onImportClick != null,

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Merged into the app. Both entries are for sending Favourites to
+     AnkiDroid (cc.hosaka.okonomi.anki): its provider's runtime
+     permission, and the package visibility Android 11+ needs before
+     that provider can be resolved at all. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="com.ichi2.anki.permission.READ_WRITE_DATABASE" />
+
+    <queries>
+        <package android:name="com.ichi2.anki" />
+    </queries>
+
+</manifest>

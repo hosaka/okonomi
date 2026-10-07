@@ -178,6 +178,44 @@ suspend fun DictionaryDatabase.entryRows(ids: List<Long>): List<SearchHit> {
 }
 
 /**
+ * Every gloss of each entry in [ids], on the shared app-lifetime
+ * dictionary. See [DictionaryDatabase.entryGlosses].
+ */
+suspend fun entryGlosses(ids: List<Long>): Map<Long, List<String>> {
+    if (ids.isEmpty()) return emptyMap()
+    val database = dictionary()
+    return withContext(Dispatchers.Default) {
+        database.entryGlosses(ids)
+    }
+}
+
+/**
+ * Every gloss of each entry in [ids], in sense order and then gloss
+ * order — the whole entry, where a result row ([entryRows]) carries only
+ * its first few senses. What a flashcard is made from: a card is the one
+ * place a reader studies the word, so nothing is cut.
+ *
+ * An id the dictionary no longer carries has no key. Chunked for the
+ * reason [entryRows] is: the list is the reader's and has no ceiling.
+ */
+suspend fun DictionaryDatabase.entryGlosses(ids: List<Long>): Map<Long, List<String>> {
+    if (ids.isEmpty()) return emptyMap()
+    return ids.distinct().chunked(ENTRY_ROW_CHUNK).flatMap { chunk ->
+        coroutineContext.ensureActive()
+        // Senses come back in (entry, ord) order and glosses in
+        // (sense id, ord) order. A sense's id is not promised to follow
+        // its ord, so the glosses are regrouped under the senses rather
+        // than read off in the order they arrive.
+        val senses = db.entryQueries.sensesForEntries(chunk).awaitList()
+        val glosses = db.entryQueries.glossesForEntries(chunk).awaitList()
+            .groupBy(keySelector = { it.sense_id }, valueTransform = { it.text })
+        senses.groupBy { it.entry_id }.map { (entryId, entrySenses) ->
+            entryId to entrySenses.flatMap { glosses[it.id].orEmpty() }
+        }
+    }.toMap()
+}
+
+/**
  * Ids per query in [entryRows]. Well under `SQLITE_MAX_VARIABLE_NUMBER`
  * on every build this could run against — 32766 on the bundled SQLite
  * the app ships, and higher on the JDBC build the host tests use, which

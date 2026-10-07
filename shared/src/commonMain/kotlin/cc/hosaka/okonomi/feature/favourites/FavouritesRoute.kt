@@ -38,6 +38,7 @@ data object FavouritesRoute : Route {
             onExportJson = state.onExportJson,
             onFileImported = state.onFileImported,
         )
+        AnkiPermissionRequest(state.onAnkiPermissionResult)
         FavouritesScreen(
             state = state,
             onExportClick = transfer.onExportClick,

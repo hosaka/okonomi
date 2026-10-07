@@ -231,6 +231,40 @@
     <string name="favourites_clear_message">Every word in %1$s will be removed. This cannot be undone.</string>
     <string name="favourites_clear_confirm">Clear</string>
     <string name="favourites_clear_cancel">Cancel</string>
+    <!-- Send to AnkiDroid: Android only, Favourites only. Every way a
+         send can end has its own dialog, success included, because a
+         send changes nothing on screen. "AnkiDroid" is the app's name
+         and is not translated. %2$s / %3$s below is the deck's name,
+         which is fixed (it is data in AnkiDroid, not UI). -->
+    <string name="favourites_send_to_anki">Send to Anki</string>
+    <string name="anki_sent_title">Sent to AnkiDroid</string>
+    <plurals name="anki_sent_words">
+        <item quantity="one">Sent %1$d word to the deck “%2$s”.</item>
+        <item quantity="other">Sent %1$d words to the deck “%2$s”.</item>
+    </plurals>
+    <plurals name="anki_sent_new_words">
+        <item quantity="one">Sent %1$d new word to the deck “%2$s”.</item>
+        <item quantity="other">Sent %1$d new words to the deck “%2$s”.</item>
+    </plurals>
+    <plurals name="anki_sent_already_there">
+        <item quantity="one">%1$d was already in AnkiDroid.</item>
+        <item quantity="other">%1$d were already in AnkiDroid.</item>
+    </plurals>
+    <string name="anki_nothing_new_title">Nothing new to send</string>
+    <string name="anki_nothing_new_message">Every word in Favourites is already in AnkiDroid.</string>
+    <string name="anki_unavailable_title">AnkiDroid is not available</string>
+    <string name="anki_unavailable_message">Install AnkiDroid to send your Favourites to it. If it is already installed, turn on Settings › Advanced › Enable AnkiDroid API in AnkiDroid, then try again.</string>
+    <string name="anki_permission_title">AnkiDroid access is needed</string>
+    <string name="anki_permission_message">okonomi can only add cards to AnkiDroid with your permission. Nothing was sent.</string>
+    <string name="anki_no_collection_title">Open AnkiDroid first</string>
+    <string name="anki_no_collection_message">AnkiDroid has not been set up on this device yet. Open it once, then try again. Nothing was sent.</string>
+    <string name="anki_failed_title">Could not send to AnkiDroid</string>
+    <string name="anki_failed_message">Something went wrong and nothing was sent.</string>
+    <plurals name="anki_failed_partly_message">
+        <item quantity="one">Something went wrong: %1$d of %2$d word reached the deck “%3$s” before it stopped.</item>
+        <item quantity="other">Something went wrong: %1$d of %2$d words reached the deck “%3$s” before it stopped.</item>
+    </plurals>
+    <string name="anki_dismiss">OK</string>
     <string name="settings_title">Settings</string>
     <string name="settings_dictionary_label">Dictionary</string>
     <string name="settings_dictionary_value">JMdict %1$s · %2$s entries</string>

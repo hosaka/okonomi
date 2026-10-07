@@ -45,6 +45,8 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import cc.hosaka.okonomi.anki.ANKI_DECK_NAME
+import cc.hosaka.okonomi.anki.AnkiSendResult
 import cc.hosaka.okonomi.db.SearchHit
 import cc.hosaka.okonomi.feature.navigation.LocalNavigationController
 import cc.hosaka.okonomi.feature.search.SearchResultRow
@@ -62,6 +64,22 @@ import cc.hosaka.okonomi.user.UserList
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.delay
 import okonomi.shared.generated.resources.Res
+import okonomi.shared.generated.resources.anki_dismiss
+import okonomi.shared.generated.resources.anki_failed_message
+import okonomi.shared.generated.resources.anki_failed_partly_message
+import okonomi.shared.generated.resources.anki_failed_title
+import okonomi.shared.generated.resources.anki_no_collection_message
+import okonomi.shared.generated.resources.anki_no_collection_title
+import okonomi.shared.generated.resources.anki_nothing_new_message
+import okonomi.shared.generated.resources.anki_nothing_new_title
+import okonomi.shared.generated.resources.anki_permission_message
+import okonomi.shared.generated.resources.anki_permission_title
+import okonomi.shared.generated.resources.anki_sent_already_there
+import okonomi.shared.generated.resources.anki_sent_new_words
+import okonomi.shared.generated.resources.anki_sent_title
+import okonomi.shared.generated.resources.anki_sent_words
+import okonomi.shared.generated.resources.anki_unavailable_message
+import okonomi.shared.generated.resources.anki_unavailable_title
 import okonomi.shared.generated.resources.favourites_clear_cancel
 import okonomi.shared.generated.resources.favourites_clear_confirm
 import okonomi.shared.generated.resources.favourites_clear_message
@@ -82,6 +100,7 @@ import okonomi.shared.generated.resources.favourites_title
 import okonomi.shared.generated.resources.history_empty
 import okonomi.shared.generated.resources.history_title
 import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -189,6 +208,8 @@ fun FavouritesScreen(
                             onExportClick = onExportClick,
                             onImportClick = onImportClick,
                             onClearClick = state.onClearList,
+                            showSendToAnki = state.showSendToAnki,
+                            onSendToAnkiClick = state.onSendToAnki,
                         )
                     }
                 },
@@ -243,6 +264,7 @@ fun FavouritesScreen(
     }
     FavouritesImportDialog(state.importPrompt)
     FavouritesClearDialog(state.clearPrompt)
+    FavouritesAnkiDialog(state.ankiPrompt)
 }
 
 /** What the toolbar calls each list. */
@@ -342,6 +364,76 @@ private fun FavouritesClearDialog(
         dismissButton = {
             TextButton(onClick = prompt.onCancel) {
                 Text(text = stringResource(Res.string.favourites_clear_cancel))
+            }
+        },
+    )
+}
+
+/**
+ * How a send to AnkiDroid ended: one dialog for every outcome, because
+ * a send leaves nothing on this screen to show for itself.
+ */
+@Composable
+private fun FavouritesAnkiDialog(
+    prompt: FavouritesAnkiPrompt?,
+) {
+    if (prompt == null) return
+    val title: String
+    val message: String
+    when (val result = prompt.result) {
+        is AnkiSendResult.Sent -> {
+            title = stringResource(Res.string.anki_sent_title)
+            message = if (result.alreadyThere == 0) {
+                pluralStringResource(Res.plurals.anki_sent_words, result.added, result.added, ANKI_DECK_NAME)
+            } else {
+                pluralStringResource(Res.plurals.anki_sent_new_words, result.added, result.added, ANKI_DECK_NAME) +
+                    " " +
+                    pluralStringResource(Res.plurals.anki_sent_already_there, result.alreadyThere, result.alreadyThere)
+            }
+        }
+
+        AnkiSendResult.NothingNew -> {
+            title = stringResource(Res.string.anki_nothing_new_title)
+            message = stringResource(Res.string.anki_nothing_new_message)
+        }
+
+        AnkiSendResult.Unavailable -> {
+            title = stringResource(Res.string.anki_unavailable_title)
+            message = stringResource(Res.string.anki_unavailable_message)
+        }
+
+        AnkiSendResult.PermissionDenied -> {
+            title = stringResource(Res.string.anki_permission_title)
+            message = stringResource(Res.string.anki_permission_message)
+        }
+
+        AnkiSendResult.NoCollection -> {
+            title = stringResource(Res.string.anki_no_collection_title)
+            message = stringResource(Res.string.anki_no_collection_message)
+        }
+
+        is AnkiSendResult.Failed -> {
+            title = stringResource(Res.string.anki_failed_title)
+            message = if (result.added == 0) {
+                stringResource(Res.string.anki_failed_message)
+            } else {
+                pluralStringResource(
+                    Res.plurals.anki_failed_partly_message,
+                    result.attempted,
+                    result.added,
+                    result.attempted,
+                    ANKI_DECK_NAME,
+                )
+            }
+        }
+    }
+    AlertDialog(
+        onDismissRequest = prompt.onDismiss,
+        title = { Text(text = title) },
+        text = { Text(text = message) },
+        confirmButton = {
+            TextButton(onClick = prompt.onDismiss) {
+                Text(text = stringResource(Res.string.anki_dismiss))
             }
         },
     )

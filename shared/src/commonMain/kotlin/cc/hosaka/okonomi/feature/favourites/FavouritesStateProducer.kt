@@ -2,7 +2,14 @@ package cc.hosaka.okonomi.feature.favourites
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
+import cc.hosaka.okonomi.anki.AnkiAccess
+import cc.hosaka.okonomi.anki.AnkiExport
+import cc.hosaka.okonomi.anki.AnkiSendResult
+import cc.hosaka.okonomi.anki.ankiSendScope
+import cc.hosaka.okonomi.anki.appAnkiExport
+import cc.hosaka.okonomi.anki.toAnkiNote
 import cc.hosaka.okonomi.db.SearchHit
+import cc.hosaka.okonomi.db.entryGlosses
 import cc.hosaka.okonomi.db.entryRows
 import cc.hosaka.okonomi.db.invalidateDictionary
 import cc.hosaka.okonomi.feature.navigation.state.ScreenStateScope
@@ -15,6 +22,7 @@ import cc.hosaka.okonomi.user.decodeFavourites
 import cc.hosaka.okonomi.user.encodeFavourites
 import cc.hosaka.okonomi.user.printUserDataFailure
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,6 +31,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.transformLatest
+import kotlinx.coroutines.launch
 
 @Composable
 fun produceFavouritesScreenState(): State<FavouritesState> = produceScreenState(
@@ -50,6 +59,12 @@ fun produceFavouritesScreenState(): State<FavouritesState> = produceScreenState(
  * swipe empty or shorten it. Import is the one thing that names its list
  * itself, because the file dialog it waits on can outlive the state that
  * opened it — see [FavouritesState.onFileImported].
+ *
+ * Sending to AnkiDroid is Favourites' alone, and only where [anki]
+ * exists. It sends the rows on show — the words as the reader sees them
+ * — and runs on [ankiScope] rather than on this producer, which is
+ * cancelled five seconds after the tab stops being watched; see
+ * [AnkiStage] for why its progress is persisted.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 suspend fun ScreenStateScope.favouritesScreenStateProducer(
@@ -57,6 +72,9 @@ suspend fun ScreenStateScope.favouritesScreenStateProducer(
     loadRows: suspend (List<Long>) -> List<SearchHit> = { entryRows(it) },
     invalidate: suspend () -> Unit = { invalidateDictionary() },
     report: (String, Throwable?) -> Unit = printUserDataFailure,
+    anki: AnkiExport? = appAnkiExport(),
+    loadGlosses: suspend (List<Long>) -> Map<Long, List<String>> = { entryGlosses(it) },
+    ankiScope: CoroutineScope = ankiSendScope,
 ): Flow<FavouritesState> {
     // Bumped to re-ask for rows that already failed. Deliberately not
     // persisted: a retry attempt is not state worth restoring. The ids
@@ -105,6 +123,38 @@ suspend fun ScreenStateScope.favouritesScreenStateProducer(
     val onFileImported: (UserList, String) -> Unit = { target, text ->
         handleImportedFile(target, text, favourites, selected, pending, clearing, report)
     }
+    val ankiStage = mutablePersistedFlow<AnkiStage?>(ANKI_STAGE_KEY, null)
+    val launchAnkiSend: (List<SearchHit>) -> Unit = { hits ->
+        if (anki != null) {
+            ankiScope.launch {
+                val result = try {
+                    // The rows on screen carry only their first senses; a
+                    // card gets the whole entry, read here off the main
+                    // thread rather than at the tap.
+                    val glosses = loadGlosses(hits.map { it.entryId })
+                    anki.send(hits.map { it.toAnkiNote(glosses[it.entryId].orEmpty()) })
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // send() promises not to throw, so this is the
+                    // dictionary failing, or a broken promise. Either way
+                    // the menu item must not stay disabled for good with
+                    // no dialog ever coming.
+                    report("the saved words could not be prepared for AnkiDroid", e)
+                    AnkiSendResult.Failed(added = 0, attempted = hits.size)
+                }
+                ankiStage.value = AnkiStage.Done(result)
+            }
+        }
+    }
+    val startAnkiSend: (List<SearchHit>) -> Unit = { hits ->
+        when (anki?.access()) {
+            null -> Unit
+            AnkiAccess.Unavailable -> ankiStage.compareAndSet(null, AnkiStage.Done(AnkiSendResult.Unavailable))
+            AnkiAccess.NeedsPermission -> ankiStage.compareAndSet(null, AnkiStage.AwaitingPermission(hits))
+            AnkiAccess.Granted -> if (ankiStage.compareAndSet(null, AnkiStage.Sending)) launchAnkiSend(hits)
+        }
+    }
     val listed = selected.flatMapLatest { list ->
         favourites.entryIds(list).map { ids -> list to ids }
     }
@@ -151,12 +201,35 @@ suspend fun ScreenStateScope.favouritesScreenStateProducer(
         // Dropped rather than merely hidden, or it would stand up again
         // the moment a word landed in the list.
         .onEach { (list, ids) -> if (ids.isEmpty()) clearing.compareAndSet(list, null) }
-    return combine(content, pending, clearing) { (list, ids, body), request, clearRequest ->
+    return combine(content, pending, clearing, ankiStage) { (list, ids, body), request, clearRequest, stage ->
         // A prompt stands only over the list it would replace. The file
         // switches the tab to its list when it arrives, so in practice
         // the two agree; this keeps them agreeing through a state an
         // earlier run left standing.
         val importPrompt = request?.takeIf { it.list == list }?.asPrompt(favourites, pending)
+        // A send's result is the reader's whichever list is on show, so
+        // it stands over either — but never over an import's question,
+        // which a file can raise at any time. It waits behind it.
+        val ankiPrompt = (stage as? AnkiStage.Done)
+            ?.takeIf { importPrompt == null }
+            ?.let { done -> FavouritesAnkiPrompt(done.result, onDismiss = { ankiStage.compareAndSet(done, null) }) }
+        val sendable = (body as? FavouritesContentState.Ready)?.hits.orEmpty()
+        // Only for the list on show and only while it has rows; the
+        // onEach above drops one that outlived its list's last row.
+        val clearPrompt = clearRequest?.takeIf {
+            it == list && ids.isNotEmpty() && importPrompt == null && ankiPrompt == null
+        }?.let { target ->
+            FavouritesClearPrompt(
+                list = target,
+                // One-shot, as the import's confirmation is.
+                onConfirm = {
+                    if (clearing.compareAndSet(target, null)) {
+                        favourites.clearList(target)
+                    }
+                },
+                onCancel = { clearing.value = null },
+            )
+        }
         FavouritesState(
             content = body,
             list = list,
@@ -177,33 +250,63 @@ suspend fun ScreenStateScope.favouritesScreenStateProducer(
             // has dropped still holds them, and clearing it is still
             // something to offer. Not while an import is asking its own
             // question: one dialog at a time.
-            onClearList = if (ids.isEmpty() || importPrompt != null) {
+            onClearList = if (ids.isEmpty() || importPrompt != null || stage != null) {
                 null
             } else {
                 { clearing.value = list }
             },
-            // Only for the list on show and only while it has rows; the
-            // onEach above drops one that outlived its list's last row.
-            clearPrompt = clearRequest?.takeIf {
-                it == list && ids.isNotEmpty() && importPrompt == null
-            }?.let { target ->
-                FavouritesClearPrompt(
-                    list = target,
-                    // One-shot, as the import's confirmation is.
-                    onConfirm = {
-                        if (clearing.compareAndSet(target, null)) {
-                            favourites.clearList(target)
-                        }
-                    },
-                    onCancel = { clearing.value = null },
-                )
-            },
+            clearPrompt = clearPrompt,
             // Bound to the list this emission shows, so a row swiped on
             // one list can never be taken out of the other.
             onRemoveEntry = removeFrom.getValue(list),
+            showSendToAnki = anki != null && list == UserList.Favourites,
+            // One send at a time, one dialog at a time, and only the rows
+            // that resolved: a word the dictionary has dropped has
+            // nothing to put on a card.
+            onSendToAnki = if (
+                anki != null &&
+                list == UserList.Favourites &&
+                sendable.isNotEmpty() &&
+                stage == null &&
+                importPrompt == null &&
+                clearPrompt == null
+            ) {
+                { startAnkiSend(sendable) }
+            } else {
+                null
+            },
+            onAnkiPermissionResult = (stage as? AnkiStage.AwaitingPermission)?.let { waiting ->
+                { granted: Boolean ->
+                    if (granted) {
+                        if (ankiStage.compareAndSet(waiting, AnkiStage.Sending)) launchAnkiSend(waiting.hits)
+                    } else {
+                        ankiStage.compareAndSet(waiting, AnkiStage.Done(AnkiSendResult.PermissionDenied))
+                    }
+                }
+            },
+            ankiPrompt = ankiPrompt,
         )
     }
 }
+
+/**
+ * Where a send to AnkiDroid has got to. Persisted for the reason the
+ * pending import is: the permission dialog is another activity, so its
+ * answer comes back through a state an earlier run of the producer left
+ * standing, and a send can finish after the run that started it has
+ * been cancelled.
+ */
+private sealed interface AnkiStage {
+    /** The rows to send wait here while the reader is asked for AnkiDroid access. */
+    data class AwaitingPermission(val hits: List<SearchHit>) : AnkiStage
+
+    data object Sending : AnkiStage
+
+    /** Finished, with a dialog standing until it is dismissed. */
+    data class Done(val result: AnkiSendResult) : AnkiStage
+}
+
+private const val ANKI_STAGE_KEY = "favourites-anki-stage"
 
 /** One list's ids and the body they resolved to, as one emission. */
 private data class ListContent(
