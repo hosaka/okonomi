@@ -274,6 +274,15 @@
          card template when it is first created. -->
     <string name="anki_card_link">More in Okonomi</string>
     <string name="settings_title">Settings</string>
+    <string name="settings_appearance_title">Appearance</string>
+    <string name="settings_appearance_description">Hints on the main tab</string>
+    <string name="settings_about_title">About</string>
+    <string name="settings_about_description">Dictionary, credits and licences</string>
+    <string name="about_title">About</string>
+    <string name="about_back">Back</string>
+    <string name="appearance_title">Appearance</string>
+    <string name="appearance_back">Back</string>
+    <string name="appearance_show_hints">Show hints on main tab</string>
     <string name="settings_dictionary_label">Dictionary</string>
     <string name="settings_dictionary_value">JMdict %1$s · %2$s entries</string>
     <string name="settings_credits_title">Credits</string>

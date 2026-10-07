@@ -5,7 +5,7 @@ import cc.hosaka.okonomi.common.model.Loadable
 import cc.hosaka.okonomi.db.DictionaryInfo
 
 @Immutable
-data class SettingsState(
+data class AboutState(
     /**
      * Ok(null) means the dictionary could not be loaded; the screen
      * shows nothing in that case (a failure never takes the screen down).

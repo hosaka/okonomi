@@ -268,16 +268,27 @@ internal fun coachMarksWanted(
 ): Boolean = queryEmpty && resultsIdle && isRoot && !filtersOpen
 
 /**
- * The shell's half: the Search tab is selected, its section is at its
- * root, Search asked for marks, and the keyboard is down — a reader with
- * the IME up is already doing what the field's note suggests.
+ * Persisted key of Appearance's "Show hints on main tab" switch. Off
+ * means the marks never show; on leaves every other rule as it was.
+ */
+internal const val COACH_MARKS_ENABLED_PREFERENCE = "home.coach_marks_enabled"
+
+/** On, so every reader who never touched the switch keeps the marks. */
+internal const val COACH_MARKS_ENABLED_DEFAULT = true
+
+/**
+ * The shell's half: the reader has not switched the marks off, the Search
+ * tab is selected, its section is at its root, Search asked for marks,
+ * and the keyboard is down — a reader with the IME up is already doing
+ * what the field's note suggests.
  */
 internal fun coachMarksVisible(
+    enabled: Boolean,
     searchSelected: Boolean,
     atRoot: Boolean,
     wanted: Boolean,
     imeVisible: Boolean,
-): Boolean = searchSelected && atRoot && wanted && !imeVisible
+): Boolean = enabled && searchSelected && atRoot && wanted && !imeVisible
 
 private const val FADE_IN_MILLIS = 220
 private const val FADE_IN_DELAY_MILLIS = 120
@@ -290,6 +301,10 @@ private const val FADE_OUT_MILLIS = 120
  * The overlay is drawn last, above everything, and carries no pointer
  * input at all, so every touch falls through to whatever is under it.
  *
+ * [enabled] is the reader's "Show hints on main tab" setting; the shell
+ * passes false until the stored value has been read, so a reader who
+ * turned the marks off never sees them flash in.
+ *
  * [imeVisible] defaults to the real keyboard inset; it is a parameter so
  * a test can raise a keyboard the host test runtime never shows.
  */
@@ -299,6 +314,7 @@ internal fun CoachMarksHost(
     atRoot: Boolean,
     navigation: CoachNavigation,
     registry: CoachMarkRegistry,
+    enabled: Boolean,
     modifier: Modifier = Modifier,
     imeVisible: Boolean = WindowInsets.ime.getBottom(LocalDensity.current) > 0,
     content: @Composable () -> Unit,
@@ -313,6 +329,7 @@ internal fun CoachMarksHost(
         }
         AnimatedVisibility(
             visible = coachMarksVisible(
+                enabled = enabled,
                 searchSelected = searchSelected,
                 atRoot = atRoot,
                 wanted = registry.wanted,

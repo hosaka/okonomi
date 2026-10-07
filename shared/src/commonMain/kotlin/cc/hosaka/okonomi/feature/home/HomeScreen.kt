@@ -38,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
@@ -80,6 +81,10 @@ import cc.hosaka.okonomi.feature.navigation.NavigationController
 import cc.hosaka.okonomi.feature.navigation.navigationSavedStateConfiguration
 import cc.hosaka.okonomi.feature.navigation.routeEntryProvider
 import cc.hosaka.okonomi.feature.word.EntryRoute
+import cc.hosaka.okonomi.prefs.PreferenceStore
+import cc.hosaka.okonomi.prefs.appPreferences
+import cc.hosaka.okonomi.ui.coach.COACH_MARKS_ENABLED_DEFAULT
+import cc.hosaka.okonomi.ui.coach.COACH_MARKS_ENABLED_PREFERENCE
 import cc.hosaka.okonomi.ui.coach.CoachMarkRegistry
 import cc.hosaka.okonomi.ui.coach.CoachMarksHost
 import cc.hosaka.okonomi.ui.coach.CoachNavigation
@@ -221,8 +226,9 @@ internal class HomeSectionProbe(
  * [HomeScreen] with its seams handed in: the registry the coach marks
  * report into, so tests can read where the targets landed; the entry
  * links to open; [leaveApp], what system back on a link-opened entry
- * calls; and [onSection], which hands a test each section's navigation
- * and back stack.
+ * calls; [onSection], which hands a test each section's navigation
+ * and back stack; and [preferences], where the coach marks' on/off
+ * setting is read from.
  */
 @Composable
 internal fun HomeScreen(
@@ -231,6 +237,7 @@ internal fun HomeScreen(
     entryLinks: EntryLinks = appEntryLinks,
     leaveApp: () -> Unit = rememberLeaveApp(),
     onSection: ((key: String, probe: HomeSectionProbe) -> Unit)? = null,
+    preferences: PreferenceStore = appPreferences(),
 ) {
     require(items.isNotEmpty()) { "Home needs at least one section" }
     require(items.distinctBy { it.key }.size == items.size) { "Home section keys must be unique" }
@@ -303,11 +310,18 @@ internal fun HomeScreen(
     // its root and comes back when the stack pops to it.
     val showNavigation = isAtRoot(selectedSection.depth)
 
+    // False until the store answers, not the default: a reader who
+    // switched the marks off must never see them flash in on a cold start.
+    val coachMarksEnabled by remember(preferences) {
+        preferences.booleanFlow(COACH_MARKS_ENABLED_PREFERENCE, COACH_MARKS_ENABLED_DEFAULT)
+    }.collectAsState(initial = false)
+
     ResponsiveLayout {
         val horizontalInsets = WindowInsets.systemBars
             .union(WindowInsets.displayCutout)
             .only(WindowInsetsSides.Start)
         CoachMarksHost(
+            enabled = coachMarksEnabled,
             searchSelected = selectedItem.key == homeSearchItem.key,
             atRoot = showNavigation,
             navigation = when (LocalHomeLayout.current) {

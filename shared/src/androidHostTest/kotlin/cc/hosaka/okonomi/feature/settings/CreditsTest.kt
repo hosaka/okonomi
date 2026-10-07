@@ -23,7 +23,7 @@ import kotlin.test.assertTrue
  * do not add an assertion here that a `Credits.kt` edit would simply be
  * copied into.
  *
- * The rendering half is `SettingsCreditsUiTest`, which is a different
+ * The rendering half is `AboutCreditsUiTest`, which is a different
  * kind of check: it exists because a reviewer once deleted the whole
  * `CreditsSection(...)` call with every test still green.
  */

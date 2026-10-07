@@ -39,16 +39,18 @@ class CoachMarksLayoutTest {
     )
 
     @Test
-    fun `the marks are visible only on the selected search root with the keyboard down`() {
-        for (searchSelected in listOf(true, false)) {
-            for (atRoot in listOf(true, false)) {
-                for (wanted in listOf(true, false)) {
-                    for (imeVisible in listOf(true, false)) {
-                        assertEquals(
-                            searchSelected && atRoot && wanted && !imeVisible,
-                            coachMarksVisible(searchSelected, atRoot, wanted, imeVisible),
-                            "selected=$searchSelected root=$atRoot wanted=$wanted ime=$imeVisible",
-                        )
+    fun `the marks are visible only when enabled on the selected search root with the keyboard down`() {
+        for (enabled in listOf(true, false)) {
+            for (searchSelected in listOf(true, false)) {
+                for (atRoot in listOf(true, false)) {
+                    for (wanted in listOf(true, false)) {
+                        for (imeVisible in listOf(true, false)) {
+                            assertEquals(
+                                enabled && searchSelected && atRoot && wanted && !imeVisible,
+                                coachMarksVisible(enabled, searchSelected, atRoot, wanted, imeVisible),
+                                "enabled=$enabled selected=$searchSelected root=$atRoot wanted=$wanted ime=$imeVisible",
+                            )
+                        }
                     }
                 }
             }

@@ -47,12 +47,17 @@ import cc.hosaka.okonomi.feature.navigation.NavigationController
 import cc.hosaka.okonomi.feature.navigation.navigationSavedStateConfiguration
 import cc.hosaka.okonomi.feature.navigation.routeEntryProvider
 import cc.hosaka.okonomi.feature.search.SearchRoute
+import cc.hosaka.okonomi.prefs.FakePreferenceStore
+import cc.hosaka.okonomi.prefs.PreferenceStore
 import cc.hosaka.okonomi.ui.test.ComposeUiTestBase
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import okonomi.shared.generated.resources.Res
 import okonomi.shared.generated.resources.home_favourites_label
 import okonomi.shared.generated.resources.search_clear
@@ -76,7 +81,7 @@ class CoachMarksUiTest : ComposeUiTestBase() {
     @Test
     fun `the idle search tab lays out all three marks in portrait`() = runComposeUiTest {
         val registry = CoachMarkRegistry()
-        setContent { HomeScreen(coachMarks = registry) }
+        setContent { HomeUnderTest(registry) }
         waitForIdle()
 
         onNodeWithTag(COACH_MARKS_TAG).assertExists()
@@ -87,7 +92,7 @@ class CoachMarksUiTest : ComposeUiTestBase() {
     @Test
     fun `the idle search tab lays out all three marks in landscape`() = runComposeUiTest {
         val registry = CoachMarkRegistry()
-        setContent { Landscape { HomeScreen(coachMarks = registry) } }
+        setContent { Landscape { HomeUnderTest(registry) } }
         waitForIdle()
 
         val layout = assertNotNull(registry.lastLayout, "the overlay laid nothing out")
@@ -102,7 +107,7 @@ class CoachMarksUiTest : ComposeUiTestBase() {
         val labels = Labels()
         setContent {
             labels.read()
-            HomeScreen()
+            HomeUnderTest()
         }
         waitForIdle()
         onNodeWithTag(COACH_MARKS_TAG).assertExists()
@@ -116,10 +121,47 @@ class CoachMarksUiTest : ComposeUiTestBase() {
         onNodeWithTag(COACH_MARKS_TAG).assertExists()
     }
 
+    /**
+     * The Appearance switch, through the real shell: off, idle Search
+     * draws no marks, and switching it back on brings them back under
+     * the usual rules.
+     */
+    @Test
+    fun `hints switched off keep the marks away and switching them on brings them back`() = runComposeUiTest {
+        val preferences = FakePreferenceStore(mapOf(COACH_MARKS_ENABLED_PREFERENCE to false))
+        val registry = CoachMarkRegistry()
+        setContent { HomeUnderTest(registry, preferences) }
+        waitForIdle()
+        onNodeWithTag(COACH_MARKS_TAG).assertDoesNotExist()
+        assertNull(registry.lastLayout, "the overlay must lay nothing out while hints are off")
+
+        runOnIdle { preferences.setBoolean(COACH_MARKS_ENABLED_PREFERENCE, true) }
+        waitForIdle()
+        onNodeWithTag(COACH_MARKS_TAG).assertExists()
+    }
+
+    /**
+     * The real store answers on its own dispatcher, some time after the
+     * first frame. Until it has, the marks stay away, so a reader who
+     * switched them off never sees them flash in on a cold start. The
+     * fake store above answers before any frame and could not show this.
+     */
+    @Test
+    fun `no marks show before the stored setting has been read`() = runComposeUiTest {
+        val preferences = UnansweredPreferenceStore()
+        setContent { HomeUnderTest(preferences = preferences) }
+        waitForIdle()
+        onNodeWithTag(COACH_MARKS_TAG).assertDoesNotExist()
+
+        runOnIdle { preferences.answer(true) }
+        waitForIdle()
+        onNodeWithTag(COACH_MARKS_TAG).assertExists()
+    }
+
     /** A blank query leaves the results idle, but the field is not empty. */
     @Test
     fun `a field holding only spaces hides the marks`() = runComposeUiTest {
-        setContent { HomeScreen() }
+        setContent { HomeUnderTest() }
         waitForIdle()
         onNodeWithTag(COACH_MARKS_TAG).assertExists()
 
@@ -135,7 +177,7 @@ class CoachMarksUiTest : ComposeUiTestBase() {
         val labels = Labels()
         setContent {
             labels.read()
-            HomeScreen()
+            HomeUnderTest()
         }
         waitForIdle()
         onNodeWithTag(COACH_MARKS_TAG).assertExists()
@@ -155,7 +197,7 @@ class CoachMarksUiTest : ComposeUiTestBase() {
         val back = TestBackInput()
         setContent {
             labels.read()
-            BackHost(back) { HomeScreen() }
+            BackHost(back) { HomeUnderTest() }
         }
         waitForIdle()
 
@@ -172,7 +214,7 @@ class CoachMarksUiTest : ComposeUiTestBase() {
 
     @Test
     fun `the field takes a tap through the marks`() = runComposeUiTest {
-        setContent { HomeScreen() }
+        setContent { HomeUnderTest() }
         waitForIdle()
         onNodeWithTag(COACH_MARKS_TAG).assertExists()
 
@@ -188,7 +230,7 @@ class CoachMarksUiTest : ComposeUiTestBase() {
         val labels = Labels()
         setContent {
             labels.read()
-            HomeScreen()
+            HomeUnderTest()
         }
         waitForIdle()
         onNodeWithTag(COACH_MARKS_TAG).assertExists()
@@ -209,6 +251,7 @@ class CoachMarksUiTest : ComposeUiTestBase() {
         val ime = mutableStateOf(false)
         setContent {
             CoachMarksHost(
+                enabled = true,
                 searchSelected = true,
                 atRoot = true,
                 navigation = CoachNavigation.BottomBar,
@@ -241,6 +284,7 @@ class CoachMarksUiTest : ComposeUiTestBase() {
         lateinit var navigation: NavigationController
         setContent {
             CoachMarksHost(
+                enabled = true,
                 searchSelected = true,
                 atRoot = true,
                 navigation = CoachNavigation.BottomBar,
@@ -283,6 +327,7 @@ class CoachMarksUiTest : ComposeUiTestBase() {
                     .padding(start = 40.dp, top = 30.dp),
             ) {
                 CoachMarksHost(
+                    enabled = true,
                     searchSelected = true,
                     atRoot = true,
                     navigation = CoachNavigation.BottomBar,
@@ -311,7 +356,7 @@ class CoachMarksUiTest : ComposeUiTestBase() {
      */
     @Test
     fun `the overlay clears its semantics and announces nothing`() = runComposeUiTest {
-        setContent { HomeScreen() }
+        setContent { HomeUnderTest() }
         waitForIdle()
 
         val config = onNodeWithTag(COACH_MARKS_TAG, useUnmergedTree = true).fetchSemanticsNode().config
@@ -327,7 +372,7 @@ class CoachMarksUiTest : ComposeUiTestBase() {
         val labels = Labels()
         setContent {
             labels.read()
-            HomeScreen(coachMarks = registry)
+            HomeUnderTest(registry)
         }
         waitForIdle()
 
@@ -341,7 +386,7 @@ class CoachMarksUiTest : ComposeUiTestBase() {
         val labels = Labels()
         setContent {
             labels.read()
-            Landscape { HomeScreen(coachMarks = registry) }
+            Landscape { HomeUnderTest(registry) }
         }
         waitForIdle()
 
@@ -402,6 +447,37 @@ class CoachMarksUiTest : ComposeUiTestBase() {
 
     private fun favouritesTab(labels: Labels) =
         hasText(labels.favourites) and SemanticsMatcher.keyIsDefined(SemanticsProperties.Selected)
+}
+
+/**
+ * The real shell over a preference store the test owns: the production
+ * default opens a real DataStore, which answers on a real dispatcher the
+ * test clock cannot wait for. An empty store reads as the default, on.
+ */
+@Composable
+private fun HomeUnderTest(
+    registry: CoachMarkRegistry = remember { CoachMarkRegistry() },
+    preferences: PreferenceStore = remember { FakePreferenceStore() },
+) {
+    HomeScreen(
+        coachMarks = registry,
+        preferences = preferences,
+    )
+}
+
+/** A store whose reads emit nothing until [answer] is called. */
+private class UnansweredPreferenceStore : PreferenceStore {
+    private val stored = MutableStateFlow<Boolean?>(null)
+
+    fun answer(value: Boolean) {
+        stored.value = value
+    }
+
+    override fun booleanFlow(key: String, default: Boolean): Flow<Boolean> = stored.filterNotNull()
+
+    override fun setBoolean(key: String, value: Boolean) {
+        stored.value = value
+    }
 }
 
 /** A 640×360 window, placed at the root's origin whatever the real window is. */

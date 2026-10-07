@@ -17,16 +17,16 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 
 @Composable
-fun produceSettingsScreenState(): State<SettingsState> = produceScreenState(
-    key = "settings",
-    initial = SettingsState(),
+fun produceAboutScreenState(): State<AboutState> = produceScreenState(
+    key = "about",
+    initial = AboutState(),
 ) {
-    settingsScreenStateProducer()
+    aboutScreenStateProducer()
 }
 
-suspend fun ScreenStateScope.settingsScreenStateProducer(
+suspend fun ScreenStateScope.aboutScreenStateProducer(
     loadDictionary: suspend () -> DictionaryInfo = ::loadDictionaryInfo,
-): Flow<SettingsState> {
+): Flow<AboutState> {
     // Only a successful load is kept between runs of the producer, so
     // coming back to the tab shows the content right away while a failed
     // run is retried the next time the screen is shown.
@@ -54,7 +54,7 @@ suspend fun ScreenStateScope.settingsScreenStateProducer(
                     dictionarySink,
                     dictionaryFallback,
                 ) { dictionary, fallback ->
-                    SettingsState(
+                    AboutState(
                         // The sink wins as soon as it holds a value so a late
                         // successful load always replaces a fallback.
                         dictionary = if (dictionary is Loadable.Ok) dictionary else fallback ?: dictionary,

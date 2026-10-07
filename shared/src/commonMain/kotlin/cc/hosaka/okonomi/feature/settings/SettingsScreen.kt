@@ -5,45 +5,38 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.materialIcon
+import androidx.compose.material.icons.materialPath
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.PathBuilder
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextDecoration
-import cc.hosaka.okonomi.common.model.Loadable
-import cc.hosaka.okonomi.db.DictionaryInfo
-import cc.hosaka.okonomi.feature.libraries.LibrariesRoute
+import androidx.compose.ui.unit.dp
 import cc.hosaka.okonomi.feature.navigation.LocalNavigationController
 import cc.hosaka.okonomi.ui.ScaffoldColumn
-import cc.hosaka.okonomi.ui.openSafely
 import cc.hosaka.okonomi.ui.theme.Dimens
 import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
 import cc.hosaka.okonomi.ui.toolbar.LargeToolbar
 import cc.hosaka.okonomi.ui.toolbar.util.ToolbarBehavior
 import okonomi.shared.generated.resources.Res
-import okonomi.shared.generated.resources.libraries_title
-import okonomi.shared.generated.resources.settings_credit_open_project
-import okonomi.shared.generated.resources.settings_credits_edrdg_licence_link
-import okonomi.shared.generated.resources.settings_credits_open_licence
-import okonomi.shared.generated.resources.settings_credits_title
-import okonomi.shared.generated.resources.settings_dictionary_label
-import okonomi.shared.generated.resources.settings_dictionary_value
-import okonomi.shared.generated.resources.settings_libraries_open
+import okonomi.shared.generated.resources.settings_about_description
+import okonomi.shared.generated.resources.settings_about_title
+import okonomi.shared.generated.resources.settings_appearance_description
+import okonomi.shared.generated.resources.settings_appearance_title
 import okonomi.shared.generated.resources.settings_title
 import org.jetbrains.compose.resources.stringResource
 
+/** The Settings root: one row per category, each pushing its own screen. */
 @Composable
-fun SettingsScreen(
-    state: SettingsState,
-) {
+fun SettingsScreen() {
     val scrollBehavior = ToolbarBehavior.behavior()
     val navigation = LocalNavigationController.current
     ScaffoldColumn(
@@ -59,167 +52,40 @@ fun SettingsScreen(
             )
         },
     ) {
-        val dictionary = (state.dictionary as? Loadable.Ok)?.value
-        if (dictionary != null) {
-            DictionaryRow(
-                dictionary = dictionary,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = Dimens.horizontalPadding),
-            )
-        }
-        CreditsSection(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = Dimens.verticalPadding),
-        )
-        LibrariesRow(
+        CategoryRow(
+            icon = PaletteIcon,
+            title = stringResource(Res.string.settings_appearance_title),
+            description = stringResource(Res.string.settings_appearance_description),
             onClick = {
-                navigation.navigate(LibrariesRoute)
+                navigation.navigate(AppearanceRoute)
             },
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = Dimens.verticalPaddingHalf),
+                .fillMaxWidth(),
         )
-    }
-}
-
-@Composable
-private fun DictionaryRow(
-    dictionary: DictionaryInfo,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier,
-    ) {
-        Text(
-            text = stringResource(Res.string.settings_dictionary_label),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        Text(
-            text = stringResource(
-                Res.string.settings_dictionary_value,
-                dictionary.jmdictDate,
-                dictionary.entryCount.grouped(),
-            ),
-            style = MaterialTheme.typography.bodyMedium,
-        )
-    }
-}
-
-private fun Long.grouped(): String = toString()
-    .reversed()
-    .chunked(3)
-    .joinToString(",")
-    .reversed()
-
-/**
- * The attribution section: the EDRDG conformance statement with its
- * licence link, followed by one row per [CreditEntry]. Rendered from the
- * credits manifest, never hardcoded prose.
- */
-@Composable
-private fun CreditsSection(
-    modifier: Modifier = Modifier,
-) {
-    val uriHandler = LocalUriHandler.current
-    Column(
-        modifier = modifier,
-    ) {
-        Text(
-            text = stringResource(Res.string.settings_credits_title),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary,
+        CategoryRow(
+            icon = Icons.Outlined.Info,
+            title = stringResource(Res.string.settings_about_title),
+            description = stringResource(Res.string.settings_about_description),
+            onClick = {
+                navigation.navigate(AboutRoute)
+            },
             modifier = Modifier
-                .padding(horizontal = Dimens.horizontalPadding)
-                .semantics {
-                    heading()
-                },
+                .fillMaxWidth(),
         )
-        Text(
-            text = stringResource(edrdgStatement),
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier
-                .padding(horizontal = Dimens.horizontalPadding)
-                .padding(top = Dimens.topPaddingCaption),
-        )
-        creditEntries.forEach { entry ->
-            CreditRow(
-                entry = entry,
-                onClick = {
-                    uriHandler.openSafely(entry.licenceUrl)
-                },
-                modifier = Modifier
-                    .fillMaxWidth(),
-            )
-        }
     }
 }
 
 @Composable
-private fun CreditRow(
-    entry: CreditEntry,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier
-            .clickable(
-                onClickLabel = stringResource(Res.string.settings_credit_open_project),
-                role = Role.Button,
-                onClick = onClick,
-            )
-            .padding(
-                horizontal = Dimens.horizontalPadding,
-                vertical = Dimens.verticalPaddingHalf,
-            ),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = entry.name,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier
-                    .weight(1f),
-            )
-            Text(
-                text = entry.licence,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Icon(
-                imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Text(
-            text = stringResource(entry.usage),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        val detail = entry.detail
-        if (detail != null) {
-            Text(
-                text = detail,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
-private fun LibrariesRow(
+private fun CategoryRow(
+    icon: ImageVector,
+    title: String,
+    description: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
         modifier = modifier
             .clickable(
-                onClickLabel = stringResource(Res.string.settings_libraries_open),
                 role = Role.Button,
                 onClick = onClick,
             )
@@ -229,15 +95,74 @@ private fun LibrariesRow(
             ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = stringResource(Res.string.libraries_title),
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier
-                .weight(1f),
-        )
         Icon(
-            imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+            imageVector = icon,
             contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .size(24.dp),
         )
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = Dimens.horizontalPadding),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
+}
+
+/**
+ * Material's Outlined "Palette" icon. Like the Tune icon in
+ * `SearchFiltersButton`, it lives in `material-icons-extended`, which this
+ * project does not depend on, so its path is copied here (Apache 2.0, as
+ * the icon set itself).
+ */
+private val PaletteIcon: ImageVector by lazy {
+    materialIcon(name = "Outlined.Palette") {
+        materialPath {
+            moveTo(12.0f, 22.0f)
+            curveTo(6.49f, 22.0f, 2.0f, 17.51f, 2.0f, 12.0f)
+            reflectiveCurveTo(6.49f, 2.0f, 12.0f, 2.0f)
+            reflectiveCurveToRelative(10.0f, 4.04f, 10.0f, 9.0f)
+            curveToRelative(0.0f, 3.31f, -2.69f, 6.0f, -6.0f, 6.0f)
+            horizontalLineToRelative(-1.77f)
+            curveToRelative(-0.28f, 0.0f, -0.5f, 0.22f, -0.5f, 0.5f)
+            curveToRelative(0.0f, 0.12f, 0.05f, 0.23f, 0.13f, 0.33f)
+            curveToRelative(0.41f, 0.47f, 0.64f, 1.06f, 0.64f, 1.67f)
+            curveToRelative(0.0f, 1.38f, -1.12f, 2.5f, -2.5f, 2.5f)
+            close()
+            moveTo(12.0f, 4.0f)
+            curveToRelative(-4.41f, 0.0f, -8.0f, 3.59f, -8.0f, 8.0f)
+            reflectiveCurveToRelative(3.59f, 8.0f, 8.0f, 8.0f)
+            curveToRelative(0.28f, 0.0f, 0.5f, -0.22f, 0.5f, -0.5f)
+            curveToRelative(0.0f, -0.16f, -0.08f, -0.28f, -0.14f, -0.35f)
+            curveToRelative(-0.41f, -0.46f, -0.63f, -1.05f, -0.63f, -1.65f)
+            curveToRelative(0.0f, -1.38f, 1.12f, -2.5f, 2.5f, -2.5f)
+            horizontalLineTo(16.0f)
+            curveToRelative(2.21f, 0.0f, 4.0f, -1.79f, 4.0f, -4.0f)
+            curveToRelative(0.0f, -3.86f, -3.59f, -7.0f, -8.0f, -7.0f)
+            close()
+            paletteDot(6.5f, 11.5f)
+            paletteDot(9.5f, 7.5f)
+            paletteDot(14.5f, 7.5f)
+            paletteDot(17.5f, 11.5f)
+        }
+    }
+}
+
+/** A filled dot of radius 1.5 centred on ([x], [y]), as two half arcs. */
+private fun PathBuilder.paletteDot(x: Float, y: Float) {
+    moveTo(x - 1.5f, y)
+    arcToRelative(1.5f, 1.5f, 0.0f, true, true, 3.0f, 0.0f)
+    arcToRelative(1.5f, 1.5f, 0.0f, true, true, -3.0f, 0.0f)
+    close()
 }

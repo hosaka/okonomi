@@ -7,6 +7,8 @@ import cc.hosaka.okonomi.feature.favourites.FavouritesRoute
 import cc.hosaka.okonomi.feature.libraries.LibrariesRoute
 import cc.hosaka.okonomi.feature.radical.RadicalRoute
 import cc.hosaka.okonomi.feature.search.SearchRoute
+import cc.hosaka.okonomi.feature.settings.AboutRoute
+import cc.hosaka.okonomi.feature.settings.AppearanceRoute
 import cc.hosaka.okonomi.feature.settings.SettingsRoute
 import cc.hosaka.okonomi.feature.word.EntryRoute
 import kotlinx.serialization.modules.SerializersModule
@@ -24,6 +26,8 @@ val navigationSavedStateConfiguration: SavedStateConfiguration = SavedStateConfi
             subclass(SearchRoute::class)
             subclass(FavouritesRoute::class)
             subclass(SettingsRoute::class)
+            subclass(AppearanceRoute::class)
+            subclass(AboutRoute::class)
             subclass(LibrariesRoute::class)
             subclass(EntryRoute::class)
             subclass(RadicalRoute::class)

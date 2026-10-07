@@ -21,6 +21,7 @@ import cc.hosaka.okonomi.feature.home.navigation.homeFavouritesItem
 import cc.hosaka.okonomi.feature.home.navigation.homeSearchItem
 import cc.hosaka.okonomi.feature.navigation.EntryLinks
 import cc.hosaka.okonomi.feature.word.EntryRoute
+import cc.hosaka.okonomi.prefs.FakePreferenceStore
 import cc.hosaka.okonomi.ui.coach.CoachMarkRegistry
 import cc.hosaka.okonomi.ui.test.ComposeUiTestBase
 import kotlin.test.Test
@@ -77,6 +78,9 @@ class HomeEntryLinkUiTest : ComposeUiTestBase() {
                 HomeScreen(
                     coachMarks = remember { CoachMarkRegistry() },
                     entryLinks = links,
+                    // The real store answers on a dispatcher the test
+                    // clock cannot wait for; see CoachMarksUiTest.
+                    preferences = remember { FakePreferenceStore() },
                     leaveApp = { leaves++ },
                     onSection = { key, probe ->
                         when (key) {

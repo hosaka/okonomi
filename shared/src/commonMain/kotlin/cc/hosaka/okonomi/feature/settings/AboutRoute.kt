@@ -4,14 +4,13 @@ import androidx.compose.runtime.Composable
 import cc.hosaka.okonomi.feature.navigation.Route
 import kotlinx.serialization.Serializable
 
-/**
- * The Settings section's root: a list of categories, each pushing its own
- * screen. It holds no state of its own, so it has no producer.
- */
 @Serializable
-data object SettingsRoute : Route {
+data object AboutRoute : Route {
     @Composable
     override fun Content() {
-        SettingsScreen()
+        val state = produceAboutScreenState()
+        AboutScreen(
+            state = state.value,
+        )
     }
 }

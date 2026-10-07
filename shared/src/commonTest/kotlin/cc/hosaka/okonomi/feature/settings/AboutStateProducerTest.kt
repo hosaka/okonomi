@@ -21,14 +21,14 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class SettingsStateProducerTest {
+class AboutStateProducerTest {
     private val dispatcher = StandardTestDispatcher()
 
     private val dictionaryInfo = DictionaryInfo(jmdictDate = "2026-08-21", entryCount = 42L)
 
     private suspend fun FakeScreenStateScope.producer(
         loadDictionary: suspend () -> DictionaryInfo = { dictionaryInfo },
-    ): Flow<SettingsState> = settingsScreenStateProducer(loadDictionary)
+    ): Flow<AboutState> = aboutScreenStateProducer(loadDictionary)
 
     @BeforeTest
     fun setUp() {
@@ -44,9 +44,9 @@ class SettingsStateProducerTest {
     fun `screen state is loading until the loader completes`() = runTest(dispatcher) {
         val load = CompletableDeferred<DictionaryInfo>()
         val viewModel = ScreenStateViewModel(
-            initial = SettingsState(),
+            initial = AboutState(),
         ) {
-            settingsScreenStateProducer(
+            aboutScreenStateProducer(
                 loadDictionary = { load.await() },
             )
         }
