@@ -8,7 +8,7 @@
   <p>
   Modern Japanese/English dictionary mobile app for language learners. It is built with Kotlin Multiplatform targeting Android and iOS.
   </p>
-  <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22cc.hosaka.okonomi%22%2C%22url%22%3A%22https%3A%2F%2Fcode.hosaka.cc%2Fhosaka%2Fokonomi%22%2C%22author%22%3A%22hosaka%22%2C%22name%22%3A%22Okonomi%22%7D">
+  <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22cc.hosaka.okonomi%22%2C%22url%22%3A%22https%3A%2F%2Fcode.hosaka.cc%2Fhosaka%2Fokonomi%22%2C%22author%22%3A%22hosaka%22%2C%22name%22%3A%22Okonomi%22%2C%22overrideSource%22%3A%22Codeberg%22%7D">
     <img src="assets/obtanium.png" alt="Get it on Obtainium" height="60">
   </a>
 </div>
