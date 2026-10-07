@@ -1,0 +1,37 @@
+# Release notes are written as fragments with `changie new` and batched into
+# .changes/vX.Y.Z.md by version.yml. See .forgejo/README.md.
+changesDir: .changes
+unreleasedDir: unreleased
+headerPath: header.tpl.md
+changelogPath: CHANGELOG.md
+versionExt: md
+versionFormat: '## {{.Version}} - {{.Time.Format "2006-01-02"}}'
+kindFormat: '### {{.Kind}}'
+changeFormat: '- {{.Body}}'
+# Nothing bumps major: the app has no API, so 1.0 is a deliberate `major`
+# dispatch rather than something a fragment can trigger.
+kinds:
+  - label: Added
+    auto: minor
+  - label: Changed
+    auto: minor
+  - label: Deprecated
+    auto: minor
+  - label: Removed
+    auto: minor
+  - label: Fixed
+    auto: patch
+  - label: Security
+    auto: patch
+newlines:
+  afterChangelogHeader: 0
+  beforeChangelogVersion: 1
+  endOfVersion: 1
+# The version catalogue stays the single source of the app version. Replacements
+# are applied by `changie merge`, not `changie batch`, so version.yml runs merge
+# after batch to keep app equal to `changie latest`.
+replacements:
+  - path: gradle/libs.versions.toml
+    find: '^app = ".*"'
+    replace: 'app = "{{.VersionNoPrefix}}"'
+envPrefix: CHANGIE_

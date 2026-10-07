@@ -4,11 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: Which part of the version to increase
+        description: Which part of the version to increase; auto picks it from the pending changie fragments
         required: true
-        default: patch
+        default: auto
         type: choice
         options:
+          - auto
           - patch
           - minor
           - major
@@ -17,7 +18,7 @@ jobs:
   bump:
     runs-on: linux-amd64
     container:
-      image: code.hosaka.cc/hosaka/okonomi/ci:0.1.0
+      image: code.hosaka.cc/hosaka/okonomi/ci:0.2.0
     outputs:
       tag: ${{ steps.next.outputs.tag }}
 
@@ -29,6 +30,8 @@ jobs:
 
       - name: Compute the next version
         id: next
+        env:
+          BUMP: ${{ inputs.bump }}
         run: |
           set -eu
           current=$(sed -n 's/^app = "\(.*\)"/\1/p' gradle/libs.versions.toml)
@@ -36,16 +39,36 @@ jobs:
             echo "No 'app = \"x.y.z\"' entry in gradle/libs.versions.toml" >&2
             exit 1
           fi
-          major=${current%%.*}
-          rest=${current#*.}
+          # changie computes the next version from its newest .changes/v*.md,
+          # so the two must agree or the release would skip or repeat one.
+          latest=$(changie latest --remove-prefix)
+          if [ "$latest" != "$current" ]; then
+            echo "changie latest is $latest but app in gradle/libs.versions.toml is $current; they must match before releasing." >&2
+            exit 1
+          fi
+          case "$BUMP" in
+            auto|major|minor|patch) ;;
+            *) echo "Unknown bump: $BUMP" >&2; exit 1 ;;
+          esac
+          if [ "$BUMP" = auto ] && ! ls .changes/unreleased/*.yaml >/dev/null 2>&1; then
+            echo "No release notes pending in .changes/unreleased: add notes with 'changie new', or dispatch an explicit patch/minor/major bump." >&2
+            exit 1
+          fi
+          next=$(changie next "$BUMP")
+          next=${next#v}
+          # An explicit bump overrides the fragments on purpose, but one lower
+          # than they ask for (patch over an Added) is more likely a mistake.
+          if [ "$BUMP" != auto ] && ls .changes/unreleased/*.yaml >/dev/null 2>&1; then
+            auto=$(changie next auto)
+            auto=${auto#v}
+            if [ "$next" != "$auto" ] && [ "$(printf '%s\n%s\n' "$next" "$auto" | sort -V | head -1)" = "$next" ]; then
+              echo "::warning::Explicit $BUMP bump gives $next, lower than $auto that the pending notes call for."
+            fi
+          fi
+          major=${next%%.*}
+          rest=${next#*.}
           minor=${rest%%.*}
           patch=${rest##*.}
-          case "${{ inputs.bump }}" in
-            major) major=$((major + 1)); minor=0; patch=0 ;;
-            minor) minor=$((minor + 1)); patch=0 ;;
-            patch) patch=$((patch + 1)) ;;
-            *) echo "Unknown bump: ${{ inputs.bump }}" >&2; exit 1 ;;
-          esac
           # versionCode is major*10000 + minor*100 + patch, so a component
           # above 99 would produce a code LOWER than the previous release.
           if [ "$minor" -gt 99 ] || [ "$patch" -gt 99 ]; then
@@ -55,24 +78,64 @@ jobs:
           echo "current=$current" >> $FORGEJO_OUTPUT
           echo "next=$major.$minor.$patch" >> $FORGEJO_OUTPUT
           echo "tag=v$major.$minor.$patch" >> $FORGEJO_OUTPUT
-          echo "Bumping $current -> $major.$minor.$patch (${{ inputs.bump }})"
+          # Mirrors appVersionFrom in androidApp/build.gradle.kts; change both together.
+          echo "version_code=$((major * 10000 + minor * 100 + patch))" >> $FORGEJO_OUTPUT
+          echo "Bumping $current -> $major.$minor.$patch ($BUMP)"
 
       - name: Commit and tag
+        env:
+          BUMP: ${{ inputs.bump }}
         run: |
           set -eu
           next="${{ steps.next.outputs.next }}"
+          version_code="${{ steps.next.outputs.version_code }}"
           if git rev-parse "v$next" >/dev/null 2>&1; then
             echo "Tag v$next already exists" >&2
             exit 1
           fi
-          sed -i "s/^app = \".*\"/app = \"$next\"/" gradle/libs.versions.toml
+          # batch writes .changes/v$next.md and deletes the fragments; merge
+          # rebuilds CHANGELOG.md and applies the replacement in .changie.yaml
+          # that rewrites app in the version catalogue.
+          changie batch "$BUMP"
+          changie merge
+          actual=$(sed -n 's/^app = "\(.*\)"/\1/p' gradle/libs.versions.toml)
+          if [ "$actual" != "$next" ] || [ "$(changie latest --remove-prefix)" != "$next" ]; then
+            echo "changie batched $(changie latest --remove-prefix) and the catalogue says $actual, expected $next" >&2
+            exit 1
+          fi
+
+          # Play shows at most 500 characters. Only the bullets go there, so
+          # a cut can never leave a heading with nothing under it, and whole
+          # bullets are kept while they fit. mawk (Debian's awk) counts bytes
+          # rather than characters, which only errs short.
+          changelog="fastlane/metadata/android/en-US/changelogs/$version_code.txt"
+          cut_marker=$(mktemp)
+          mkdir -p "$(dirname "$changelog")"
+          grep '^- ' ".changes/v$next.md" \
+            | awk -v max=500 '
+                { add = length($0) + (NR > 1 ? 1 : 0) }
+                total + add > max { cut = 1; exit }
+                { total += add; print }
+                END { if (cut) print "cut" > "/dev/stderr" }' \
+            > "$changelog" 2> "$cut_marker"
+          if [ -s "$cut_marker" ]; then
+            if [ ! -s "$changelog" ]; then
+              echo "::error::The first note in .changes/v$next.md exceeds Play's 500 characters; shorten it." >&2
+              exit 1
+            fi
+            echo "::warning::Release notes exceed Play's 500 characters; $changelog keeps only the bullets that fit. The Forgejo release has them in full."
+          fi
+          # An explicit bump with nothing pending has no notes; an empty file
+          # would publish a blank "What's new" rather than none.
+          [ -s "$changelog" ] || rm "$changelog"
+
           git config user.name "okonomi[bot]"
           git config user.email "noreply@code.hosaka.cc"
-          git add gradle/libs.versions.toml
+          git add -A .changes CHANGELOG.md gradle/libs.versions.toml fastlane/metadata/android/en-US/changelogs
           git commit -m "chore(release): v$next"
           git tag -a "v$next" -m "okonomi v$next"
-          git push origin "HEAD:${{ forgejo.ref_name }}"
-          git push origin "v$next"
+          # Atomic, so a rejected tag cannot leave the branch bumped without one.
+          git push --atomic origin "HEAD:${{ forgejo.ref_name }}" "v$next"
           echo "Pushed v$next; the release job builds and publishes it."
 
   release:

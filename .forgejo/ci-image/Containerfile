@@ -13,6 +13,8 @@ LABEL org.opencontainers.image.source=https://code.hosaka.cc/hosaka/okonomi
 # Pinned so a rebuild produces the same image. cmdline-tools 16111833 is
 # revision 23.0, the build "cmdline-tools;latest" resolves to.
 ARG NODE_VERSION=v24.20.0
+ARG CHANGIE_VERSION=1.26.0
+ARG CHANGIE_SHA256=eab168c8287a6e91912e1c02e5260911232d945bfd3c89d8a0e1ace6bb7b6161
 ARG CMDLINE_TOOLS=commandlinetools-linux-16111833_latest.zip
 ARG ANDROID_PLATFORM="platforms/android-37.0"
 ARG ANDROID_BUILD_TOOLS="build-tools/36.0.0"
@@ -31,6 +33,14 @@ RUN curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-lin
  && tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1 \
  && rm /tmp/node.tar.xz \
  && node --version
+
+# version.yml batches release notes with changie. The tarball is checked
+# against the sha256 from the release's checksums.txt.
+RUN curl -fsSL "https://github.com/miniscruff/changie/releases/download/v${CHANGIE_VERSION}/changie_${CHANGIE_VERSION}_linux_amd64.tar.gz" -o /tmp/changie.tar.gz \
+ && echo "${CHANGIE_SHA256}  /tmp/changie.tar.gz" | sha256sum -c - \
+ && tar -xzf /tmp/changie.tar.gz -C /usr/local/bin changie \
+ && rm /tmp/changie.tar.gz \
+ && changie --version
 
 # cmdline-tools/latest/ is the layout Studio and AGP expect to find; the android
 # CLI itself takes the SDK root from ANDROID_HOME and ignores its own location.

@@ -14,6 +14,7 @@
 - Android SDK Platform 37 (`compileSdk` 37), AGP 9.1.1, Gradle 9.3.1 (bumped for AboutLibraries 15.0.4).
 - Assume Kotlin Multiplatform + Compose Multiplatform project conventions.
 - The app version is `app` in `gradle/libs.versions.toml`; `versionCode` is DERIVED from it in `androidApp/build.gradle.kts` (`major*10000 + minor*100 + patch`). Never hand-edit `versionCode`, and never add a pre-release suffix to the version — the derivation rejects both.
+- Releases and CI are documented in `.forgejo/README.md` (the workflows, writing release notes, cutting a release) and `.forgejo/ci-image/README.md` (the build image, and how to rebuild and push it). Read them before touching `.forgejo/`, the version, or anything a release depends on.
 - Do not assume Android emulator/device availability unless explicitly requested by the user.
 - The `data/` dictionary sources are fetched and decompressed by the build itself (`:tools:dictgen:fetchDictionarySources`, then `:tools:dictgen:extractDictionarySources`), so a fresh checkout builds without preparation; the first build downloads about 78 MB into `data/archives/`, which is a cache and is never re-fetched (see README.md).
 - KanjiVG now extracts to `data/kanji/`, the zip's own top-level name. A checkout that predates that change keeps an orphaned `data/kanjivg/` (~90 MB) which nothing reads any more: delete it.
@@ -30,6 +31,7 @@
 - Screen state (`feature/navigation/state/ProduceScreenState.kt`): `produceScreenState(key, initial) { ... }` runs a producer inside a `ScreenStateScope` (`navigation: NavigationController`, `mutablePersistedFlow(key, initial)`) and shares the resulting flow through a `ViewModel` scoped to the back stack entry (in-memory only, no disk persistence).
 - Features live in `shared/src/commonMain/kotlin/cc/hosaka/okonomi/feature/*`; user-visible strings live in `shared/src/commonMain/composeResources/values/strings.xml` and are read via `Res.string.*`.
 - Two databases, and the split is load-bearing. `shared/src/commonMain/sqldelight/dictionary/` is the bundled read-only dictionary (`okonomi.db`), regenerated wholesale by `:tools:dictgen` and never migrated. `shared/src/commonMain/sqldelight/user/` is the reader's own data (`user.db`: lists and their entries), which can never be regenerated and therefore carries real `.sqm` migrations with verification on. Each database names its own `srcDirs`; putting a `.sq` file in the wrong one compiles it into the wrong database and moves `DICTIONARY_SCHEMA_FINGERPRINT`. `user.db` sits beside the dictionary copy in the same directory, which is only safe because provisioning deletes the dictionary **by name** — never by clearing the directory. `cc.hosaka.okonomi.user.FavouritesStore` is the seam screens use over it.
+
 Besides Favourites, `user.db` holds one other built-in list, History: words
 opened from Search results, newest first, uncapped. The seam's destructive
 operations are `replaceList` (and its `replaceListIfEmpty` form), which an
@@ -52,6 +54,7 @@ system dialog is another activity, so the screen behind it stops being
 collected and its state producer is cancelled five seconds later — anything a
 dialog result must come back to has to outlive that, which is what
 `mutablePersistedFlow` is for (see `FavouritesStateProducer`).
+
 - Persisted settings (`prefs/`): `PreferenceStore` is the seam every screen uses; `appPreferences()` is the app-lifetime instance over `androidx.datastore` (one per process — DataStore rejects two over one file). Reads that fail yield the default and writes that fail are dropped, so a broken store can never take a screen down. Tests inject `FakePreferenceStore`.
 - Send to Anki (`anki/`, Android only): talks to AnkiDroid's `com.ichi2.anki.flashcards` provider directly through `ContentResolver` — no AnkiDroid API dependency. Its permission and `<queries>` entry live in `shared/src/androidMain/AndroidManifest.xml`, which merges into the app. Duplicates are keyed by the note's EntryId field.
 - Deep link `okonomi://entry/<id>` (the cards' "More in Okonomi"): parsed and queued in `:shared` (`feature/navigation/EntryLinks.kt`), opened by `HomeScreen` over Search's root; `MainActivity` (`launchMode="singleTask"`) only forwards the URI from `onCreate`/`onNewIntent`. System back on the linked entry leaves the app for the sender.

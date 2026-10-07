@@ -1,17 +1,19 @@
 # CI
 
-Workflows run inside [a purpose-built image](./ci-image) carrying Zulu 21, the Android SDK and Node.
+Workflows run inside [a purpose-built image](./ci-image) carrying Zulu 21, the Android SDK, Node and changie.
 
 | Workflow | Runs on | Runs what |
 |---|---|---|
 | `pr-test.yml` | every PR | tests, migration verification, AGP lint, Android and iOS compilation |
 | `build-android.yml` | merge to `main` | builds a release APK to prove the packaging path still works |
 | `build-ios.yml` | manual dispatch | placeholder until a macOS runner exists |
-| `release.yml` | tag `v*` | builds a signed APK and publishes it as a Forgejo release |
-| `version.yml` | manual dispatch | bumps the version, commits and tags - which is what triggers `release.yml` |
+| `release.yml` | tag `v*` | builds a signed APK and publishes it as a Forgejo release, with that version's notes as the body |
+| `version.yml` | manual dispatch | batches the release notes, bumps the version, commits and tags - then runs `release.yml` |
 
 
-**Cutting a release:** dispatch `version.yml` with `patch`, `minor` or `major`. It rewrites `app` in the version catalogue, commits with `[skip ci]`, and pushes tag `vX.Y.Z` which then triggers `release.yml`.
+**Writing release notes:** run `changie new` ([changie](https://changie.dev)) and commit the fragment it writes to `.changes/unreleased/` with the change it describes. Each fragment has a kind: `Added`, `Changed`, `Deprecated` and `Removed` bump the minor version, `Fixed` and `Security` bump the patch. Nothing bumps major; 1.0 is a deliberate `major` dispatch.
+
+**Cutting a release:** dispatch `version.yml`. The default `auto` bump picks the version from the pending fragments and fails if there are none; `patch`, `minor` or `major` force a bump and allow an empty notes section. The job batches the fragments into `.changes/vX.Y.Z.md`, regenerates `CHANGELOG.md`, rewrites `app` in the version catalogue, writes the Play "What's new" text to `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt` (whole lines up to 500 characters), commits `chore(release): vX.Y.Z` and pushes tag `vX.Y.Z`. `release.yml` then publishes `.changes/vX.Y.Z.md` as the release body. `app` and `changie latest` must agree or the job stops before writing anything.
 
 **Refreshing data:** merges reuse the archives cached under the `okonomi-data-v1` key in `build-android.yml` and `release.yml`, so upstream is fetched from only once. Cached entries are immutable, so bumping that key to `v2` is how dictionaries and data can be updated.
 
