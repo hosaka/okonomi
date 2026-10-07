@@ -2,26 +2,62 @@ package cc.hosaka.okonomi.feature.favourites
 
 import androidx.compose.runtime.Immutable
 import cc.hosaka.okonomi.db.SearchHit
+import cc.hosaka.okonomi.user.UserList
 
 /**
- * @property onExportJson the file contents for what is saved right now,
- * or null when there is nothing to export. A lambda rather than a
- * `String` on purpose: encoding on every emission would build a string
- * nothing renders, and null is how this codebase spells "disabled".
- * @property onFileImported the text of a file the reader picked. What
+ * @property list which list the tab is showing. The rows, the title,
+ * the empty state and what the overflow menu offers all follow it. Null
+ * only on the seeded first frame, before the producer has said which
+ * list is picked: a default of Favourites there would be a guess, and on
+ * a tab coming back to History it would be wrong for a frame — long
+ * enough to flash the wrong title and to read as a switch of lists.
+ * @property onSelectList switches the tab to another list, or null
+ * while the tab is not ready to switch (the seeded first frame).
+ * @property onExportJson the file contents for [list] right now — every
+ * id in it, in its order — or null when there is nothing to export. A
+ * lambda rather than a `String` on purpose: encoding on every emission
+ * would build a string nothing renders, and null is how this codebase
+ * spells "disabled".
+ * @property onFileImported the list the reader asked to import into and
+ * the text of the file they picked for it. The list is passed in rather
+ * than read from [list] because the file dialog is another activity:
+ * by the time it answers, this state may have been rebuilt on another
+ * list, and the file belongs to the one Import was tapped on. What
  * happens next — replace outright, warn first, or refuse — is decided
- * here rather than by the screen, because only this side knows whether
- * the list is empty.
+ * here rather than by the screen, because only this side can ask the
+ * store whether that list is empty.
  * @property importPrompt the dialog standing over the tab, if any.
  * Dialogs are state so that they can be driven, and tested, without a
  * file dialog anywhere near them.
+ * @property onClearList asks to empty [list], which raises
+ * [clearPrompt] rather than clearing anything. Null when the list is
+ * empty or has not loaded.
+ * @property clearPrompt the Clear list confirmation, if one is standing.
+ * @property onRemoveEntry takes one row out of [list] and out of no
+ * other list. Null only on the seeded first frame.
  */
 @Immutable
 data class FavouritesState(
     val content: FavouritesContentState = FavouritesContentState.Loading,
+    val list: UserList? = null,
+    val onSelectList: ((UserList) -> Unit)? = null,
     val onExportJson: (() -> String)? = null,
-    val onFileImported: ((String) -> Unit)? = null,
+    val onFileImported: ((UserList, String) -> Unit)? = null,
     val importPrompt: FavouritesImportPrompt? = null,
+    val onClearList: (() -> Unit)? = null,
+    val clearPrompt: FavouritesClearPrompt? = null,
+    val onRemoveEntry: ((Long) -> Unit)? = null,
+)
+
+/**
+ * "Clear [list]?" — nothing is written until [onConfirm], and [onCancel]
+ * writes nothing at all.
+ */
+@Immutable
+data class FavouritesClearPrompt(
+    val list: UserList,
+    val onConfirm: () -> Unit,
+    val onCancel: () -> Unit,
 )
 
 /**
@@ -33,17 +69,22 @@ data class FavouritesState(
  */
 @Immutable
 sealed interface FavouritesImportPrompt {
+    /** The list the file was offered to, which both dialogs name. */
+    val list: UserList
+
     /**
      * Importing over a list that is not empty. Nothing is written until
      * [onConfirm], and [onCancel] leaves the list exactly as it was.
      */
     data class ConfirmOverwrite(
+        override val list: UserList,
         val onConfirm: () -> Unit,
         val onCancel: () -> Unit,
     ) : FavouritesImportPrompt
 
-    /** The picked file is not one this app can read. Nothing was written. */
+    /** The picked file is not one this app can read. Nothing was written to [list]. */
     data class Unreadable(
+        override val list: UserList,
         val onDismiss: () -> Unit,
     ) : FavouritesImportPrompt
 }

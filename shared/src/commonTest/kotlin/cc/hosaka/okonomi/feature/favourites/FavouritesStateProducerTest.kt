@@ -4,6 +4,7 @@ import cc.hosaka.okonomi.db.SearchHit
 import cc.hosaka.okonomi.db.TitleSegment
 import cc.hosaka.okonomi.feature.navigation.state.FakeScreenStateScope
 import cc.hosaka.okonomi.user.FakeFavouritesStore
+import cc.hosaka.okonomi.user.UserList
 import cc.hosaka.okonomi.user.decodeFavourites
 import cc.hosaka.okonomi.user.encodeFavourites
 import kotlin.test.Test
@@ -78,7 +79,7 @@ class FavouritesStateProducerTest {
         assertNotNull(strandedCallback)
 
         val secondRun = collectStates(run())
-        strandedCallback(encodeFavourites(listOf(1L, 2L)))
+        strandedCallback(UserList.Favourites, encodeFavourites(listOf(1L, 2L)))
         runCurrent()
 
         assertIs<FavouritesImportPrompt.ConfirmOverwrite>(secondRun.last().importPrompt)
@@ -313,10 +314,10 @@ class FavouritesStateProducerTest {
             ),
         )
 
-        assertNotNull(states.last().onFileImported)(encodeFavourites(listOf(2L, 1L)))
+        assertNotNull(states.last().onFileImported)(UserList.Favourites, encodeFavourites(listOf(2L, 1L)))
         runCurrent()
 
-        assertEquals(listOf(listOf(2L, 1L)), favourites.replacements)
+        assertEquals(listOf(UserList.Favourites to listOf(2L, 1L)), favourites.replacements)
         assertNull(states.last().importPrompt, "there was nothing to warn about")
     }
 
@@ -333,7 +334,7 @@ class FavouritesStateProducerTest {
             ),
         )
 
-        assertNotNull(states.last().onFileImported)(encodeFavourites(listOf(2L)))
+        assertNotNull(states.last().onFileImported)(UserList.Favourites, encodeFavourites(listOf(2L)))
         runCurrent()
 
         val prompt = assertIs<FavouritesImportPrompt.ConfirmOverwrite>(states.last().importPrompt)
@@ -342,7 +343,7 @@ class FavouritesStateProducerTest {
         prompt.onConfirm()
         runCurrent()
 
-        assertEquals(listOf(listOf(2L)), favourites.replacements)
+        assertEquals(listOf(UserList.Favourites to listOf(2L)), favourites.replacements)
         assertNull(states.last().importPrompt, "the dialog has to go away once it is answered")
     }
 
@@ -359,7 +360,7 @@ class FavouritesStateProducerTest {
             ),
         )
 
-        assertNotNull(states.last().onFileImported)(encodeFavourites(listOf(2L)))
+        assertNotNull(states.last().onFileImported)(UserList.Favourites, encodeFavourites(listOf(2L)))
         runCurrent()
         assertIs<FavouritesImportPrompt.ConfirmOverwrite>(states.last().importPrompt).onCancel()
         runCurrent()
@@ -388,7 +389,7 @@ class FavouritesStateProducerTest {
             ),
         )
 
-        assertNotNull(states.last().onFileImported)("this is not an export")
+        assertNotNull(states.last().onFileImported)(UserList.Favourites, "this is not an export")
         runCurrent()
 
         val prompt = assertIs<FavouritesImportPrompt.Unreadable>(states.last().importPrompt)
@@ -418,12 +419,12 @@ class FavouritesStateProducerTest {
             ),
         )
 
-        assertNotNull(states.last().onFileImported)("""{"version":1,"name":"x","entries":[]}""")
+        assertNotNull(states.last().onFileImported)(UserList.Favourites, """{"version":1,"name":"x","entries":[]}""")
         runCurrent()
         assertIs<FavouritesImportPrompt.ConfirmOverwrite>(states.last().importPrompt).onConfirm()
         runCurrent()
 
-        assertEquals(listOf(emptyList()), favourites.replacements)
+        assertEquals(listOf(UserList.Favourites to emptyList<Long>()), favourites.replacements)
         assertEquals(emptyList(), assertIs<FavouritesContentState.Ready>(states.last().content).hits)
     }
 
@@ -459,5 +460,569 @@ class FavouritesStateProducerTest {
             assertIs<FavouritesContentState.Ready>(states.last().content).hits.map { it.entryId },
             "the rows on screen must survive a failed reload",
         )
+    }
+
+    private suspend fun TestScope.historyTab(
+        scope: FakeScreenStateScope = FakeScreenStateScope(),
+        favourites: FakeFavouritesStore,
+        loadRows: suspend (List<Long>) -> List<SearchHit> = rowsOf(setOf(1L, 2L, 3L)),
+        invalidate: suspend () -> Unit = neverInvalidate,
+    ): List<FavouritesState> {
+        val states = collectStates(
+            scope.favouritesScreenStateProducer(
+                favourites = favourites,
+                loadRows = loadRows,
+                invalidate = invalidate,
+            ),
+        )
+        assertNotNull(states.last().onSelectList)(UserList.History)
+        runCurrent()
+        return states
+    }
+
+    @Test
+    fun `the tab opens on Favourites and picking History shows its rows newest first`() = runTest {
+        val favourites = FakeFavouritesStore(initial = listOf(1L), initialHistory = listOf(3L, 2L))
+        val scope = FakeScreenStateScope()
+        val states = collectStates(
+            scope.favouritesScreenStateProducer(
+                favourites = favourites,
+                loadRows = rowsOf(setOf(1L, 2L, 3L)),
+                invalidate = neverInvalidate,
+            ),
+        )
+        assertEquals(UserList.Favourites, states.last().list)
+        assertEquals(
+            listOf(1L),
+            assertIs<FavouritesContentState.Ready>(states.last().content).hits.map { it.entryId },
+        )
+
+        assertNotNull(states.last().onSelectList)(UserList.History)
+        runCurrent()
+
+        assertEquals(UserList.History, states.last().list)
+        assertEquals(
+            listOf(3L, 2L),
+            assertIs<FavouritesContentState.Ready>(states.last().content).hits.map { it.entryId },
+        )
+    }
+
+    /**
+     * Within a session the pick survives the producer being restarted —
+     * which is what happens after five seconds off the tab — and a new
+     * process, which is a new scope, opens on Favourites again.
+     */
+    @Test
+    fun `the pick survives a restart of the producer but not a fresh process`() = runTest {
+        val favourites = FakeFavouritesStore(initial = listOf(1L), initialHistory = listOf(2L))
+        val scope = FakeScreenStateScope()
+        historyTab(scope = scope, favourites = favourites)
+
+        val restarted = collectStates(
+            scope.favouritesScreenStateProducer(
+                favourites = favourites,
+                loadRows = rowsOf(setOf(1L, 2L)),
+                invalidate = neverInvalidate,
+            ),
+        )
+        assertEquals(UserList.History, restarted.last().list)
+
+        val freshProcess = collectStates(
+            FakeScreenStateScope().favouritesScreenStateProducer(
+                favourites = favourites,
+                loadRows = rowsOf(setOf(1L, 2L)),
+                invalidate = neverInvalidate,
+            ),
+        )
+        assertEquals(UserList.Favourites, freshProcess.last().list)
+    }
+
+    @Test
+    fun `a History row is removed from History and Favourites keeps it`() = runTest {
+        // 2 is in both lists, so removing it from History has something
+        // in Favourites to wrongly take with it.
+        val favourites = FakeFavouritesStore(initial = listOf(1L, 2L), initialHistory = listOf(2L, 3L))
+        val states = historyTab(favourites = favourites)
+
+        assertNotNull(states.last().onRemoveEntry)(2L)
+        runCurrent()
+
+        assertEquals(listOf(UserList.History to 2L), favourites.removals)
+        assertEquals(listOf(3L), favourites.historyEntryIds().first())
+        assertEquals(listOf(1L, 2L), favourites.favouriteEntryIds().first())
+        assertEquals(
+            listOf(3L),
+            assertIs<FavouritesContentState.Ready>(states.last().content).hits.map { it.entryId },
+        )
+    }
+
+    @Test
+    fun `a Favourites row is removed from Favourites and History keeps it`() = runTest {
+        val favourites = FakeFavouritesStore(initial = listOf(1L, 2L), initialHistory = listOf(1L))
+        val states = collectStates(
+            FakeScreenStateScope().favouritesScreenStateProducer(
+                favourites = favourites,
+                loadRows = rowsOf(setOf(1L, 2L)),
+                invalidate = neverInvalidate,
+            ),
+        )
+
+        assertNotNull(states.last().onRemoveEntry)(1L)
+        runCurrent()
+
+        assertEquals(listOf(UserList.Favourites to 1L), favourites.removals)
+        assertEquals(listOf(2L), favourites.favouriteEntryIds().first())
+        assertEquals(listOf(1L), favourites.historyEntryIds().first())
+        assertEquals(
+            listOf(2L),
+            assertIs<FavouritesContentState.Ready>(states.last().content).hits.map { it.entryId },
+        )
+    }
+
+    @Test
+    fun `an empty History has nothing to clear and a non-empty one does`() = runTest {
+        val favourites = FakeFavouritesStore(initial = listOf(1L))
+        val states = historyTab(favourites = favourites)
+        assertNull(states.last().onClearList)
+
+        favourites.recordInHistory(2L)
+        runCurrent()
+
+        assertNotNull(states.last().onClearList)
+    }
+
+    @Test
+    fun `Clear list asks first and confirming empties only the list on show`() = runTest {
+        val favourites = FakeFavouritesStore(initial = listOf(1L), initialHistory = listOf(2L))
+        val states = historyTab(favourites = favourites)
+
+        assertNotNull(states.last().onClearList)()
+        runCurrent()
+
+        val prompt = assertNotNull(states.last().clearPrompt)
+        assertEquals(UserList.History, prompt.list)
+        assertEquals(emptyList(), favourites.clears, "nothing may be cleared before the answer")
+
+        prompt.onConfirm()
+        runCurrent()
+
+        assertEquals(listOf(UserList.History), favourites.clears)
+        assertNull(states.last().clearPrompt)
+        assertEquals(emptyList(), assertIs<FavouritesContentState.Ready>(states.last().content).hits)
+        assertEquals(listOf(1L), favourites.favouriteEntryIds().first())
+    }
+
+    @Test
+    fun `cancelling Clear list writes nothing`() = runTest {
+        val favourites = FakeFavouritesStore(initial = listOf(1L))
+        val states = collectStates(
+            FakeScreenStateScope().favouritesScreenStateProducer(
+                favourites = favourites,
+                loadRows = rowsOf(setOf(1L)),
+                invalidate = neverInvalidate,
+            ),
+        )
+
+        assertNotNull(states.last().onClearList)()
+        runCurrent()
+        val prompt = assertNotNull(states.last().clearPrompt)
+        assertEquals(UserList.Favourites, prompt.list)
+
+        prompt.onCancel()
+        runCurrent()
+
+        assertEquals(emptyList(), favourites.clears)
+        assertNull(states.last().clearPrompt)
+        assertEquals(listOf(1L), favourites.favouriteEntryIds().first())
+    }
+
+    /**
+     * The rows left standing through a failed reload belong to one list.
+     * Switching to History with the dictionary down must say so, not
+     * show the Favourites rows under a History title.
+     */
+    @Test
+    fun `a failure after switching lists never shows the other list's rows`() = runTest {
+        val favourites = FakeFavouritesStore(initial = listOf(1L), initialHistory = listOf(2L))
+        var attempts = 0
+        val states = historyTab(
+            favourites = favourites,
+            loadRows = { ids ->
+                attempts++
+                if (attempts == 1) ids.map { hit(it) } else throw RuntimeException("database gone")
+            },
+            invalidate = {},
+        )
+
+        assertTrue(attempts > 1, "History's rows have to have been asked for")
+        assertEquals(UserList.History, states.last().list)
+        assertIs<FavouritesContentState.Error>(states.last().content)
+    }
+
+    /**
+     * A pending import is persisted, so it outlives a switch. Its
+     * dialog is about Favourites and must not stand over History — and
+     * must still be there on the way back, because nothing answered it.
+     */
+    @Test
+    fun `a pending import's warning shows over its own list only`() = runTest {
+        val favourites = FakeFavouritesStore(initial = listOf(1L), initialHistory = listOf(2L))
+        val states = collectStates(
+            FakeScreenStateScope().favouritesScreenStateProducer(
+                favourites = favourites,
+                loadRows = rowsOf(setOf(1L, 2L, 3L)),
+                invalidate = neverInvalidate,
+            ),
+        )
+        assertNotNull(states.last().onFileImported)(UserList.Favourites, encodeFavourites(listOf(3L)))
+        runCurrent()
+        assertIs<FavouritesImportPrompt.ConfirmOverwrite>(states.last().importPrompt)
+
+        assertNotNull(states.last().onSelectList)(UserList.History)
+        runCurrent()
+        assertEquals(UserList.History, states.last().list)
+        assertNull(states.last().importPrompt)
+
+        assertNotNull(states.last().onSelectList)(UserList.Favourites)
+        runCurrent()
+        assertIs<FavouritesImportPrompt.ConfirmOverwrite>(states.last().importPrompt)
+    }
+
+    @Test
+    fun `Clear list is not offered while an import is asking`() = runTest {
+        val favourites = FakeFavouritesStore(initial = listOf(1L))
+        val states = collectStates(
+            FakeScreenStateScope().favouritesScreenStateProducer(
+                favourites = favourites,
+                loadRows = rowsOf(setOf(1L, 2L)),
+                invalidate = neverInvalidate,
+            ),
+        )
+        assertNotNull(states.last().onClearList, "a list with rows can be cleared")
+
+        assertNotNull(states.last().onFileImported)(UserList.Favourites, encodeFavourites(listOf(2L)))
+        runCurrent()
+
+        assertIs<FavouritesImportPrompt.ConfirmOverwrite>(states.last().importPrompt)
+        assertNull(states.last().onClearList)
+        assertNull(states.last().clearPrompt)
+    }
+
+    /**
+     * The other order: a Clear list standing when a file arrives —
+     * through a callback an earlier state left standing. The import
+     * wins, the clear is dropped rather than queued behind it, and the
+     * two dialogs never stand together.
+     */
+    @Test
+    fun `a file arriving over a standing Clear list replaces it`() = runTest {
+        val favourites = FakeFavouritesStore(initial = listOf(1L))
+        val states = collectStates(
+            FakeScreenStateScope().favouritesScreenStateProducer(
+                favourites = favourites,
+                loadRows = rowsOf(setOf(1L, 2L)),
+                invalidate = neverInvalidate,
+            ),
+        )
+        val strandedImport = assertNotNull(states.last().onFileImported)
+        assertNotNull(states.last().onClearList)()
+        runCurrent()
+        assertNotNull(states.last().clearPrompt)
+
+        strandedImport(UserList.Favourites, encodeFavourites(listOf(2L)))
+        runCurrent()
+
+        val prompt = assertIs<FavouritesImportPrompt.ConfirmOverwrite>(states.last().importPrompt)
+        assertNull(states.last().clearPrompt)
+
+        prompt.onCancel()
+        runCurrent()
+
+        assertNull(states.last().importPrompt)
+        assertNull(states.last().clearPrompt, "the dropped clear must not stand up again")
+        assertEquals(emptyList(), favourites.clears)
+    }
+
+    @Test
+    fun `a Clear list standing over a list that empties goes away for good`() = runTest {
+        val favourites = FakeFavouritesStore(initial = listOf(1L), initialHistory = listOf(2L))
+        val states = historyTab(favourites = favourites)
+        assertNotNull(states.last().onClearList)()
+        runCurrent()
+        assertNotNull(states.last().clearPrompt)
+
+        favourites.removeFromList(UserList.History, 2L)
+        runCurrent()
+        assertNull(states.last().clearPrompt, "there is nothing left to clear")
+
+        favourites.recordInHistory(3L)
+        runCurrent()
+        assertNull(states.last().clearPrompt, "a word landing must not raise the old question again")
+        assertEquals(emptyList(), favourites.clears)
+    }
+
+    /**
+     * The guards on the prompt itself, rather than on the menu item that
+     * raises it, exist for callbacks an earlier state left standing. A
+     * Clear list kept from the Favourites state must not stand over
+     * History, where it would read as a question about History.
+     */
+    @Test
+    fun `a stale Clear list for another list does not stand over this one`() = runTest {
+        val favourites = FakeFavouritesStore(initial = listOf(1L), initialHistory = listOf(2L))
+        val states = collectStates(
+            FakeScreenStateScope().favouritesScreenStateProducer(
+                favourites = favourites,
+                loadRows = rowsOf(setOf(1L, 2L)),
+                invalidate = neverInvalidate,
+            ),
+        )
+        val staleClear = assertNotNull(states.last().onClearList)
+        assertNotNull(states.last().onSelectList)(UserList.History)
+        runCurrent()
+
+        staleClear()
+        runCurrent()
+
+        assertEquals(UserList.History, states.last().list)
+        assertNull(states.last().clearPrompt)
+    }
+
+    @Test
+    fun `a stale Clear list for a list already empty asks nothing`() = runTest {
+        val favourites = FakeFavouritesStore(initial = listOf(1L))
+        val states = collectStates(
+            FakeScreenStateScope().favouritesScreenStateProducer(
+                favourites = favourites,
+                loadRows = rowsOf(setOf(1L)),
+                invalidate = neverInvalidate,
+            ),
+        )
+        val staleClear = assertNotNull(states.last().onClearList)
+        favourites.removeFromList(UserList.Favourites, 1L)
+        runCurrent()
+
+        staleClear()
+        runCurrent()
+
+        assertNull(states.last().clearPrompt)
+    }
+
+    @Test
+    fun `a stale Clear list does not stack on an import's warning`() = runTest {
+        val favourites = FakeFavouritesStore(initial = listOf(1L))
+        val states = collectStates(
+            FakeScreenStateScope().favouritesScreenStateProducer(
+                favourites = favourites,
+                loadRows = rowsOf(setOf(1L, 2L)),
+                invalidate = neverInvalidate,
+            ),
+        )
+        val staleClear = assertNotNull(states.last().onClearList)
+        assertNotNull(states.last().onFileImported)(UserList.Favourites, encodeFavourites(listOf(2L)))
+        runCurrent()
+
+        staleClear()
+        runCurrent()
+
+        assertIs<FavouritesImportPrompt.ConfirmOverwrite>(states.last().importPrompt)
+        assertNull(states.last().clearPrompt)
+    }
+
+    /**
+     * Export on History writes History: every id, newest first, under
+     * History's name. The two lists share ids here on purpose — 1 is in
+     * both — so a file of the wrong list cannot pass by containing the
+     * right ids in another order.
+     */
+    @Test
+    fun `export on History writes every History id in its order under its name`() = runTest {
+        val favourites = FakeFavouritesStore(initial = listOf(1L, 9L), initialHistory = listOf(3L, 1L, 2L))
+        val states = historyTab(favourites = favourites, loadRows = rowsOf(setOf(1L, 2L, 3L, 9L)))
+
+        val json = assertNotNull(states.last().onExportJson)()
+
+        assertEquals(listOf(3L, 1L, 2L), decodeFavourites(json))
+        assertTrue(json.contains("\"History\""), json)
+    }
+
+    @Test
+    fun `a file imported into History asks first and replaces History alone`() = runTest {
+        val favourites = FakeFavouritesStore(initial = listOf(1L), initialHistory = listOf(2L))
+        val states = historyTab(favourites = favourites, loadRows = rowsOf(setOf(1L, 2L, 7L, 8L)))
+
+        assertNotNull(states.last().onFileImported)(UserList.History, encodeFavourites(listOf(7L, 8L)))
+        runCurrent()
+
+        val prompt = assertIs<FavouritesImportPrompt.ConfirmOverwrite>(states.last().importPrompt)
+        assertEquals(UserList.History, prompt.list)
+        assertEquals(emptyList(), favourites.replacements, "nothing may be written before the answer")
+
+        prompt.onConfirm()
+        runCurrent()
+
+        assertEquals(listOf(UserList.History to listOf(7L, 8L)), favourites.replacements)
+        assertEquals(listOf(7L, 8L), favourites.historyEntryIds().first())
+        assertEquals(listOf(1L), favourites.favouriteEntryIds().first())
+    }
+
+    /**
+     * Whether to ask first is decided by the list the file lands in. An
+     * empty History is written straight through even though Favourites,
+     * which is not empty, is the list the state was built on.
+     */
+    @Test
+    fun `a file imported into an empty History is written straight through`() = runTest {
+        val favourites = FakeFavouritesStore(initial = listOf(1L))
+        val states = collectStates(
+            FakeScreenStateScope().favouritesScreenStateProducer(
+                favourites = favourites,
+                loadRows = rowsOf(setOf(1L, 7L)),
+                invalidate = neverInvalidate,
+            ),
+        )
+
+        assertNotNull(states.last().onFileImported)(UserList.History, encodeFavourites(listOf(7L)))
+        runCurrent()
+
+        assertEquals(listOf(UserList.History to listOf(7L)), favourites.replacements)
+        assertNull(states.last().importPrompt)
+        assertEquals(UserList.History, states.last().list, "the tab shows the list the file landed in")
+    }
+
+    /**
+     * The file dialog is another activity, and the tab can be rebuilt
+     * behind it — on Favourites, which is where a fresh state opens.
+     * A file picked for History must still be History's: the question
+     * names History, the tab goes to it, and the answer replaces it.
+     */
+    @Test
+    fun `a file for History arriving at a state rebuilt on Favourites still lands in History`() = runTest {
+        val favourites = FakeFavouritesStore(initial = listOf(1L), initialHistory = listOf(2L))
+        historyTab(favourites = favourites)
+        val rebuilt = collectStates(
+            FakeScreenStateScope().favouritesScreenStateProducer(
+                favourites = favourites,
+                loadRows = rowsOf(setOf(1L, 2L, 7L)),
+                invalidate = neverInvalidate,
+            ),
+        )
+        assertEquals(UserList.Favourites, rebuilt.last().list)
+
+        assertNotNull(rebuilt.last().onFileImported)(UserList.History, encodeFavourites(listOf(7L)))
+        runCurrent()
+
+        assertEquals(UserList.History, rebuilt.last().list)
+        val prompt = assertIs<FavouritesImportPrompt.ConfirmOverwrite>(rebuilt.last().importPrompt)
+        assertEquals(UserList.History, prompt.list)
+        prompt.onConfirm()
+        runCurrent()
+
+        assertEquals(listOf(UserList.History to listOf(7L)), favourites.replacements)
+        assertEquals(listOf(1L), favourites.favouriteEntryIds().first())
+    }
+
+    @Test
+    fun `an unreadable file names the list it was offered to`() = runTest {
+        val favourites = FakeFavouritesStore(initialHistory = listOf(2L))
+        val states = historyTab(favourites = favourites)
+
+        assertNotNull(states.last().onFileImported)(UserList.History, "this is not an export")
+        runCurrent()
+
+        assertEquals(UserList.History, assertIs<FavouritesImportPrompt.Unreadable>(states.last().importPrompt).list)
+        assertEquals(emptyList(), favourites.replacements)
+    }
+
+    /**
+     * The store could not say whether Favourites was empty — here it is,
+     * which is what a failed read would have reported — so the reader is
+     * asked rather than the list replaced.
+     */
+    @Test
+    fun `an import the store cannot decide on asks first and writes nothing`() = runTest {
+        val favourites = FakeFavouritesStore(cannotTellEmptiness = true)
+        val states = collectStates(
+            FakeScreenStateScope().favouritesScreenStateProducer(
+                favourites = favourites,
+                loadRows = rowsOf(setOf(7L)),
+                invalidate = neverInvalidate,
+            ),
+        )
+
+        assertNotNull(states.last().onFileImported)(UserList.Favourites, encodeFavourites(listOf(7L)))
+        runCurrent()
+
+        assertIs<FavouritesImportPrompt.ConfirmOverwrite>(states.last().importPrompt)
+        assertEquals(emptyList(), favourites.replacements)
+    }
+
+    @Test
+    fun `confirming an import twice writes it once`() = runTest {
+        val favourites = FakeFavouritesStore(initial = listOf(1L))
+        val states = collectStates(
+            FakeScreenStateScope().favouritesScreenStateProducer(
+                favourites = favourites,
+                loadRows = rowsOf(setOf(1L, 2L)),
+                invalidate = neverInvalidate,
+            ),
+        )
+        assertNotNull(states.last().onFileImported)(UserList.Favourites, encodeFavourites(listOf(2L)))
+        runCurrent()
+        val prompt = assertIs<FavouritesImportPrompt.ConfirmOverwrite>(states.last().importPrompt)
+
+        prompt.onConfirm()
+        prompt.onConfirm()
+        runCurrent()
+
+        assertEquals(listOf(UserList.Favourites to listOf(2L)), favourites.replacements)
+    }
+
+    @Test
+    fun `confirming Clear list twice clears once`() = runTest {
+        val favourites = FakeFavouritesStore(initial = listOf(1L))
+        val states = collectStates(
+            FakeScreenStateScope().favouritesScreenStateProducer(
+                favourites = favourites,
+                loadRows = rowsOf(setOf(1L)),
+                invalidate = neverInvalidate,
+            ),
+        )
+        assertNotNull(states.last().onClearList)()
+        runCurrent()
+        val prompt = assertNotNull(states.last().clearPrompt)
+
+        prompt.onConfirm()
+        prompt.onConfirm()
+        runCurrent()
+
+        assertEquals(listOf(UserList.Favourites), favourites.clears)
+    }
+
+    /**
+     * A list emptied leaves "no rows" standing, and those are not worth
+     * keeping up through a failure once the list has words again: they
+     * would show the empty-state message over a list that is not empty.
+     */
+    @Test
+    fun `a failed load after a list is emptied and refilled is an error and not the empty state`() = runTest {
+        val favourites = FakeFavouritesStore(initialHistory = listOf(1L))
+        var failing = false
+        val states = historyTab(
+            favourites = favourites,
+            loadRows = { ids -> if (failing) throw RuntimeException("database gone") else ids.map { hit(it) } },
+            invalidate = {},
+        )
+        assertEquals(1, assertIs<FavouritesContentState.Ready>(states.last().content).hits.size)
+
+        favourites.removeFromList(UserList.History, 1L)
+        runCurrent()
+        assertEquals(emptyList(), assertIs<FavouritesContentState.Ready>(states.last().content).hits)
+
+        failing = true
+        favourites.recordInHistory(2L)
+        runCurrent()
+
+        assertIs<FavouritesContentState.Error>(states.last().content)
     }
 }

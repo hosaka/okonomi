@@ -12,11 +12,13 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The real storage behind the save button.
@@ -65,8 +67,10 @@ class UserDatabaseFavouritesTest {
         return UserDatabase(UserDb(driver), driver).also { opened += it }
     }
 
-    private suspend fun UserDatabase.storedEntryIds(): List<Long> {
-        val listId = db.listQueries.listBySlug(FAVOURITES_LIST_SLUG).awaitOneOrNull()?.id
+    private suspend fun UserDatabase.storedEntryIds(
+        list: UserList = UserList.Favourites,
+    ): List<Long> {
+        val listId = db.listQueries.listBySlug(list.slug).awaitOneOrNull()?.id
             ?: return emptyList()
         return db.list_entryQueries.entriesInList(listId).awaitList()
     }
@@ -194,7 +198,7 @@ class UserDatabaseFavouritesTest {
         store.toggleFavourite(42L)
         store.favouriteEntryIds().first { it == listOf(42L) }
 
-        store.replaceFavourites(listOf(7L, 8L, 9L))
+        store.replaceList(UserList.Favourites, listOf(7L, 8L, 9L))
 
         assertEquals(listOf(7L, 8L, 9L), store.favouriteEntryIds().first { it.size == 3 })
         assertEquals(
@@ -227,7 +231,7 @@ class UserDatabaseFavouritesTest {
 
         store.toggleFavourite(42L)
         store.favouriteEntryIds().first { it == listOf(42L) }
-        store.replaceFavourites(listOf(7L))
+        store.replaceList(UserList.Favourites, listOf(7L))
 
         assertEquals(listOf(7L), store.favouriteEntryIds().first { it == listOf(7L) })
         assertEquals(
@@ -245,7 +249,7 @@ class UserDatabaseFavouritesTest {
         store.toggleFavourite(42L)
         store.favouriteEntryIds().first { it.isNotEmpty() }
 
-        store.replaceFavourites(emptyList())
+        store.replaceList(UserList.Favourites, emptyList())
 
         assertEquals(emptyList(), store.favouriteEntryIds().first { it.isEmpty() })
         assertEquals(emptyList(), database.storedEntryIds())
@@ -262,7 +266,7 @@ class UserDatabaseFavouritesTest {
         val database = openOver(tempFile())
         val store = storeOver(database, backgroundScope)
 
-        store.replaceFavourites(listOf(5L, 5L, 9L))
+        store.replaceList(UserList.Favourites, listOf(5L, 5L, 9L))
 
         assertEquals(listOf(5L, 9L), store.favouriteEntryIds().first { it.isNotEmpty() })
         assertEquals(listOf(5L, 9L), database.storedEntryIds())
@@ -272,7 +276,7 @@ class UserDatabaseFavouritesTest {
     fun `an imported list survives the store being rebuilt over the same file`() = runTest {
         val file = tempFile()
         storeOver(openOver(file), backgroundScope).let { first ->
-            first.replaceFavourites(listOf(3L, 2L, 1L))
+            first.replaceList(UserList.Favourites, listOf(3L, 2L, 1L))
             first.favouriteEntryIds().first { it.isNotEmpty() }
         }
 
@@ -298,7 +302,7 @@ class UserDatabaseFavouritesTest {
         val store = storeOver(database, backgroundScope)
 
         store.toggleFavourite(1L)
-        store.replaceFavourites(listOf(7L, 8L))
+        store.replaceList(UserList.Favourites, listOf(7L, 8L))
         store.toggleFavourite(9L)
 
         store.favouriteEntryIds().first { it.size == 3 }
@@ -328,7 +332,7 @@ class UserDatabaseFavouritesTest {
             scope = backgroundScope,
         )
 
-        store.replaceFavourites(listOf(7L, 8L))
+        store.replaceList(UserList.Favourites, listOf(7L, 8L))
         // Waiting on the report rather than on the opener: the opener is
         // entered before it throws, so a counter can be satisfied while
         // the failure it is standing in for has not been recorded yet.
@@ -490,6 +494,419 @@ class UserDatabaseFavouritesTest {
             "a queue that stopped draining must say what it lost, not accept it silently",
         )
 
+        blocked.complete(Unit)
+    }
+
+    @Test
+    fun `a recorded word is at the top of History and on disk`() = runTest {
+        val database = openOver(tempFile())
+        val store = storeOver(database, backgroundScope)
+
+        store.recordInHistory(1L)
+        store.recordInHistory(2L)
+
+        assertEquals(listOf(2L, 1L), store.historyEntryIds().first { it.size == 2 })
+        assertEquals(listOf(2L, 1L), database.storedEntryIds(UserList.History))
+        assertEquals(
+            emptyList(),
+            database.storedEntryIds(UserList.Favourites),
+            "opening a word is not saving it",
+        )
+    }
+
+    /**
+     * The opposite of a re-save in Favourites, which keeps its place
+     * (see `re-saving an entry puts it back in the place it already
+     * had`). 1 is recorded first, so without the move it would read
+     * back last.
+     */
+    @Test
+    fun `reopening a word moves it to the top and leaves one row`() = runTest {
+        val database = openOver(tempFile())
+        val store = storeOver(database, backgroundScope)
+
+        store.recordInHistory(1L)
+        store.recordInHistory(2L)
+        store.recordInHistory(3L)
+        store.historyEntryIds().first { it.size == 3 }
+
+        store.recordInHistory(1L)
+
+        assertEquals(listOf(1L, 3L, 2L), store.historyEntryIds().first { it.first() == 1L })
+        assertEquals(listOf(1L, 3L, 2L), database.storedEntryIds(UserList.History))
+    }
+
+    /**
+     * History has no cap (Alex, 2026-10-07): an export has to carry
+     * every word. Well past the 200 it used to stop at, the oldest word
+     * is still there, last.
+     */
+    @Test
+    fun `History keeps every word however many are recorded`() = runTest {
+        val database = openOver(tempFile())
+        val store = storeOver(database, backgroundScope)
+        val count = 250
+
+        // Each record is waited for, because the write queue is bounded
+        // and would drop most of a burst this size.
+        repeat(count) { index ->
+            store.recordInHistory(index.toLong())
+            store.historyEntryIds().first { it.firstOrNull() == index.toLong() }
+        }
+
+        assertEquals(
+            (count - 1L downTo 0L).toList(),
+            database.storedEntryIds(UserList.History),
+        )
+    }
+
+    @Test
+    fun `an import into History replaces History and leaves Favourites alone`() = runTest {
+        val database = openOver(tempFile())
+        val store = storeOver(database, backgroundScope)
+        store.toggleFavourite(1L)
+        store.recordInHistory(2L)
+        store.historyEntryIds().first { it == listOf(2L) }
+
+        store.replaceList(UserList.History, listOf(7L, 8L, 9L))
+
+        assertEquals(listOf(7L, 8L, 9L), store.historyEntryIds().first { it.size == 3 })
+        assertEquals(listOf(7L, 8L, 9L), database.storedEntryIds(UserList.History))
+        assertEquals(listOf(1L), database.storedEntryIds(UserList.Favourites))
+    }
+
+    @Test
+    fun `an import into Favourites leaves History alone`() = runTest {
+        val database = openOver(tempFile())
+        val store = storeOver(database, backgroundScope)
+        store.toggleFavourite(1L)
+        store.recordInHistory(2L)
+        store.historyEntryIds().first { it == listOf(2L) }
+
+        store.replaceList(UserList.Favourites, listOf(7L))
+
+        assertEquals(listOf(7L), store.favouriteEntryIds().first { it == listOf(7L) })
+        assertEquals(listOf(2L), database.storedEntryIds(UserList.History))
+    }
+
+    @Test
+    fun `removing a word from History leaves the same word in Favourites`() = runTest {
+        val database = openOver(tempFile())
+        val store = storeOver(database, backgroundScope)
+
+        store.toggleFavourite(1L)
+        store.recordInHistory(1L)
+        store.recordInHistory(2L)
+        store.historyEntryIds().first { it.size == 2 }
+
+        store.removeFromList(UserList.History, 1L)
+
+        assertEquals(listOf(2L), store.historyEntryIds().first { it.size == 1 })
+        assertEquals(listOf(2L), database.storedEntryIds(UserList.History))
+        assertEquals(listOf(1L), database.storedEntryIds(UserList.Favourites))
+    }
+
+    @Test
+    fun `removing a word from Favourites leaves the same word in History`() = runTest {
+        val database = openOver(tempFile())
+        val store = storeOver(database, backgroundScope)
+
+        store.toggleFavourite(1L)
+        store.toggleFavourite(2L)
+        store.recordInHistory(1L)
+        store.historyEntryIds().first { it.isNotEmpty() }
+
+        store.removeFromList(UserList.Favourites, 1L)
+
+        assertEquals(listOf(2L), store.favouriteEntryIds().first { it == listOf(2L) })
+        assertEquals(listOf(2L), database.storedEntryIds(UserList.Favourites))
+        assertEquals(listOf(1L), database.storedEntryIds(UserList.History))
+    }
+
+    /**
+     * A remove is not a toggle. Two swipes on one row — or a swipe that
+     * lands after the heart already unsaved the word — must leave it
+     * gone, not put it back. The marker write after it is what proves
+     * the remove was processed before the read.
+     */
+    @Test
+    fun `removing a word that is not there leaves it not there`() = runTest {
+        val database = openOver(tempFile())
+        val store = storeOver(database, backgroundScope)
+
+        store.toggleFavourite(1L)
+        store.favouriteEntryIds().first { it == listOf(1L) }
+        store.removeFromList(UserList.Favourites, 1L)
+        store.removeFromList(UserList.Favourites, 1L)
+        store.toggleFavourite(9L)
+
+        store.favouriteEntryIds().first { 9L in it }
+        assertEquals(listOf(9L), database.storedEntryIds(UserList.Favourites))
+    }
+
+    @Test
+    fun `clearing History leaves Favourites untouched`() = runTest {
+        val database = openOver(tempFile())
+        val store = storeOver(database, backgroundScope)
+
+        store.toggleFavourite(1L)
+        store.recordInHistory(2L)
+        store.historyEntryIds().first { it.isNotEmpty() }
+
+        store.clearList(UserList.History)
+
+        assertEquals(emptyList(), store.historyEntryIds().first { it.isEmpty() })
+        assertEquals(emptyList(), database.storedEntryIds(UserList.History))
+        assertEquals(listOf(1L), database.storedEntryIds(UserList.Favourites))
+    }
+
+    @Test
+    fun `clearing Favourites leaves History untouched`() = runTest {
+        val database = openOver(tempFile())
+        val store = storeOver(database, backgroundScope)
+
+        store.toggleFavourite(1L)
+        store.recordInHistory(2L)
+        store.favouriteEntryIds().first { it.isNotEmpty() }
+
+        store.clearList(UserList.Favourites)
+
+        assertEquals(emptyList(), store.favouriteEntryIds().first { it.isEmpty() })
+        assertEquals(emptyList(), database.storedEntryIds(UserList.Favourites))
+        assertEquals(listOf(2L), database.storedEntryIds(UserList.History))
+    }
+
+    /**
+     * History is a list row of its own, created on first use with the
+     * slug every read looks it up by. Asserted on the row rather than
+     * through the store, which would find it by that same slug either
+     * way.
+     */
+    @Test
+    fun `the first record creates the History list row`() = runTest {
+        val database = openOver(tempFile())
+        val store = storeOver(database, backgroundScope)
+
+        store.recordInHistory(1L)
+        store.historyEntryIds().first { it.isNotEmpty() }
+
+        val row = database.db.listQueries.listBySlug(HISTORY_LIST_SLUG).awaitOne()
+        assertEquals(HISTORY_LIST_NAME, row.name)
+        assertEquals(1L, row.ord)
+    }
+
+    /**
+     * What this proves is the report and nothing more. The opener
+     * throws before any transaction starts, so the list being left
+     * alone is not something this failure could have got wrong — and
+     * asserting it would be an assertion that cannot fail.
+     */
+    @Test
+    fun `a clear that cannot reach storage is reported`() = runTest {
+        val reports = MutableStateFlow(emptyList<String>())
+        val store = UserDatabaseFavourites(
+            database = { error("storage is gone") },
+            now = { 1L },
+            report = { message, _ -> reports.value = reports.value + message },
+            scope = backgroundScope,
+        )
+
+        store.clearList(UserList.History)
+
+        reports.first { messages -> messages.any { it.contains("clear") && it.contains("could not be written") } }
+    }
+
+    /**
+     * A remove that finds nothing to remove is not a write: it must not
+     * move the list's `updated_at`, which an export or a later sort may
+     * read as "changed". The record into History afterwards is the
+     * marker that the remove has been through the writer.
+     *
+     * Only `updated_at` is asserted. The revision bump sits behind the
+     * same "changed" answer, but nothing outside the store can see it:
+     * the reads drop an emission equal to the last one, so a needless
+     * bump and none look the same from every flow.
+     */
+    @Test
+    fun `removing a word that is not there touches nothing`() = runTest {
+        val database = openOver(tempFile())
+        var clock = 0L
+        val store = UserDatabaseFavourites(
+            database = { database },
+            now = { ++clock },
+            report = { _, _ -> },
+            scope = backgroundScope,
+        )
+        store.toggleFavourite(1L)
+        store.favouriteEntryIds().first { it == listOf(1L) }
+        val before = database.db.listQueries.listBySlug(FAVOURITES_LIST_SLUG).awaitOne().updated_at
+
+        store.removeFromList(UserList.Favourites, 2L)
+        store.recordInHistory(3L)
+        store.historyEntryIds().first { it == listOf(3L) }
+
+        assertEquals(
+            before,
+            database.db.listQueries.listBySlug(FAVOURITES_LIST_SLUG).awaitOne().updated_at,
+            "a remove that changed nothing must not stamp the list as changed",
+        )
+    }
+
+    private suspend fun UserDatabase.updatedAt(list: UserList): Long =
+        db.listQueries.listBySlug(list.slug).awaitOne().updated_at
+
+    @Test
+    fun `clearing a list that is already empty touches nothing`() = runTest {
+        val database = openOver(tempFile())
+        var clock = 0L
+        val store = UserDatabaseFavourites(
+            database = { database },
+            now = { ++clock },
+            report = { _, _ -> },
+            scope = backgroundScope,
+        )
+        // Saved and unsaved: the list row exists and holds nothing.
+        store.toggleFavourite(1L)
+        store.favouriteEntryIds().first { it == listOf(1L) }
+        store.toggleFavourite(1L)
+        store.favouriteEntryIds().first { it.isEmpty() }
+        val before = database.updatedAt(UserList.Favourites)
+
+        store.clearList(UserList.Favourites)
+        store.recordInHistory(3L)
+        store.historyEntryIds().first { it == listOf(3L) }
+
+        assertEquals(before, database.updatedAt(UserList.Favourites))
+    }
+
+    /**
+     * A list row is created by the first thing put into the list, never
+     * by taking something out of a list that was never there. The
+     * Favourites save afterwards is the marker that both writes have
+     * been through the writer.
+     */
+    @Test
+    fun `removing from or clearing a list that does not exist yet creates nothing`() = runTest {
+        val database = openOver(tempFile())
+        val store = storeOver(database, backgroundScope)
+
+        store.removeFromList(UserList.History, 1L)
+        store.clearList(UserList.History)
+        store.toggleFavourite(9L)
+        store.favouriteEntryIds().first { it == listOf(9L) }
+
+        assertEquals(null, database.db.listQueries.listBySlug(HISTORY_LIST_SLUG).awaitOneOrNull())
+    }
+
+    @Test
+    fun `an import into History stores a repeated id once where it first appeared`() = runTest {
+        val database = openOver(tempFile())
+        val store = storeOver(database, backgroundScope)
+
+        store.replaceList(UserList.History, listOf(5L, 9L, 5L, 3L))
+
+        assertEquals(listOf(5L, 9L, 3L), store.historyEntryIds().first { it.isNotEmpty() })
+        assertEquals(listOf(5L, 9L, 3L), database.storedEntryIds(UserList.History))
+    }
+
+    /**
+     * The file's first id is the newest word, so it has to come back
+     * first — ahead of a word recorded before the import, which the
+     * import replaces.
+     */
+    @Test
+    fun `an import into History puts the file's first id first`() = runTest {
+        val database = openOver(tempFile())
+        val store = storeOver(database, backgroundScope)
+        store.recordInHistory(1L)
+        store.historyEntryIds().first { it == listOf(1L) }
+
+        store.replaceList(UserList.History, listOf(3L, 2L, 4L))
+
+        assertEquals(listOf(3L, 2L, 4L), store.historyEntryIds().first { it.firstOrNull() == 3L })
+        assertEquals(listOf(3L, 2L, 4L), database.storedEntryIds(UserList.History))
+    }
+
+    @Test
+    fun `a conditional import into an empty list replaces it without a word`() = runTest {
+        val database = openOver(tempFile())
+        val store = storeOver(database, backgroundScope)
+        var declined = false
+
+        store.replaceListIfEmpty(UserList.History, listOf(7L, 8L)) { declined = true }
+
+        assertEquals(listOf(7L, 8L), store.historyEntryIds().first { it.isNotEmpty() })
+        assertFalse(declined)
+    }
+
+    /**
+     * The decision is the writer's, so a write queued ahead of the
+     * import counts even though no read has seen it land: the word
+     * recorded first makes History not empty.
+     */
+    @Test
+    fun `a conditional import behind a queued record declines and writes nothing`() = runTest {
+        val database = openOver(tempFile())
+        val store = storeOver(database, backgroundScope)
+        val declined = CompletableDeferred<Unit>()
+
+        store.recordInHistory(1L)
+        store.replaceListIfEmpty(UserList.History, listOf(7L)) { declined.complete(Unit) }
+        assertTrue(withTimeoutOrNull(1.seconds) { declined.await() } != null, "History was not empty")
+
+        assertEquals(listOf(1L), database.storedEntryIds(UserList.History))
+    }
+
+    /**
+     * A store that cannot answer must not be taken for an empty one: a
+     * read that fails reads as empty everywhere else in this class, and
+     * here that would overwrite the reader's list without asking. What
+     * is asserted is the decline arriving, which is what makes the
+     * caller ask; nothing about the list is, because a store that cannot
+     * be reached could not have replaced it either way.
+     */
+    @Test
+    fun `a conditional import that cannot reach storage declines rather than replacing`() = runTest {
+        val declined = CompletableDeferred<Unit>()
+        val store = UserDatabaseFavourites(
+            database = { error("storage is gone") },
+            now = { 1L },
+            report = { _, _ -> },
+            scope = backgroundScope,
+        )
+
+        store.replaceListIfEmpty(UserList.Favourites, listOf(7L)) { declined.complete(Unit) }
+
+        assertTrue(
+            withTimeoutOrNull(1.seconds) { declined.await() } != null,
+            "a failed conditional import must be answered with a decline",
+        )
+    }
+
+    /**
+     * A conditional import the queue had no room for is a decision
+     * nobody made. It is answered with a decline on the spot, so the
+     * reader is asked instead of the file vanishing.
+     */
+    @Test
+    fun `a conditional import the full queue refuses is declined at once`() = runTest {
+        val database = openOver(tempFile())
+        val blocked = CompletableDeferred<Unit>()
+        val store = UserDatabaseFavourites(
+            database = {
+                blocked.await()
+                database
+            },
+            now = { 1L },
+            report = { _, _ -> },
+            scope = backgroundScope,
+        )
+        repeat(200) { index -> store.toggleFavourite(index.toLong()) }
+        var declined = false
+
+        store.replaceListIfEmpty(UserList.Favourites, listOf(7L)) { declined = true }
+
+        assertTrue(declined, "a dropped conditional import must say it was not written")
         blocked.complete(Unit)
     }
 }

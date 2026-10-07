@@ -264,6 +264,7 @@ private fun SearchResultsContent(
                     glossTokens = results.glossTokens,
                     onShowMore = results.onShowMore,
                     footer = results.footer,
+                    onHitOpened = state.onHitOpened,
                 )
 
                 refining -> CenteredBox {
@@ -291,6 +292,7 @@ private fun SearchResultsList(
     glossTokens: List<String>,
     onShowMore: (() -> Unit)?,
     footer: PagingFooterState,
+    onHitOpened: ((Long) -> Unit)?,
 ) {
     val navigation = LocalNavigationController.current
     val listState = rememberLazyListState()
@@ -343,6 +345,7 @@ private fun SearchResultsList(
                 hit = hit,
                 glossTokens = glossTokens,
                 onClick = {
+                    onHitOpened?.invoke(hit.entryId)
                     navigation.navigate(EntryRoute(hit.entryId))
                 },
             )

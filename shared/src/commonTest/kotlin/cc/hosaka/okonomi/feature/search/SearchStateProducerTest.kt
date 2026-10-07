@@ -13,6 +13,8 @@ import cc.hosaka.okonomi.feature.navigation.state.ScreenStateScope
 import cc.hosaka.okonomi.prefs.FakePreferenceStore
 import cc.hosaka.okonomi.prefs.PreferenceStore
 import cc.hosaka.okonomi.ui.PagingFooterState
+import cc.hosaka.okonomi.user.FakeFavouritesStore
+import cc.hosaka.okonomi.user.FavouritesStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -28,6 +30,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -85,6 +88,26 @@ class SearchStateProducerTest {
     private fun TestScope.settle() {
         advanceTimeBy(250.milliseconds)
         runCurrent()
+    }
+
+    /**
+     * The other half of "tapping a result records it": the screen calls
+     * this callback (`SearchNavigationUiTest`), and this is what the
+     * callback does. Asserted on the store's History rather than on a
+     * call count, so a callback that recorded into Favourites — or
+     * toggled — would fail.
+     */
+    @Test
+    fun `an opened result lands at the top of History`() = runTest {
+        val favourites = FakeFavouritesStore(initialHistory = listOf(5L))
+        val states = collectStates(
+            FakeScreenStateScope().producerUnderTest(search = noSearch, favourites = favourites),
+        )
+
+        assertNotNull(states.last().onHitOpened)(7L)
+
+        assertEquals(listOf(7L, 5L), favourites.historyEntryIds().first())
+        assertEquals(emptyList(), favourites.favouriteEntryIds().first())
     }
 
     @Test
@@ -1222,12 +1245,14 @@ private suspend fun ScreenStateScope.producerUnderTest(
     nameSearch: suspend (String, Int, Int) -> NameResults = { _, _, _ -> NameResults(emptyList()) },
     preferences: PreferenceStore = FakePreferenceStore(),
     invalidate: suspend () -> Unit = { invalidateDictionary() },
+    favourites: FavouritesStore = FakeFavouritesStore(),
 ): Flow<SearchState> = searchScreenStateProducer(
     initialQuery = initialQuery,
     search = search,
     nameSearch = nameSearch,
     preferences = preferences,
     invalidate = invalidate,
+    favourites = favourites,
 )
 
 /** A store whose reads complete without ever producing a value. */

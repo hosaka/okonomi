@@ -45,8 +45,14 @@ VALUES (:list_id, :entry_id, :ord, :created_at);
 removeFromList:
 DELETE FROM list_entry WHERE list_id = :list_id AND entry_id = :entry_id;
 
--- Everything out of one list, for an import that replaces it. The rows
--- are rewritten in the same transaction, so the list is never observed
--- empty; nothing else in the app may use this to react to a lookup.
+-- Everything out of one list: for an import that replaces it, where
+-- the rows are rewritten in the same transaction so the list is never
+-- observed empty, and for the reader's own "Clear list". Nothing in the
+-- app may use this to react to a lookup.
 clearList:
 DELETE FROM list_entry WHERE list_id = :list_id;
+
+-- Whether a list holds anything, without reading what. Asked inside a
+-- write's own transaction, so the answer is what that write acts on.
+hasEntries:
+SELECT EXISTS(SELECT 1 FROM list_entry WHERE list_id = :list_id);

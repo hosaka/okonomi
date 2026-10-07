@@ -1,5 +1,6 @@
 package cc.hosaka.okonomi.feature.favourites
 
+import cc.hosaka.okonomi.user.UserList
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -89,5 +90,55 @@ class FavouritesFileFailureTest {
             readImport(report = reports.reporter()) { throw CancellationException("cancelled") }
         }
         assertTrue(reports.messages.isEmpty(), reports.messages.toString())
+    }
+
+    @Test
+    fun `a picked file goes to the list its slug names`() {
+        val delivered = mutableListOf<Pair<UserList, String>>()
+
+        deliverPickedFile(
+            targetSlug = UserList.History.slug,
+            text = "file",
+            handler = { list, text -> delivered += list to text },
+            stash = { _, _ -> throw AssertionError("a file with a handler waiting must not be stashed") },
+            report = { message, _ -> throw AssertionError(message) },
+        )
+
+        assertEquals(listOf(UserList.History to "file"), delivered)
+    }
+
+    /**
+     * The screen rebuilt behind the picker is on its seeded frame and
+     * has no handler yet. The file is held for one, under the list it
+     * was picked for — not dropped.
+     */
+    @Test
+    fun `a picked file with nothing to hand it to yet is stashed with its list`() {
+        val stashed = mutableListOf<Pair<String, String>>()
+
+        deliverPickedFile(
+            targetSlug = UserList.History.slug,
+            text = "file",
+            handler = null,
+            stash = { slug, text -> stashed += slug to text },
+            report = { message, _ -> throw AssertionError(message) },
+        )
+
+        assertEquals(listOf(UserList.History.slug to "file"), stashed)
+    }
+
+    @Test
+    fun `a picked file for no known list is reported and goes nowhere`() {
+        val reports = Reports()
+
+        deliverPickedFile(
+            targetSlug = null,
+            text = "file",
+            handler = { _, _ -> throw AssertionError("a file for no known list must not be imported anywhere") },
+            stash = { _, _ -> throw AssertionError("a file for no known list cannot be delivered later either") },
+            report = reports.reporter(),
+        )
+
+        assertTrue(reports.messages.single().contains("dropped"), reports.messages.toString())
     }
 }

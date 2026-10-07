@@ -80,7 +80,7 @@ internal class UserDatabaseFavourites(
     private val writes = Channel<Write>(WRITE_QUEUE_CAPACITY)
 
     /**
-     * Bumped once per landed write. Only the writer coroutine touches
+     * Bumped once per landed write that changed a row. Only the writer coroutine touches
      * it, so the reads it triggers always run after the write they are
      * reporting.
      */
@@ -96,8 +96,18 @@ internal class UserDatabaseFavourites(
      * collector leaves. A screen coming back reads storage again rather
      * than being handed whatever was true when it left.
      */
-    private val entryIds: Flow<List<Long>> = revisions
-        .map { readEntryIds() }
+    private val entryIds: Flow<List<Long>> = sharedRead(UserList.Favourites, scope)
+
+    /**
+     * History's read, shared on the same terms. Every landed write bumps
+     * the one counter, so a heart tap re-runs this query too; the
+     * `distinctUntilChanged` inside is what keeps that from reaching a
+     * screen as an emission.
+     */
+    private val historyIds: Flow<List<Long>> = sharedRead(UserList.History, scope)
+
+    private fun sharedRead(list: UserList, scope: CoroutineScope): Flow<List<Long>> = revisions
+        .map { readEntryIds(list) }
         .distinctUntilChanged()
         .shareIn(
             scope = scope,
@@ -115,6 +125,8 @@ internal class UserDatabaseFavourites(
                     for (write in writes) {
                         if (runWrite(write)) {
                             revisions.value++
+                        } else {
+                            write.notWritten()
                         }
                     }
                     // The channel was closed; there is nothing left to drain.
@@ -142,8 +154,26 @@ internal class UserDatabaseFavourites(
         queue(Write.Toggle(entryId = entryId, at = now()))
     }
 
-    override fun replaceFavourites(entryIds: List<Long>) {
-        queue(Write.Replace(entryIds = entryIds, at = now()))
+    override fun replaceList(list: UserList, entryIds: List<Long>) {
+        queue(Write.Replace(list = list, entryIds = entryIds, at = now(), otherwise = null))
+    }
+
+    override fun replaceListIfEmpty(list: UserList, entryIds: List<Long>, otherwise: () -> Unit) {
+        queue(Write.Replace(list = list, entryIds = entryIds, at = now(), otherwise = otherwise))
+    }
+
+    override fun historyEntryIds(): Flow<List<Long>> = historyIds
+
+    override fun recordInHistory(entryId: Long) {
+        queue(Write.Record(entryId = entryId, at = now()))
+    }
+
+    override fun removeFromList(list: UserList, entryId: Long) {
+        queue(Write.Remove(list = list, entryId = entryId, at = now()))
+    }
+
+    override fun clearList(list: UserList) {
+        queue(Write.Clear(list = list, at = now()))
     }
 
     private fun queue(write: Write) {
@@ -156,12 +186,13 @@ internal class UserDatabaseFavourites(
                     "the write queue is full ($WRITE_QUEUE_CAPACITY unwritten changes)",
                 null,
             )
+            write.notWritten()
         }
     }
 
-    private suspend fun readEntryIds(): List<Long> = try {
+    private suspend fun readEntryIds(list: UserList): List<Long> = try {
         val db = database().db
-        val listId = db.favouritesListId()
+        val listId = db.listId(list)
         if (listId == null) emptyList() else db.list_entryQueries.entriesInList(listId).awaitList()
     } catch (e: CancellationException) {
         throw e
@@ -171,22 +202,61 @@ internal class UserDatabaseFavourites(
         // an exception: this runs inside a screen's state flow. Always
         // reported: an empty list is otherwise the same answer as an
         // empty store.
-        report("the saved words could not be read", e)
+        report("the ${list.slug} list could not be read", e)
         emptyList()
     }
 
-    /** True when the write landed, which is the only thing that re-emits the reads. */
+    /**
+     * True when the write changed a row, which is the only thing that
+     * re-emits the reads. A write that changed nothing — removing a word
+     * that is already gone, clearing a list that is already empty, a
+     * conditional import into a list that is not — leaves `updated_at`
+     * alone, re-runs no read, and creates no list row that was not there,
+     * exactly as if it had never been asked for.
+     */
     private suspend fun runWrite(write: Write): Boolean = try {
         val db = database().db
-        db.transaction {
-            val listId = db.ensureFavouritesList(write.at)
-            when (write) {
-                is Write.Toggle -> db.applyToggle(listId, write)
-                is Write.Replace -> db.applyReplace(listId, write)
+        db.transactionWithResult {
+            // Only a write that adds something may create its list's
+            // row. A remove or a clear of a list that does not exist
+            // yet has nothing to act on.
+            val listId = if (write.addsEntries) {
+                db.ensureList(write.list, write.at)
+            } else {
+                db.listId(write.list) ?: return@transactionWithResult false
             }
-            db.listQueries.touchList(updated_at = write.at, id = listId)
+            val changed = when (write) {
+                is Write.Toggle -> {
+                    db.applyToggle(listId, write)
+                    true
+                }
+                is Write.Replace -> if (
+                    write.otherwise != null &&
+                    db.list_entryQueries.hasEntries(listId).awaitOne()
+                ) {
+                    // Not empty: the caller asks the reader first.
+                    false
+                } else {
+                    db.applyReplace(listId, write)
+                    true
+                }
+                is Write.Record -> {
+                    db.applyRecord(listId, write)
+                    true
+                }
+                is Write.Remove -> db.applyRemove(listId, write)
+                is Write.Clear -> if (db.list_entryQueries.hasEntries(listId).awaitOne()) {
+                    db.list_entryQueries.clearList(listId)
+                    true
+                } else {
+                    false
+                }
+            }
+            if (changed) {
+                db.listQueries.touchList(updated_at = write.at, id = listId)
+            }
+            changed
         }
-        true
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -194,6 +264,19 @@ internal class UserDatabaseFavourites(
         // button is seen to refuse rather than seen to lie.
         report("${write.description} could not be written", e)
         false
+    }
+
+    /**
+     * Decided inside the transaction, like a toggle: what is removed is
+     * what is stored now. Unlike a toggle, a word that is not there
+     * stays not there, and that is reported as no change.
+     */
+    private suspend fun UserDb.applyRemove(listId: Long, write: Write.Remove): Boolean {
+        if (!list_entryQueries.isInList(list_id = listId, entry_id = write.entryId).awaitOne()) {
+            return false
+        }
+        list_entryQueries.removeFromList(list_id = listId, entry_id = write.entryId)
+        return true
     }
 
     private suspend fun UserDb.applyToggle(listId: Long, write: Write.Toggle) {
@@ -252,12 +335,49 @@ internal class UserDatabaseFavourites(
     }
 
     /**
-     * One queued change. Sealed rather than two channels: order between
-     * an import and a heart tap is exactly the thing the single writer
-     * exists to fix, and two queues would put it back.
+     * Out and back in at the next position, so a word opened again moves
+     * to the top rather than keeping the place it was first opened at —
+     * the opposite of what a re-save does in Favourites, and on purpose:
+     * History is "what did I look at last", not "what did I keep first".
+     * Nothing is trimmed: History keeps every word it was given.
+     *
+     * `created_at` is the latest opening, for the same reason.
+     */
+    private suspend fun UserDb.applyRecord(listId: Long, write: Write.Record) {
+        list_entryQueries.removeFromList(list_id = listId, entry_id = write.entryId)
+        val ord = list_entryQueries.nextOrdInList(listId).awaitOne()
+        list_entryQueries.addToList(
+            list_id = listId,
+            entry_id = write.entryId,
+            ord = ord,
+            created_at = write.at,
+        )
+    }
+
+    /**
+     * One queued change. Sealed rather than one channel per kind: order
+     * between an import and a heart tap — or a clear and the recording
+     * after it — is exactly the thing the single writer exists to fix,
+     * and several queues would put it back.
      */
     private sealed class Write {
         abstract val at: Long
+
+        /** The list this write lands in. */
+        abstract val list: UserList
+
+        /**
+         * Whether this write can put entries into [list], and so may
+         * create its row on first use. A remove or a clear cannot.
+         */
+        open val addsEntries: Boolean get() = true
+
+        /**
+         * Told that this write changed nothing: refused by its own
+         * condition, failed, or dropped by a full queue. Only a
+         * conditional import listens.
+         */
+        open fun notWritten() = Unit
 
         /** How a report names this write; the reader never sees it. */
         abstract val description: String
@@ -266,16 +386,61 @@ internal class UserDatabaseFavourites(
             val entryId: Long,
             override val at: Long,
         ) : Write() {
+            override val list: UserList get() = UserList.Favourites
+
             override val description: String
                 get() = "a favourite change for entry $entryId"
         }
 
+        /**
+         * An import. With [otherwise] set it only replaces an empty
+         * list, and [otherwise] hears about everything else — a list
+         * that is not empty, and a write that could not be made, both of
+         * which leave the reader to be asked.
+         */
         class Replace(
+            override val list: UserList,
             val entryIds: List<Long>,
             override val at: Long,
+            val otherwise: (() -> Unit)?,
         ) : Write() {
+            override fun notWritten() {
+                otherwise?.invoke()
+            }
+
             override val description: String
-                get() = "an import of ${entryIds.size} saved words"
+                get() = "an import of ${entryIds.size} words into ${list.slug}"
+        }
+
+        class Record(
+            val entryId: Long,
+            override val at: Long,
+        ) : Write() {
+            override val list: UserList get() = UserList.History
+
+            override val description: String
+                get() = "a history record for entry $entryId"
+        }
+
+        class Remove(
+            override val list: UserList,
+            val entryId: Long,
+            override val at: Long,
+        ) : Write() {
+            override val addsEntries: Boolean get() = false
+
+            override val description: String
+                get() = "a removal of entry $entryId from ${list.slug}"
+        }
+
+        class Clear(
+            override val list: UserList,
+            override val at: Long,
+        ) : Write() {
+            override val addsEntries: Boolean get() = false
+
+            override val description: String
+                get() = "a clear of ${list.slug}"
         }
     }
 }
@@ -288,23 +453,23 @@ internal class UserDatabaseFavourites(
  */
 private const val SHARE_STOP_TIMEOUT_MILLIS = 5_000L
 
-private suspend fun UserDb.favouritesListId(): Long? =
-    listQueries.listBySlug(FAVOURITES_LIST_SLUG).awaitOneOrNull()?.id
+private suspend fun UserDb.listId(list: UserList): Long? =
+    listQueries.listBySlug(list.slug).awaitOneOrNull()?.id
 
 /**
- * The shipped list's id, creating the row on first use. Insert-or-ignore
+ * A built-in list's id, creating the row on first use. Insert-or-ignore
  * then select rather than select-then-insert: the slug is unique, so two
  * concurrent creators end up on the same row instead of racing to make a
  * second one.
  */
-private suspend fun UserDb.ensureFavouritesList(at: Long): Long {
+private suspend fun UserDb.ensureList(list: UserList, at: Long): Long {
     listQueries.insertList(
-        slug = FAVOURITES_LIST_SLUG,
-        name = FAVOURITES_LIST_NAME,
-        ord = 0,
+        slug = list.slug,
+        name = list.initialName,
+        ord = list.ord,
         created_at = at,
     )
-    return listQueries.listBySlug(FAVOURITES_LIST_SLUG).awaitOne().id
+    return listQueries.listBySlug(list.slug).awaitOne().id
 }
 
 @OptIn(ExperimentalTime::class)

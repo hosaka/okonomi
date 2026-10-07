@@ -198,21 +198,39 @@
     <string name="favourites_options">Favourites options</string>
     <string name="favourites_export">Export list</string>
     <string name="favourites_import">Import list</string>
-    <!-- The only destructive confirmation in the app. It has to name
-         what is lost rather than ask a polite question: import replaces
-         the whole list and there is no undo. -->
-    <string name="favourites_import_replace_title">Replace your saved words?</string>
-    <string name="favourites_import_replace_message">Importing replaces everything in Favourites with the words in this file. This cannot be undone.</string>
+    <!-- Import's confirmation. It has to name what is lost rather than
+         ask a polite question: import replaces the whole list and there
+         is no undo. %1$s is the title of the list being replaced, since
+         either list can be imported into. -->
+    <string name="favourites_import_replace_title">Replace your %1$s?</string>
+    <string name="favourites_import_replace_message">Importing replaces everything in %1$s with the words in this file. This cannot be undone.</string>
     <string name="favourites_import_replace_confirm">Replace</string>
     <string name="favourites_import_replace_cancel">Cancel</string>
     <!-- Reached by a file that is not an export of this app, one that
          was written by a later version, and one that could not be read
          at all. They are one message on purpose: the reader's next step
          is the same in every case, and nothing was changed in any of
-         them. -->
+         them. %1$s is the title of the list the file was offered to. -->
     <string name="favourites_import_unreadable_title">That file could not be read</string>
-    <string name="favourites_import_unreadable_message">It is not a saved words file this version of okonomi can read. Nothing has changed.</string>
+    <string name="favourites_import_unreadable_message">It is not a saved words file this version of okonomi can read. Nothing in %1$s has changed.</string>
     <string name="favourites_import_unreadable_dismiss">OK</string>
+    <!-- History: the Favourites tab's second list, every word opened
+         from search results. The title is the toolbar's when History is
+         picked; the tab in the bottom bar keeps saying Favourites. -->
+    <string name="history_title">History</string>
+    <string name="history_empty">No history yet. Words you open from search results appear here.</string>
+    <string name="favourites_switch_list">Switch list</string>
+    <!-- A row's accessibility action, the swipe's equivalent. %1$s is
+         the list's title. -->
+    <string name="favourites_remove">Remove from %1$s</string>
+    <!-- Clear list, in both lists' overflow menus. The dialog names the
+         list it empties, because the two menus look alike and only one
+         of them is being cleared. %1$s is the list's title. -->
+    <string name="favourites_clear">Clear list</string>
+    <string name="favourites_clear_title">Clear %1$s?</string>
+    <string name="favourites_clear_message">Every word in %1$s will be removed. This cannot be undone.</string>
+    <string name="favourites_clear_confirm">Clear</string>
+    <string name="favourites_clear_cancel">Cancel</string>
     <string name="settings_title">Settings</string>
     <string name="settings_dictionary_label">Dictionary</string>
     <string name="settings_dictionary_value">JMdict %1$s · %2$s entries</string>

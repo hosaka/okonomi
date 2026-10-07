@@ -14,19 +14,46 @@ const val FAVOURITES_LIST_SLUG = "favourites"
 const val FAVOURITES_LIST_NAME = "Favourites"
 
 /**
- * The reader's saved entries, as a seam rather than a storage API.
+ * Machine name of the second built-in list: every word opened from
+ * search results, newest first. Same rules as [FAVOURITES_LIST_SLUG].
+ */
+const val HISTORY_LIST_SLUG = "history"
+
+/** The history list's display name as stored. Screens show their own string. */
+const val HISTORY_LIST_NAME = "History"
+
+/**
+ * The lists that exist. Both are built in and created on first use;
+ * there are no lists of the reader's own making, so this is closed.
+ *
+ * [ord] is the row's position among lists, written once when the row is
+ * created and read by nothing yet.
+ */
+enum class UserList(
+    val slug: String,
+    val initialName: String,
+    val ord: Long,
+) {
+    Favourites(FAVOURITES_LIST_SLUG, FAVOURITES_LIST_NAME, 0),
+    History(HISTORY_LIST_SLUG, HISTORY_LIST_NAME, 1),
+}
+
+/**
+ * The reader's saved entries — Favourites, and the History of words
+ * opened from search — as a seam rather than a storage API.
  *
  * Deliberately smaller than what the database offers, for the reason
  * `PreferenceStore` is: everything a screen needs is "watch what is
  * saved" and "change this", and keeping the interface at that shape is
  * what lets a producer test hand in a list instead of a file.
  *
- * Neither write suspends or reports anything. The caller is a button in
- * a composition with no scope of its own, and the write must not hold up
- * the frame the tap landed in. What was written comes back through
- * [isFavourite], never from the call, so the flow stays the single
- * source of truth for what is stored — a write that fails leaves the
- * button saying "unsaved", which is the honest answer.
+ * No write suspends or reports anything. The caller is a tap in a
+ * composition with no scope of its own, and the write must not hold up
+ * the frame the tap landed in. What was written comes back through the
+ * reads — [favouriteEntryIds], [isFavourite], [historyEntryIds] — never
+ * from the call, so the flows stay the single source of truth for what
+ * is stored: a write that fails leaves the heart saying "unsaved" and a
+ * swiped row still in its list, which is the honest answer.
  *
  * A read that fails yields an empty list rather than an error: an
  * unreadable store must never take a screen down. This is the spec's own
@@ -72,8 +99,9 @@ interface FavouritesStore {
     fun toggleFavourite(entryId: Long)
 
     /**
-     * Replaces everything saved with [entryIds], whose first element is
-     * the one shown first. An empty list empties the store.
+     * Replaces everything in [list] with [entryIds], whose first element
+     * is the one shown first, and leaves every other list alone. An
+     * empty [entryIds] empties the list.
      *
      * This is import, and import replaces: there is no merge and no
      * undo, and warning the reader first is the caller's job rather than
@@ -82,8 +110,58 @@ interface FavouritesStore {
      *
      * Non-suspending and silent for the reason [toggleFavourite] is, and
      * ordered against it for a reason of its own: an import and a heart
-     * tap that land together must not interleave, so both go through the
-     * same single writer.
+     * tap — or a recording — that land together must not interleave, so
+     * all of them go through the same single writer.
      */
-    fun replaceFavourites(entryIds: List<Long>)
+    fun replaceList(list: UserList, entryIds: List<Long>)
+
+    /**
+     * [replaceList], but only into an empty [list]; [otherwise] is
+     * called instead when the list is not empty — and also when the
+     * answer cannot be had, because the write failed or could not be
+     * queued. An import uses it to decide whether to ask first, and the
+     * failure case falls on the side of asking: a store that cannot say
+     * whether the list is empty must never be taken for one that is.
+     *
+     * Decided by the writer, inside the transaction that would replace
+     * the list, so a write still in the queue ahead of it — a word being
+     * recorded — counts. [otherwise] runs on the writer, off the main
+     * thread, and must only hand the answer on.
+     */
+    fun replaceListIfEmpty(list: UserList, entryIds: List<Long>, otherwise: () -> Unit)
+
+    /**
+     * The words opened from search results, most recently opened first,
+     * every one of them: History has no cap. Same emission rules as
+     * [favouriteEntryIds], and independent of it: a word can be in both.
+     */
+    fun historyEntryIds(): Flow<List<Long>>
+
+    /**
+     * Puts [entryId] at the top of History: added if it is not there,
+     * moved if it is, so each word appears once. Nothing is ever
+     * dropped to make room.
+     *
+     * Non-suspending and silent for the reason [toggleFavourite] is; the
+     * caller is a row tap that is about to navigate, and must not wait.
+     */
+    fun recordInHistory(entryId: Long)
+
+    /**
+     * Takes [entryId] out of [list], and out of nothing else: a word in
+     * both lists stays in the other.
+     *
+     * Not [toggleFavourite]. A swipe means "remove", so a row whose word
+     * is already gone — a second swipe, a write from elsewhere landing
+     * first — must stay gone rather than flip back in. Removing what is
+     * not there is a no-op, decided inside the transaction like a
+     * toggle is, and queued on the same writer.
+     */
+    fun removeFromList(list: UserList, entryId: Long)
+
+    /**
+     * Empties [list] and leaves every other list alone. No undo, and
+     * asking the reader first is the caller's job.
+     */
+    fun clearList(list: UserList)
 }

@@ -1,13 +1,16 @@
 package cc.hosaka.okonomi.feature.favourites
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import cc.hosaka.okonomi.feature.navigation.Route
 import cc.hosaka.okonomi.user.UserDataFailureReporter
+import cc.hosaka.okonomi.user.UserList
 import cc.hosaka.okonomi.user.printUserDataFailure
 import io.github.vinceglb.filekit.dialogs.FileKitDialogSettings
 import io.github.vinceglb.filekit.dialogs.FileKitType
@@ -16,13 +19,11 @@ import io.github.vinceglb.filekit.dialogs.compose.rememberFileSaverLauncher
 import io.github.vinceglb.filekit.readString
 import io.github.vinceglb.filekit.writeString
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
-
-/** The name the save dialog suggests, without its extension. */
-private const val EXPORT_FILE_NAME = "favourites"
 
 private const val EXPORT_FILE_EXTENSION = "json"
 
@@ -33,6 +34,7 @@ data object FavouritesRoute : Route {
     override fun Content() {
         val state by produceFavouritesScreenState()
         val transfer = rememberFavouritesTransfer(
+            list = state.list,
             onExportJson = state.onExportJson,
             onFileImported = state.onFileImported,
         )
@@ -58,21 +60,55 @@ private class FavouritesMenuActions(
  * out here is also what leaves `FavouritesScreen` a pure renderer that
  * the existing UI tests can host.
  *
- * Two behaviours in here are **not** covered by any test, and cannot be:
- * a cancelled dialog writing nothing, and the name the save dialog
- * suggests. Both are settled inside a launcher callback that no host
- * test can drive, so a test for either would have to asserted against a
- * restatement of the check rather than the check — green with the real
- * one deleted. They are verified by running the app instead. What the
- * callbacks delegate to ([writeExport], [readImport]) is tested, as is
- * everything on the other side of `onFileImported`.
+ * Some behaviours in here are **not** covered by any test, and cannot
+ * be: a cancelled dialog writing nothing, the name the save dialog
+ * suggests, the list a picked file is handed on with, a file read that
+ * outlives the route leaving composition, and a stashed file being
+ * handed on once a handler appears. All are settled inside a launcher
+ * callback, or an effect waiting on a state no host test can rebuild
+ * the way a recreated activity does, so a test for any of them would
+ * have to assert against a restatement of the check rather than the
+ * check — green with the real one deleted. They are verified by running
+ * the app instead. What the callbacks delegate to ([writeExport],
+ * [readImport], [deliverPickedFile]) is tested, as is everything on the
+ * other side of `onFileImported`.
  */
 @Composable
 private fun rememberFavouritesTransfer(
+    list: UserList?,
     onExportJson: (() -> String)?,
-    onFileImported: ((String) -> Unit)?,
+    onFileImported: ((UserList, String) -> Unit)?,
 ): FavouritesMenuActions {
     val scope = rememberCoroutineScope()
+    // The handler as it is now, not as it was when the picker was
+    // remembered: the file can come back to a state rebuilt meanwhile.
+    val currentOnFileImported by rememberUpdatedState(onFileImported)
+
+    // The slug of the list Import was tapped on. The picker is another
+    // activity: the file comes back to whatever state is standing then,
+    // which may have been rebuilt on another list, so the list the file
+    // is for has to travel with the dialog rather than be read off the
+    // state. Saveable for the reason pendingExport is, and a String
+    // because that saves on every platform.
+    var importTarget by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // A file that came back while there was nothing to hand it to — the
+    // seeded first frame of a screen rebuilt behind the dialog — held
+    // until there is. Saveable for the same reason as the target.
+    var stashedTarget by rememberSaveable { mutableStateOf<String?>(null) }
+    var stashedText by rememberSaveable { mutableStateOf<String?>(null) }
+    val stash: (String, String) -> Unit = { slug, text ->
+        stashedTarget = slug
+        stashedText = text
+    }
+    LaunchedEffect(onFileImported != null, stashedText) {
+        val text = stashedText ?: return@LaunchedEffect
+        val handler = currentOnFileImported ?: return@LaunchedEffect
+        val slug = stashedTarget
+        stashedTarget = null
+        stashedText = null
+        deliverPickedFile(slug, text, handler, stash)
+    }
 
     // Encoded when the reader picks Export, not when the dialog comes
     // back: the file is what was saved at the moment they asked for it.
@@ -120,24 +156,75 @@ private fun rememberFavouritesTransfer(
         // adds no safety, only a way to fail.
         type = FileKitType.File(),
     ) { file ->
-        if (file == null || onFileImported == null) return@rememberFilePickerLauncher
-        scope.launch {
-            onFileImported(readImport { file.readString() })
+        val slug = importTarget
+        importTarget = null
+        if (file == null) return@rememberFilePickerLauncher
+        // Undispatched and NonCancellable, for the reason the export's
+        // write is: the reader can leave the tab the instant the picker
+        // closes, which cancels this scope, and a file they picked must
+        // not vanish because of it. The hand-off sits inside the
+        // NonCancellable block, because withContext rethrows a
+        // cancellation on the way out and would drop it there. What it
+        // hands to lives in the producer's persisted flows, which
+        // outlive this composition.
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            withContext(NonCancellable) {
+                val text = readImport { file.readString() }
+                deliverPickedFile(slug, text, currentOnFileImported, stash)
+            }
         }
     }
 
+    // Neither is offered before the producer has said which list is on
+    // show: an export would not know what to call its file, and an
+    // import would not know where it lands.
+    if (list == null) return FavouritesMenuActions(onExportClick = null, onImportClick = null)
     return FavouritesMenuActions(
         onExportClick = onExportJson?.let { encode ->
             {
                 pendingExport = encode()
                 saver.launch(
-                    suggestedName = EXPORT_FILE_NAME,
+                    // Named for the list, so an export of each can sit
+                    // side by side without one overwriting the other.
+                    suggestedName = list.slug,
                     defaultExtension = EXPORT_FILE_EXTENSION,
                 )
             }
         },
-        onImportClick = onFileImported?.let { { picker.launch() } },
+        onImportClick = onFileImported?.let {
+            {
+                importTarget = list.slug
+                picker.launch()
+            }
+        },
     )
+}
+
+/**
+ * Hands a picked file's [text] to [handler] for the list named by
+ * [targetSlug]. With no handler yet it is [stash]ed for one, never
+ * dropped. A slug that names no list — nothing was recorded when Import
+ * was tapped, or it named a list this version does not have — cannot be
+ * delivered anywhere, and is reported rather than guessed at: the file
+ * is the reader's, and the wrong list would overwrite something.
+ */
+internal fun deliverPickedFile(
+    targetSlug: String?,
+    text: String,
+    handler: ((UserList, String) -> Unit)?,
+    stash: (String, String) -> Unit,
+    report: UserDataFailureReporter = printUserDataFailure,
+) {
+    val target = UserList.entries.firstOrNull { it.slug == targetSlug }
+    if (target == null) {
+        report("a picked file was dropped: the list it was for ($targetSlug) is not known", null)
+        return
+    }
+    if (handler == null) {
+        stash(target.slug, text)
+        return
+    }
+    handler(target, text)
 }
 
 /**

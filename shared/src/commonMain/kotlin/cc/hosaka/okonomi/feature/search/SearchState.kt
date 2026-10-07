@@ -42,6 +42,13 @@ data class SearchState(
     val namesEnabled: Boolean = NAMES_IN_SEARCH_DEFAULT,
     val onNamesEnabledChange: ((Boolean) -> Unit)? = null,
     val results: SearchResultsState = SearchResultsState.Idle,
+    /**
+     * Told the entry id of a word row the reader tapped, just before the
+     * entry opens, so the word lands in History. Opening never waits on
+     * it, and null records nothing. Name rows are not tappable and never
+     * reach it.
+     */
+    val onHitOpened: ((Long) -> Unit)? = null,
 )
 
 /**

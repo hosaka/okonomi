@@ -55,6 +55,37 @@ class SearchNavigationUiTest : ComposeUiTestBase() {
         assertEquals<List<Route>>(listOf(EntryRoute(TABERARERU_ID)), navigation.navigated)
     }
 
+    /**
+     * The row is what records: the producer only supplies the callback
+     * (`SearchStateProducerTest`), so deleting the call here would leave
+     * every producer test green and History empty.
+     */
+    @Test
+    fun `tapping a result records that entry in History`() = runComposeUiTest {
+        val opened = mutableListOf<Long>()
+        setContent {
+            SearchUnderTest(
+                state = searchState(hits = listOf(searchHit(), taberareruHit()))
+                    .copy(onHitOpened = { opened += it }),
+            )
+        }
+
+        onNodeWithText(TABERARERU_TITLE).performClick()
+
+        assertEquals(listOf(TABERARERU_ID), opened)
+    }
+
+    @Test
+    fun `rendering results records nothing on its own`() = runComposeUiTest {
+        val opened = mutableListOf<Long>()
+        setContent {
+            SearchUnderTest(state = searchState().copy(onHitOpened = { opened += it }))
+        }
+        waitForIdle()
+
+        assertEquals(emptyList(), opened)
+    }
+
     @Test
     fun `rendering results navigates nowhere on its own`() = runComposeUiTest {
         val navigation = RecordingNavigationController()

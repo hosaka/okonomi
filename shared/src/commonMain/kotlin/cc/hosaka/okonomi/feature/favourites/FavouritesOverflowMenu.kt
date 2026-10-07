@@ -14,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import cc.hosaka.okonomi.ui.OverflowMenu
 import okonomi.shared.generated.resources.Res
+import okonomi.shared.generated.resources.favourites_clear
 import okonomi.shared.generated.resources.favourites_export
 import okonomi.shared.generated.resources.favourites_import
 import okonomi.shared.generated.resources.favourites_options
@@ -21,30 +22,33 @@ import org.jetbrains.compose.resources.stringResource
 
 /**
  * The Favourites toolbar's overflow menu: the way a saved list gets out
- * of the app and back in.
+ * of the app and back in, and the way any list is emptied.
+ *
+ * Both lists offer the same three items, each acting on the list on
+ * show: Export, Import and Clear list.
  *
  * A null callback renders its item disabled. Text-only items because
  * only `material-icons-core` is a dependency and it carries no upload,
- * download or file icon; adding an icon set for two menu rows would be
- * a large dependency for a small decoration.
+ * download or file icon; adding an icon set to decorate three short
+ * labels would be a large dependency for a small decoration.
  *
- * The button itself stays enabled while either action is available.
- * Once the producer has emitted, importing always is — an empty list is
- * a perfectly good thing to import into — so in practice it is "Export
- * list" that renders disabled, with nothing saved or the list still
- * loading. The one moment both are unavailable, and the button with
- * them, is the seeded first frame: `FavouritesState()` carries neither
- * callback until the producer replaces it.
+ * The button itself stays enabled while any item it offers is
+ * available. Once the producer has emitted, importing always is — an
+ * empty list is a perfectly good thing to import into — so in practice
+ * it is "Export list" and "Clear list" that render disabled, with
+ * nothing in the list. The seeded first frame carries no callback at all
+ * until the producer replaces it, and the button is disabled with them.
  */
 @Composable
 internal fun FavouritesOverflowMenu(
     onExportClick: (() -> Unit)?,
     onImportClick: (() -> Unit)?,
+    onClearClick: (() -> Unit)?,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         IconButton(
-            enabled = onExportClick != null || onImportClick != null,
+            enabled = onClearClick != null || onExportClick != null || onImportClick != null,
             onClick = { expanded = true },
         ) {
             Icon(
@@ -70,6 +74,14 @@ internal fun FavouritesOverflowMenu(
                 onClick = {
                     expanded = false
                     onImportClick?.invoke()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(text = stringResource(Res.string.favourites_clear)) },
+                enabled = onClearClick != null,
+                onClick = {
+                    expanded = false
+                    onClearClick?.invoke()
                 },
             )
         }

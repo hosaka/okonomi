@@ -22,8 +22,8 @@ private const val FAVOURITES_FILE_VERSION = 1
  * from the bundled dictionary and would only go stale in a file.
  *
  * [name] carries a default because it is written and then discarded —
- * an import always lands in the shipped Favourites list, so a file
- * missing the field is still perfectly importable. [version] has no
+ * an import lands in whichever list is on screen, so a file missing the
+ * field is still perfectly importable. [version] has no
  * default on purpose: a file that does not say what it is cannot be
  * read.
  */

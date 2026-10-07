@@ -7,6 +7,7 @@ import cc.hosaka.okonomi.db.EntrySense
 import cc.hosaka.okonomi.feature.navigation.state.FakeScreenStateScope
 import cc.hosaka.okonomi.user.FakeFavouritesStore
 import cc.hosaka.okonomi.user.FavouritesStore
+import cc.hosaka.okonomi.user.UserList
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -291,5 +292,15 @@ private class SilentFavouritesStore : FavouritesStore {
 
     override fun toggleFavourite(entryId: Long) = Unit
 
-    override fun replaceFavourites(entryIds: List<Long>) = Unit
+    override fun replaceList(list: UserList, entryIds: List<Long>) = Unit
+
+    override fun replaceListIfEmpty(list: UserList, entryIds: List<Long>, otherwise: () -> Unit) = Unit
+
+    override fun historyEntryIds(): Flow<List<Long>> = emptyFlow()
+
+    override fun recordInHistory(entryId: Long) = Unit
+
+    override fun removeFromList(list: UserList, entryId: Long) = Unit
+
+    override fun clearList(list: UserList) = Unit
 }

@@ -16,6 +16,8 @@ import cc.hosaka.okonomi.feature.navigation.state.produceScreenState
 import cc.hosaka.okonomi.prefs.PreferenceStore
 import cc.hosaka.okonomi.prefs.appPreferences
 import cc.hosaka.okonomi.ui.PagingFooterState
+import cc.hosaka.okonomi.user.FavouritesStore
+import cc.hosaka.okonomi.user.appFavourites
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -74,7 +76,12 @@ suspend fun ScreenStateScope.searchScreenStateProducer(
     },
     preferences: PreferenceStore = appPreferences(),
     invalidate: suspend () -> Unit = { invalidateDictionary() },
+    favourites: FavouritesStore = appFavourites(),
 ): Flow<SearchState> {
+    // One instance rather than one per emission, as with onBack below.
+    // The store's write is queued and silent, so the tap navigates in
+    // the frame it landed in whether or not the record ever lands.
+    val onHitOpened: (Long) -> Unit = { entryId -> favourites.recordInHistory(entryId) }
     // Only the *initial* value: mutablePersistedFlow hands back the
     // same flow on every later run of the producer, so a reader who
     // edited the seeded query keeps their edit when the screen comes
@@ -316,6 +323,7 @@ suspend fun ScreenStateScope.searchScreenStateProducer(
                 querySink.value = ""
             }.takeIf { query.isNotEmpty() },
             onBack = onBack,
+            onHitOpened = onHitOpened,
             // Idle under a non-blank query means no search has landed
             // for this screen yet — the debounce window, or a query
             // restored into a fresh screen, which would otherwise show
