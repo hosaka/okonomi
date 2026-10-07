@@ -4,6 +4,15 @@ on:
   push:
     branches:
       - main
+    paths:
+      - "androidApp/**"
+      - "shared/**"
+      - "tools/**"
+      - "gradle/**"
+      - "*.gradle.kts"
+      - "gradle.properties"
+      - "gradlew"
+      - ".forgejo/workflows/build-android.yml"
 
 jobs:
   build:

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: Which part of the version to increase; auto picks it from the pending changie fragments
+        description: Which part of the version to increase
         required: true
         default: auto
         type: choice
