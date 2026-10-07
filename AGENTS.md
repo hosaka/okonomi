@@ -53,6 +53,8 @@ collected and its state producer is cancelled five seconds later — anything a
 dialog result must come back to has to outlive that, which is what
 `mutablePersistedFlow` is for (see `FavouritesStateProducer`).
 - Persisted settings (`prefs/`): `PreferenceStore` is the seam every screen uses; `appPreferences()` is the app-lifetime instance over `androidx.datastore` (one per process — DataStore rejects two over one file). Reads that fail yield the default and writes that fail are dropped, so a broken store can never take a screen down. Tests inject `FakePreferenceStore`.
+- Send to Anki (`anki/`, Android only): talks to AnkiDroid's `com.ichi2.anki.flashcards` provider directly through `ContentResolver` — no AnkiDroid API dependency. Its permission and `<queries>` entry live in `shared/src/androidMain/AndroidManifest.xml`, which merges into the app. Duplicates are keyed by the note's EntryId field.
+- Deep link `okonomi://entry/<id>` (the cards' "More in Okonomi"): parsed and queued in `:shared` (`feature/navigation/EntryLinks.kt`), opened by `HomeScreen` over Search's root; `MainActivity` (`launchMode="singleTask"`) only forwards the URI from `onCreate`/`onNewIntent`. System back on the linked entry leaves the app for the sender.
 
 Practical rule: for new screens, follow the same split (see `feature/search/`):
 

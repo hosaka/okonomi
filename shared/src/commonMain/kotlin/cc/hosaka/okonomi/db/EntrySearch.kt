@@ -192,8 +192,9 @@ suspend fun entryGlosses(ids: List<Long>): Map<Long, List<String>> {
 /**
  * Every gloss of each entry in [ids], in sense order and then gloss
  * order — the whole entry, where a result row ([entryRows]) carries only
- * its first few senses. What a flashcard is made from: a card is the one
- * place a reader studies the word, so nothing is cut.
+ * its first few senses, joined. What a flashcard's meaning is made from;
+ * how much of it a card shows is the card's decision
+ * (`ANKI_MEANING_GLOSS_LIMIT`), not this read's.
  *
  * An id the dictionary no longer carries has no key. Chunked for the
  * reason [entryRows] is: the list is the reader's and has no ceiling.
@@ -222,7 +223,7 @@ suspend fun DictionaryDatabase.entryGlosses(ids: List<Long>): Map<Long, List<Str
  * is why `EntryRowsTest` has to reach an unrealistic list size to make
  * an unchunked lookup fail.
  */
-private const val ENTRY_ROW_CHUNK = 400
+internal const val ENTRY_ROW_CHUNK = 400
 
 /**
  * As-you-type dictionary search.

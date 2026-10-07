@@ -92,7 +92,8 @@ class EntryGlossesTest {
     @Test
     fun `a list longer than one query's worth of ids is read whole`() = runTest {
         val database = seededDatabase()
-        val ids = List(1_000) { if (it == 999) 1L else 10_000L + it }
+        // The wanted id last, so it falls in the second chunk.
+        val ids = List(ENTRY_ROW_CHUNK + 1) { if (it == ENTRY_ROW_CHUNK) 1L else 10_000L + it }
 
         assertEquals(6, database.entryGlosses(ids)[1L]?.size)
     }

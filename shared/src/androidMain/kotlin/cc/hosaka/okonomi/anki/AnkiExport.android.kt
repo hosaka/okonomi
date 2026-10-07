@@ -8,11 +8,16 @@ import android.database.Cursor
 import android.net.Uri
 import cc.hosaka.okonomi.db.AndroidAppContext
 import cc.hosaka.okonomi.user.printUserDataFailure
-import java.text.Normalizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-actual fun appAnkiExport(): AnkiExport? = AnkiDroidExport
+actual fun appAnkiExport(): AnkiExport? = appAnkiDroidExport
+
+/**
+ * Reaches the context only when used, so constructing the Favourites
+ * producer never needs [AndroidAppContext] initialised.
+ */
+private val appAnkiDroidExport = AnkiDroidExport { AndroidAppContext.applicationContext }
 
 /**
  * AnkiDroid's instant-add provider, spoken to directly through a
@@ -20,12 +25,9 @@ actual fun appAnkiExport(): AnkiExport? = AnkiDroidExport
  * is JitPack-only and LGPL-3.0, and a send needs six provider calls.
  * The names below mirror `FlashCardsContract` and `AddContentApi` in
  * Anki-Android (checked against v2.24.1).
- *
- * An object that reaches the context only when used, so constructing
- * the Favourites producer never needs [AndroidAppContext] initialised.
  */
-private object AnkiDroidExport : AnkiExport {
-    private val context: Context get() = AndroidAppContext.applicationContext
+internal class AnkiDroidExport(private val contextProvider: () -> Context) : AnkiExport {
+    private val context: Context get() = contextProvider()
 
     override fun access(): AnkiAccess = when {
         // Unresolvable both when AnkiDroid is missing and when its
@@ -41,13 +43,15 @@ private object AnkiDroidExport : AnkiExport {
         else -> AnkiAccess.Granted
     }
 
-    override suspend fun send(notes: List<AnkiNote>): AnkiSendResult = withContext(Dispatchers.IO) {
-        sendToAnkiDroid(
-            client = ProviderAnkiDroidClient(context.contentResolver),
-            notes = notes,
-            report = printUserDataFailure,
-        )
-    }
+    override suspend fun send(notes: List<AnkiNote>, linkLabel: String): AnkiSendResult =
+        withContext(Dispatchers.IO) {
+            sendToAnkiDroid(
+                client = ProviderAnkiDroidClient(context.contentResolver),
+                notes = notes,
+                report = printUserDataFailure,
+                linkLabel = linkLabel,
+            )
+        }
 }
 
 /** AnkiDroid's runtime permission, which a send asks for on first use. */
@@ -87,11 +91,20 @@ private object AnkiDroidContract {
 
 /**
  * Every call goes through [call], which turns the provider's failures
- * into the ones a send has a dialog for. Those arrive across Binder as
- * the only exception types a Parcel carries: `SecurityException` for a
- * missing permission and `IllegalStateException` for "storage is not
- * configured" — a collection AnkiDroid has never been opened to create.
- * A null cursor or URI means the provider could not be reached.
+ * into the ones a send has a dialog for: `SecurityException` for a
+ * missing permission, and the `IllegalStateException` AnkiDroid throws
+ * with "storage is not configured" for a collection it has never been
+ * opened to create. Any other `IllegalStateException` is an ordinary
+ * failure.
+ *
+ * Across Binder a Parcel carries only a fixed handful of exception types
+ * (among them `SecurityException`, `IllegalArgumentException`,
+ * `IllegalStateException`, `NullPointerException` and
+ * `UnsupportedOperationException`), with their messages. Anything else
+ * the provider throws does not arrive as itself: the call fails on
+ * AnkiDroid's side and reaches us as a null cursor or URI, or a zero
+ * count — which is why a null cursor reads as unreachable and a short
+ * insert is never taken for success.
  */
 internal class ProviderAnkiDroidClient(private val resolver: ContentResolver) : AnkiDroidClient {
 
@@ -110,12 +123,22 @@ internal class ProviderAnkiDroidClient(private val resolver: ContentResolver) : 
         return insert(AnkiDroidContract.DECKS, values).idSegment()
     }
 
-    override fun findNoteType(name: String): Long? = query(
-        AnkiDroidContract.MODELS,
-        arrayOf(AnkiDroidContract.MODEL_ID, AnkiDroidContract.MODEL_NAME),
-    ) { cursor ->
-        cursor.rows().firstOrNull { it.string(AnkiDroidContract.MODEL_NAME) == name }
-            ?.long(AnkiDroidContract.MODEL_ID)
+    override fun findNoteType(name: String): FoundNoteType? {
+        val match = query(
+            AnkiDroidContract.MODELS,
+            arrayOf(AnkiDroidContract.MODEL_ID, AnkiDroidContract.MODEL_NAME, AnkiDroidContract.MODEL_FIELD_NAMES),
+        ) { cursor ->
+            cursor.rows().firstOrNull { it.string(AnkiDroidContract.MODEL_NAME) == name }?.let { row ->
+                row.long(AnkiDroidContract.MODEL_ID) to
+                    row.string(AnkiDroidContract.MODEL_FIELD_NAMES).orEmpty().split(ANKI_FIELD_SEPARATOR)
+            }
+        } ?: return null
+        val (id, fields) = match
+        val templateNames = query(
+            Uri.withAppendedPath(Uri.withAppendedPath(AnkiDroidContract.MODELS, id.toString()), "templates"),
+            arrayOf(AnkiDroidContract.TEMPLATE_NAME),
+        ) { cursor -> cursor.rows().mapNotNull { it.string(AnkiDroidContract.TEMPLATE_NAME) }.toList() }
+        return FoundNoteType(id = id, fields = fields, templateNames = templateNames)
     }
 
     /**
@@ -123,37 +146,40 @@ internal class ProviderAnkiDroidClient(private val resolver: ContentResolver) : 
      * card, and each is then overwritten in place — the way
      * `AddContentApi.addNewCustomModel` does it.
      */
-    override fun createNoteType(deckId: Long): Long {
+    override fun createNoteType(deckId: Long, templates: List<AnkiCardTemplate>): Long {
         val values = ContentValues().apply {
             put(AnkiDroidContract.MODEL_NAME, AnkiNoteType.NAME)
             put(AnkiDroidContract.MODEL_FIELD_NAMES, AnkiNoteType.fields.joinToString(ANKI_FIELD_SEPARATOR))
-            put(AnkiDroidContract.MODEL_NUM_CARDS, AnkiNoteType.templates.size)
+            put(AnkiDroidContract.MODEL_NUM_CARDS, templates.size)
             put(AnkiDroidContract.MODEL_CSS, AnkiNoteType.CSS)
             put(AnkiDroidContract.MODEL_DECK_ID, deckId)
             put(AnkiDroidContract.MODEL_SORT_FIELD_INDEX, 0)
         }
         val modelUri = insert(AnkiDroidContract.MODELS, values)
         val templatesUri = Uri.withAppendedPath(modelUri, "templates")
-        AnkiNoteType.templates.forEachIndexed { ord, template ->
+        templates.forEachIndexed { ord, template ->
             val templateValues = ContentValues().apply {
                 put(AnkiDroidContract.TEMPLATE_NAME, template.name)
                 put(AnkiDroidContract.TEMPLATE_QUESTION_FORMAT, template.front)
                 put(AnkiDroidContract.TEMPLATE_ANSWER_FORMAT, template.back)
             }
-            call { resolver.update(Uri.withAppendedPath(templatesUri, ord.toString()), templateValues, null, null) }
+            val updated = call {
+                resolver.update(Uri.withAppendedPath(templatesUri, ord.toString()), templateValues, null, null)
+            }
+            check(updated >= 1) { "AnkiDroid did not write card template $ord of note type $modelUri" }
         }
         return modelUri.idSegment()
     }
 
     /**
-     * Every note of the note type, compared on field 0 here rather than
-     * through the provider's checksum column: the checksum is computed
-     * over Anki's HTML stripping, and a copy of that rule that drifted
-     * would make every send add everything again. Both sides are
-     * compared in NFC, which is what Anki normalises stored fields to.
+     * Every note of the note type, read through notes_v2 (direct SQL on
+     * the notes table) and compared on the EntryId field here. The
+     * provider's own duplicate lookup only knows field 0, through a
+     * checksum, and field 0 is the Word — which two entries can share.
      */
-    override fun existingWords(noteTypeId: Long, words: List<String>): Set<String> {
-        val wanted = words.groupBy { it.nfc() }
+    override fun existingEntryIds(noteTypeId: Long, entryIds: List<Long>): Set<Long> {
+        val wanted = entryIds.toSet()
+        val entryIdField = AnkiNoteType.fields.indexOf("EntryId")
         return query(
             AnkiDroidContract.NOTES_V2,
             arrayOf(AnkiDroidContract.NOTE_FLDS),
@@ -161,9 +187,13 @@ internal class ProviderAnkiDroidClient(private val resolver: ContentResolver) : 
         ) { cursor ->
             cursor.rows()
                 .mapNotNull { row ->
-                    row.string(AnkiDroidContract.NOTE_FLDS)?.substringBefore(ANKI_FIELD_SEPARATOR)?.nfc()
+                    row.string(AnkiDroidContract.NOTE_FLDS)
+                        ?.split(ANKI_FIELD_SEPARATOR)
+                        ?.getOrNull(entryIdField)
+                        ?.trim()
+                        ?.toLongOrNull()
                 }
-                .flatMap { wanted[it].orEmpty() }
+                .filter { it in wanted }
                 .toSet()
         }
     }
@@ -200,14 +230,18 @@ internal class ProviderAnkiDroidClient(private val resolver: ContentResolver) : 
     } catch (e: SecurityException) {
         throw AnkiDroidException.PermissionMissing(e)
     } catch (e: IllegalStateException) {
-        throw AnkiDroidException.NoCollection(e)
+        if (e.message.orEmpty().contains(STORAGE_NOT_CONFIGURED, ignoreCase = true)) {
+            throw AnkiDroidException.NoCollection(e)
+        }
+        throw e
     }
 }
 
+/** AnkiDroid's message for a collection that does not exist yet (CardContentProvider.getColUnsafe). */
+private const val STORAGE_NOT_CONFIGURED = "storage is not configured"
+
 private fun Uri.idSegment(): Long =
     lastPathSegment?.toLongOrNull() ?: error("AnkiDroid answered with no id: $this")
-
-private fun String.nfc(): String = Normalizer.normalize(this, Normalizer.Form.NFC)
 
 private fun Cursor.rows(): Sequence<Cursor> = generateSequence { if (moveToNext()) this else null }
 

@@ -43,6 +43,7 @@ data object FavouritesRoute : Route {
             state = state,
             onExportClick = transfer.onExportClick,
             onImportClick = transfer.onImportClick,
+            onOpenAppSettings = rememberOpenAppSettings(),
         )
     }
 }

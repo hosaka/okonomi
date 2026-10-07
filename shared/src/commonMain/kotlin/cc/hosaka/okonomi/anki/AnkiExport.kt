@@ -19,11 +19,12 @@ interface AnkiExport {
     fun access(): AnkiAccess
 
     /**
-     * Adds every note in [notes] whose Word is not already in AnkiDroid.
-     * Never throws: every outcome, failures included, is a result the
-     * reader is told about.
+     * Adds every note in [notes] whose entry is not already in AnkiDroid.
+     * [linkLabel] is the text of the cards' link back into okonomi,
+     * used only if the note type has to be created. Never throws: every
+     * outcome, failures included, is a result the reader is told about.
      */
-    suspend fun send(notes: List<AnkiNote>): AnkiSendResult
+    suspend fun send(notes: List<AnkiNote>, linkLabel: String): AnkiSendResult
 }
 
 enum class AnkiAccess {
@@ -46,14 +47,19 @@ sealed interface AnkiSendResult {
     /** Not installed, or its API is switched off. */
     data object Unavailable : AnkiSendResult
 
-    data object PermissionDenied : AnkiSendResult
+    /**
+     * The reader refused AnkiDroid access. [permanently] when Android will
+     * not ask again, so only the app's settings can grant it now.
+     */
+    data class PermissionDenied(val permanently: Boolean = false) : AnkiSendResult
 
     /** AnkiDroid has never been opened, so it has no collection to add to. */
     data object NoCollection : AnkiSendResult
 
     /**
-     * Anything else. [added] of the [attempted] new notes landed before
-     * it failed; zero means nothing was sent.
+     * Anything else. [attempted] is how many new notes went to be
+     * inserted and [added] how many of them landed; both are zero when
+     * the send failed before any insert.
      */
     data class Failed(val added: Int, val attempted: Int) : AnkiSendResult
 }
@@ -80,25 +86,45 @@ internal const val ANKI_BATCH_SIZE = 200
 
 /** The note type okonomi's cards use, created in AnkiDroid when missing. */
 object AnkiNoteType {
-    const val NAME = "cc.hosaka.okonomi"
-    val fields = listOf("Word", "Reading", "Meaning")
+    const val NAME = "Okonomi"
+    val fields = listOf("Word", "Reading", "Meaning", "EntryId")
 
-    /** A forward card (Word → Reading and Meaning) and its reverse. */
-    val templates = listOf(
-        AnkiCardTemplate(
-            name = "Forward",
-            front = "{{Word}}",
-            back = "{{FrontSide}}<hr id=answer>{{Reading}}<br><br>{{Meaning}}",
-        ),
-        AnkiCardTemplate(
-            name = "Reverse",
-            front = "{{Reading}}<br><br>{{Meaning}}",
-            back = "{{FrontSide}}<hr id=answer>{{Word}}",
-        ),
-    )
+    /**
+     * A forward card (Word → Reading and Meaning) and its reverse. Both
+     * backs end in a link that opens the entry in okonomi
+     * (`okonomi://entry/<id>`), labelled [linkLabel]. The link is built
+     * here rather than stored in a field, so EntryId is never shown as
+     * text; it is never on a front, where it would give the answer away.
+     */
+    fun templates(linkLabel: String): List<AnkiCardTemplate> {
+        val link = "<br><br><a href=\"okonomi://entry/{{EntryId}}\">${ankiFieldHtml(linkLabel)}</a>"
+        // lang="ja" so the Japanese is drawn with Japanese glyph forms;
+        // without it a device whose fallback font is Chinese draws 直 or
+        // 骨 the Chinese way.
+        val word = "<span lang=\"ja\">{{Word}}</span>"
+        val reading = "<span lang=\"ja\">{{Reading}}</span>"
+        return listOf(
+            AnkiCardTemplate(
+                name = "Forward",
+                front = word,
+                back = "{{FrontSide}}<hr id=answer>$reading<br><br>{{Meaning}}$link",
+            ),
+            AnkiCardTemplate(
+                name = "Reverse",
+                front = "$reading<br><br>{{Meaning}}",
+                back = "{{FrontSide}}<hr id=answer>$word$link",
+            ),
+        )
+    }
 
-    const val CSS = ".card { font-family: sans-serif; font-size: 22px; text-align: center; " +
-        "color: black; background-color: white; }"
+    /** The template names, which tell a finished note type from a half-built one. */
+    val templateNames: List<String> get() = templates("").map { it.name }
+
+    /**
+     * Layout only. Colours are left to Anki's own, which follow its night
+     * mode; a fixed black on white would stay glaring in the dark.
+     */
+    const val CSS = ".card { font-family: sans-serif; font-size: 22px; text-align: center; }"
 }
 
 data class AnkiCardTemplate(val name: String, val front: String, val back: String)
@@ -117,17 +143,27 @@ interface AnkiDroidClient {
 
     fun createDeck(name: String): Long
 
-    /** The id of the note type called [name] exactly, or null. */
-    fun findNoteType(name: String): Long?
+    /** The note type called [name] exactly, with its field and template names, or null. */
+    fun findNoteType(name: String): FoundNoteType?
 
-    fun createNoteType(deckId: Long): Long
+    /**
+     * Creates [AnkiNoteType] with [templates] and returns its id. Throws
+     * if any template could not be written, rather than leave a note type
+     * with placeholder cards behind as if it were finished.
+     */
+    fun createNoteType(deckId: Long, templates: List<AnkiCardTemplate>): Long
 
-    /** The subset of [words] already a Word (field 0) of a note of [noteTypeId]. */
-    fun existingWords(noteTypeId: Long, words: List<String>): Set<String>
+    /** The subset of [entryIds] already the EntryId (field 3) of a note of [noteTypeId]. */
+    fun existingEntryIds(noteTypeId: Long, entryIds: List<Long>): Set<Long>
 
-    /** Inserts [notes] in one transaction and returns how many landed. */
+    /**
+     * Inserts [notes] and returns how many landed — which can be fewer,
+     * down to zero when AnkiDroid's process died under the call.
+     */
     fun addNotes(noteTypeId: Long, deckId: Long, notes: List<AnkiNote>): Int
 }
+
+data class FoundNoteType(val id: Long, val fields: List<String>, val templateNames: List<String>)
 
 /** The failures a send has a dialog of its own for. */
 sealed class AnkiDroidException(message: String, cause: Throwable? = null) : Exception(message, cause) {
@@ -150,30 +186,49 @@ sealed class AnkiDroidException(message: String, cause: Throwable? = null) : Exc
  * are skipped, and nothing already in AnkiDroid is ever changed or
  * deleted — a word taken out of Favourites stays in the deck.
  *
- * Once anything has landed, a failure is reported as how much landed,
- * whatever its cause: by then the reader needs the count more than the
- * reason.
+ * A note type of our name is used only if its fields and templates are
+ * exactly ours, in order: EntryId is read by position, and a note type
+ * an earlier build made, or one whose creation failed halfway, would
+ * otherwise be written into wrongly or reused with placeholder cards.
+ * Anything else is a plain failure — there is no compatibility handling.
+ *
+ * Notes are sent once per entry. A batch that lands short ends the send
+ * there, reported as how many landed: the provider does not say which
+ * notes it dropped. Once anything has landed, every failure is reported
+ * that way, whatever its cause: by then the reader needs the count more
+ * than the reason.
  */
 fun sendToAnkiDroid(
     client: AnkiDroidClient,
     notes: List<AnkiNote>,
     report: UserDataFailureReporter,
+    linkLabel: String,
     batchSize: Int = ANKI_BATCH_SIZE,
 ): AnkiSendResult {
     require(batchSize > 0) { "batchSize must be positive: $batchSize" }
     var added = 0
     var attempted = 0
     return try {
+        val unique = notes.distinctBy { it.entryId }
         val deckId = client.findDeck(ANKI_DECK_NAME) ?: client.createDeck(ANKI_DECK_NAME)
-        val noteTypeId = client.findNoteType(AnkiNoteType.NAME) ?: client.createNoteType(deckId)
-        val present = client.existingWords(noteTypeId, notes.map { it.word }.distinct())
-        val fresh = notes.filterNot { it.word in present }
+        val found = client.findNoteType(AnkiNoteType.NAME)
+        if (found != null && (found.fields != AnkiNoteType.fields || found.templateNames != AnkiNoteType.templateNames)) {
+            error("AnkiDroid's \"${AnkiNoteType.NAME}\" note type is not the one okonomi makes: $found")
+        }
+        val noteTypeId = found?.id ?: client.createNoteType(deckId, AnkiNoteType.templates(linkLabel))
+        val present = client.existingEntryIds(noteTypeId, unique.map { it.entryId })
+        val fresh = unique.filterNot { it.entryId in present }
         if (fresh.isEmpty()) return AnkiSendResult.NothingNew
         attempted = fresh.size
-        fresh.chunked(batchSize).forEach { batch ->
-            added += client.addNotes(noteTypeId, deckId, batch)
+        for (batch in fresh.chunked(batchSize)) {
+            val landed = client.addNotes(noteTypeId, deckId, batch)
+            added += landed.coerceIn(0, batch.size)
+            if (landed < batch.size) {
+                report("AnkiDroid took $landed of a batch of ${batch.size}; $added of $attempted landed", null)
+                return AnkiSendResult.Failed(added = added, attempted = attempted)
+            }
         }
-        AnkiSendResult.Sent(added = added, alreadyThere = notes.size - fresh.size)
+        AnkiSendResult.Sent(added = added, alreadyThere = unique.size - fresh.size)
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -184,7 +239,7 @@ fun sendToAnkiDroid(
             }
 
             e is AnkiDroidException.Unavailable -> AnkiSendResult.Unavailable
-            e is AnkiDroidException.PermissionMissing -> AnkiSendResult.PermissionDenied
+            e is AnkiDroidException.PermissionMissing -> AnkiSendResult.PermissionDenied()
             e is AnkiDroidException.NoCollection -> AnkiSendResult.NoCollection
             else -> {
                 report("the saved words could not be sent to AnkiDroid", e)

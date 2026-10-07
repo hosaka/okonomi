@@ -40,7 +40,7 @@ import org.jetbrains.compose.resources.stringResource
  * nothing in the list. The seeded first frame carries no callback at all
  * until the producer replaces it, and the button is disabled with them.
  *
- * Favourites on Android has a fourth, "Send to AnkiDroid", present only
+ * Favourites on Android has a fourth, "Send to Anki", present only
  * when [showSendToAnki] says so: on iOS and on History there is nothing
  * to send to, so it is absent rather than disabled.
  */

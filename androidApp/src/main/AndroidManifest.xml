@@ -10,13 +10,29 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.Okonomi">
+        <!-- singleTask so a link opened while okonomi is running (the
+             "More in Okonomi" link on an AnkiDroid card) reaches this
+             activity through onNewIntent instead of starting a second
+             copy of the app inside the caller's task. -->
         <activity
             android:exported="true"
+            android:launchMode="singleTask"
             android:name=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- okonomi://entry/<id>, which cards sent to AnkiDroid link to. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:host="entry"
+                    android:scheme="okonomi" />
             </intent-filter>
         </activity>
     </application>

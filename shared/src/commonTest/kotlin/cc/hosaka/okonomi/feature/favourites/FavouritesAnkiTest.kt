@@ -17,16 +17,21 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
 /**
- * Send to AnkiDroid as the Favourites producer drives it: when it is
+ * Send to Anki as the Favourites producer drives it: when it is
  * offered, the permission round trip, one send at a time, and the dialog
  * every outcome ends in. AnkiDroid itself is a fake [AnkiExport]; what a
  * send does inside it is `SendToAnkiDroidTest`'s.
@@ -39,6 +44,7 @@ class FavouritesAnkiTest {
         var result: AnkiSendResult = AnkiSendResult.Sent(added = 1, alreadyThere = 0),
     ) : AnkiExport {
         val sent = mutableListOf<List<AnkiNote>>()
+        val linkLabels = mutableListOf<String>()
 
         /** When set, a send waits on it, standing in for a slow AnkiDroid. */
         var gate: CompletableDeferred<Unit>? = null
@@ -46,8 +52,9 @@ class FavouritesAnkiTest {
 
         override fun access(): AnkiAccess = access
 
-        override suspend fun send(notes: List<AnkiNote>): AnkiSendResult {
+        override suspend fun send(notes: List<AnkiNote>, linkLabel: String): AnkiSendResult {
             sent += notes
+            linkLabels += linkLabel
             gate?.await()
             failure?.let { throw it }
             return result
@@ -85,6 +92,7 @@ class FavouritesAnkiTest {
         loadRows: suspend (List<Long>) -> List<SearchHit> = rows,
         loadGlosses: suspend (List<Long>) -> Map<Long, List<String>> = glosses,
         reports: MutableList<String> = mutableListOf(),
+        ankiScope: CoroutineScope = backgroundScope,
     ): Flow<FavouritesState> = scope.favouritesScreenStateProducer(
         favourites = favourites,
         loadRows = loadRows,
@@ -92,7 +100,8 @@ class FavouritesAnkiTest {
         report = { message, _ -> reports += message },
         anki = anki,
         loadGlosses = loadGlosses,
-        ankiScope = backgroundScope,
+        ankiLinkLabel = { "More in Okonomi" },
+        ankiScope = ankiScope,
     )
 
     @Test
@@ -154,6 +163,8 @@ class FavouritesAnkiTest {
 
         assertEquals(listOf(listOf("食べる1", "食べる2")), anki.sent.map { notes -> notes.map { it.word } })
         assertEquals(listOf("たべる", "たべる"), anki.sent.single().map { it.reading })
+        assertEquals(listOf(1L, 2L), anki.sent.single().map { it.entryId })
+        assertEquals(listOf("More in Okonomi"), anki.linkLabels)
         assertEquals(
             "- to eat 2<br>- to live on 2<br>- to bite 2<br>- to be eaten 2",
             anki.sent.single().last().meaning,
@@ -174,7 +185,7 @@ class FavouritesAnkiTest {
         runCurrent()
 
         assertTrue(anki.sent.isEmpty())
-        assertEquals(AnkiSendResult.Failed(added = 0, attempted = 2), states.last().ankiPrompt?.result)
+        assertEquals(AnkiSendResult.Failed(added = 0, attempted = 0), states.last().ankiPrompt?.result)
         assertEquals(1, reports.size, reports.toString())
     }
 
@@ -234,7 +245,7 @@ class FavouritesAnkiTest {
         states.last().onSendToAnki!!()
         runCurrent()
 
-        states.last().onAnkiPermissionResult!!(true)
+        states.last().onAnkiPermissionResult!!(AnkiPermissionAnswer.Granted)
         runCurrent()
 
         assertEquals(1, anki.sent.size)
@@ -249,11 +260,46 @@ class FavouritesAnkiTest {
         states.last().onSendToAnki!!()
         runCurrent()
 
-        states.last().onAnkiPermissionResult!!(false)
+        states.last().onAnkiPermissionResult!!(AnkiPermissionAnswer.Denied)
         runCurrent()
 
         assertTrue(anki.sent.isEmpty())
-        assertEquals(AnkiSendResult.PermissionDenied, states.last().ankiPrompt?.result)
+        assertEquals(AnkiSendResult.PermissionDenied(permanently = false), states.last().ankiPrompt?.result)
+    }
+
+    @Test
+    fun `a permission refused for good is marked permanent so the dialog can offer settings`() = runTest {
+        val anki = FakeAnkiExport(access = AnkiAccess.NeedsPermission)
+        val states = collectStates(produce(anki = anki))
+        states.last().onSendToAnki!!()
+        runCurrent()
+
+        states.last().onAnkiPermissionResult!!(AnkiPermissionAnswer.DeniedPermanently)
+        runCurrent()
+
+        assertTrue(anki.sent.isEmpty())
+        assertEquals(AnkiSendResult.PermissionDenied(permanently = true), states.last().ankiPrompt?.result)
+    }
+
+    @Test
+    fun `a send that dies with an Error still leaves the sending stage`() = runTest {
+        val anki = FakeAnkiExport().apply { failure = null }
+        val dying = object : AnkiExport by anki {
+            override suspend fun send(notes: List<AnkiNote>, linkLabel: String): AnkiSendResult =
+                throw AssertionError("not an Exception")
+        }
+        val uncaught = mutableListOf<Throwable>()
+        val scope = CoroutineScope(
+            SupervisorJob() + StandardTestDispatcher(testScheduler) + CoroutineExceptionHandler { _, e -> uncaught += e },
+        )
+        val states = collectStates(produce(anki = dying, ankiScope = scope))
+
+        states.last().onSendToAnki!!()
+        runCurrent()
+
+        assertEquals(AnkiSendResult.Failed(added = 0, attempted = 0), states.last().ankiPrompt?.result)
+        assertEquals(1, uncaught.size, "the Error itself is not swallowed")
+        scope.cancel()
     }
 
     @Test
@@ -270,7 +316,7 @@ class FavouritesAnkiTest {
         assertNotNull(strandedAnswer)
 
         val secondRun = collectStates(produce(scope = scope, anki = anki))
-        strandedAnswer(true)
+        strandedAnswer(AnkiPermissionAnswer.Granted)
         runCurrent()
 
         assertEquals(1, anki.sent.size)
@@ -299,7 +345,7 @@ class FavouritesAnkiTest {
         states.last().onSendToAnki!!()
         runCurrent()
 
-        assertEquals(AnkiSendResult.Failed(added = 0, attempted = 2), states.last().ankiPrompt?.result)
+        assertEquals(AnkiSendResult.Failed(added = 0, attempted = 0), states.last().ankiPrompt?.result)
         assertEquals(1, reports.size, reports.toString())
     }
 

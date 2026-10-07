@@ -256,6 +256,10 @@
     <string name="anki_unavailable_message">Install AnkiDroid to send your Favourites to it. If it is already installed, turn on Settings › Advanced › Enable AnkiDroid API in AnkiDroid, then try again.</string>
     <string name="anki_permission_title">AnkiDroid access is needed</string>
     <string name="anki_permission_message">okonomi can only add cards to AnkiDroid with your permission. Nothing was sent.</string>
+    <!-- Refused for good: Android will not ask again, so the dialog
+         offers okonomi's page in the system settings. -->
+    <string name="anki_permission_permanent_message">okonomi can only add cards to AnkiDroid with your permission, and Android will not ask again. You can allow it in okonomi's settings. Nothing was sent.</string>
+    <string name="anki_open_settings">Open settings</string>
     <string name="anki_no_collection_title">Open AnkiDroid first</string>
     <string name="anki_no_collection_message">AnkiDroid has not been set up on this device yet. Open it once, then try again. Nothing was sent.</string>
     <string name="anki_failed_title">Could not send to AnkiDroid</string>
@@ -265,6 +269,10 @@
         <item quantity="other">Something went wrong: %1$d of %2$d words reached the deck “%3$s” before it stopped.</item>
     </plurals>
     <string name="anki_dismiss">OK</string>
+    <!-- The link at the bottom of the back of every card sent to
+         AnkiDroid, which opens that word in okonomi. Written into the
+         card template when it is first created. -->
+    <string name="anki_card_link">More in Okonomi</string>
     <string name="settings_title">Settings</string>
     <string name="settings_dictionary_label">Dictionary</string>
     <string name="settings_dictionary_value">JMdict %1$s · %2$s entries</string>

@@ -36,7 +36,7 @@ import cc.hosaka.okonomi.user.UserList
  * @property clearPrompt the Clear list confirmation, if one is standing.
  * @property onRemoveEntry takes one row out of [list] and out of no
  * other list. Null only on the seeded first frame.
- * @property showSendToAnki whether the menu offers "Send to AnkiDroid"
+ * @property showSendToAnki whether the menu offers "Send to Anki"
  * at all: only on Android, and only on Favourites.
  * @property onSendToAnki sends every row on show to AnkiDroid. Null
  * while there is nothing to send, while a send is already under way,
@@ -59,9 +59,20 @@ data class FavouritesState(
     val onRemoveEntry: ((Long) -> Unit)? = null,
     val showSendToAnki: Boolean = false,
     val onSendToAnki: (() -> Unit)? = null,
-    val onAnkiPermissionResult: ((Boolean) -> Unit)? = null,
+    val onAnkiPermissionResult: ((AnkiPermissionAnswer) -> Unit)? = null,
     val ankiPrompt: FavouritesAnkiPrompt? = null,
 )
+
+/** The reader's answer to the AnkiDroid permission request. */
+enum class AnkiPermissionAnswer {
+    Granted,
+
+    /** Refused, and Android would ask again next time. */
+    Denied,
+
+    /** Refused for good: only the app's settings can grant it now. */
+    DeniedPermanently,
+}
 
 /**
  * How a send to AnkiDroid ended. Every outcome is a dialog, success

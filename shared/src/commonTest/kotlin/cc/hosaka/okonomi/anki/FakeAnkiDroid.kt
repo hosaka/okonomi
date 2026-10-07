@@ -3,14 +3,25 @@ package cc.hosaka.okonomi.anki
 /**
  * AnkiDroid's provider as a send sees it, in memory. Deck names are
  * unique ignoring case and creating one twice throws, as the real
- * provider does; a note type can be created any number of times.
+ * provider does; a note type can be created any number of times, and an
+ * insert whose field count is not the note type's throws.
  *
  * [failWith] makes every call throw from then on; [failAfterInserts]
- * lets that many batches land first.
+ * lets that many batches land first. [landShort] makes every insert
+ * land at most that many of its notes, as a provider does whose process
+ * dies under the call.
  */
 internal class FakeAnkiDroid : AnkiDroidClient {
     val decks = mutableMapOf<Long, String>()
-    val noteTypes = mutableMapOf<Long, String>()
+
+    /** Name and field names of every note type. */
+    val noteTypes = mutableMapOf<Long, Pair<String, List<String>>>()
+
+    /** Template names of every note type. */
+    val templateNames = mutableMapOf<Long, List<String>>()
+
+    /** The templates each note type was created with. */
+    val templates = mutableMapOf<Long, List<AnkiCardTemplate>>()
 
     /** (note type, deck, fields) for every note that landed. */
     val notes = mutableListOf<Triple<Long, Long, List<String>>>()
@@ -20,6 +31,7 @@ internal class FakeAnkiDroid : AnkiDroidClient {
 
     var failWith: Exception? = null
     var failAfterInserts: Int? = null
+    var landShort: Int? = null
     private var nextId = 100L
 
     private fun check() {
@@ -37,27 +49,38 @@ internal class FakeAnkiDroid : AnkiDroidClient {
         return nextId++.also { decks[it] = name }
     }
 
-    override fun findNoteType(name: String): Long? {
+    /** A note type of [name] as something other than this send left it. */
+    fun addNoteType(name: String, fields: List<String>, templateNames: List<String>): Long =
+        nextId++.also {
+            noteTypes[it] = name to fields
+            this.templateNames[it] = templateNames
+        }
+
+    override fun findNoteType(name: String): FoundNoteType? {
         check()
-        return noteTypes.entries.firstOrNull { it.value == name }?.key
+        return noteTypes.entries.firstOrNull { it.value.first == name }
+            ?.let { FoundNoteType(it.key, it.value.second, templateNames[it.key].orEmpty()) }
     }
 
-    override fun createNoteType(deckId: Long): Long {
+    override fun createNoteType(deckId: Long, templates: List<AnkiCardTemplate>): Long {
         check()
-        return nextId++.also { noteTypes[it] = AnkiNoteType.NAME }
+        return addNoteType(AnkiNoteType.NAME, AnkiNoteType.fields, templates.map { it.name })
+            .also { this.templates[it] = templates }
     }
 
-    override fun existingWords(noteTypeId: Long, words: List<String>): Set<String> {
+    override fun existingEntryIds(noteTypeId: Long, entryIds: List<Long>): Set<Long> {
         check()
-        val present = notes.filter { it.first == noteTypeId }.map { it.third.first() }.toSet()
-        return words.filter { it in present }.toSet()
+        val present = notes.filter { it.first == noteTypeId }.mapNotNull { it.third.getOrNull(3)?.toLongOrNull() }.toSet()
+        return entryIds.filter { it in present }.toSet()
     }
 
     override fun addNotes(noteTypeId: Long, deckId: Long, notes: List<AnkiNote>): Int {
         check()
-        require(noteTypeId in noteTypes) { "note type missing: $noteTypeId" }
+        val noteType = requireNotNull(noteTypes[noteTypeId]) { "note type missing: $noteTypeId" }
+        notes.forEach { require(it.fields.size == noteType.second.size) { "Incorrect flds argument" } }
+        val landing = notes.take(landShort ?: notes.size)
         batches += notes.size
-        notes.forEach { this.notes += Triple(noteTypeId, deckId, it.fields) }
-        return notes.size
+        landing.forEach { this.notes += Triple(noteTypeId, deckId, it.fields) }
+        return landing.size
     }
 }

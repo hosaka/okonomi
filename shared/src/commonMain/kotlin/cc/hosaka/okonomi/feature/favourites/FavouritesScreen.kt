@@ -72,7 +72,9 @@ import okonomi.shared.generated.resources.anki_no_collection_message
 import okonomi.shared.generated.resources.anki_no_collection_title
 import okonomi.shared.generated.resources.anki_nothing_new_message
 import okonomi.shared.generated.resources.anki_nothing_new_title
+import okonomi.shared.generated.resources.anki_open_settings
 import okonomi.shared.generated.resources.anki_permission_message
+import okonomi.shared.generated.resources.anki_permission_permanent_message
 import okonomi.shared.generated.resources.anki_permission_title
 import okonomi.shared.generated.resources.anki_sent_already_there
 import okonomi.shared.generated.resources.anki_sent_new_words
@@ -140,6 +142,7 @@ fun FavouritesScreen(
     state: FavouritesState,
     onExportClick: (() -> Unit)?,
     onImportClick: (() -> Unit)?,
+    onOpenAppSettings: (() -> Unit)? = null,
 ) {
     // Hoisted so the toolbar can ask whether this list actually
     // scrolls. One saved word does not fill the screen, and a toolbar
@@ -264,7 +267,7 @@ fun FavouritesScreen(
     }
     FavouritesImportDialog(state.importPrompt)
     FavouritesClearDialog(state.clearPrompt)
-    FavouritesAnkiDialog(state.ankiPrompt)
+    FavouritesAnkiDialog(state.ankiPrompt, onOpenAppSettings)
 }
 
 /** What the toolbar calls each list. */
@@ -376,6 +379,7 @@ private fun FavouritesClearDialog(
 @Composable
 private fun FavouritesAnkiDialog(
     prompt: FavouritesAnkiPrompt?,
+    onOpenAppSettings: (() -> Unit)?,
 ) {
     if (prompt == null) return
     val title: String
@@ -402,9 +406,11 @@ private fun FavouritesAnkiDialog(
             message = stringResource(Res.string.anki_unavailable_message)
         }
 
-        AnkiSendResult.PermissionDenied -> {
+        is AnkiSendResult.PermissionDenied -> {
             title = stringResource(Res.string.anki_permission_title)
-            message = stringResource(Res.string.anki_permission_message)
+            message = stringResource(
+                if (result.permanently) Res.string.anki_permission_permanent_message else Res.string.anki_permission_message,
+            )
         }
 
         AnkiSendResult.NoCollection -> {
@@ -427,13 +433,36 @@ private fun FavouritesAnkiDialog(
             }
         }
     }
+    // A permission refused for good can only be granted in the system's
+    // settings now, so the dialog offers the way there.
+    val openSettings = onOpenAppSettings?.takeIf {
+        (prompt.result as? AnkiSendResult.PermissionDenied)?.permanently == true
+    }
     AlertDialog(
         onDismissRequest = prompt.onDismiss,
         title = { Text(text = title) },
         text = { Text(text = message) },
         confirmButton = {
-            TextButton(onClick = prompt.onDismiss) {
-                Text(text = stringResource(Res.string.anki_dismiss))
+            if (openSettings != null) {
+                TextButton(
+                    onClick = {
+                        prompt.onDismiss()
+                        openSettings()
+                    },
+                ) {
+                    Text(text = stringResource(Res.string.anki_open_settings))
+                }
+            } else {
+                TextButton(onClick = prompt.onDismiss) {
+                    Text(text = stringResource(Res.string.anki_dismiss))
+                }
+            }
+        },
+        dismissButton = openSettings?.let {
+            {
+                TextButton(onClick = prompt.onDismiss) {
+                    Text(text = stringResource(Res.string.anki_dismiss))
+                }
             }
         },
     )

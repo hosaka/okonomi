@@ -36,9 +36,12 @@ import androidx.compose.material3.WideNavigationRail
 import androidx.compose.material3.WideNavigationRailItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
@@ -60,6 +63,7 @@ import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import cc.hosaka.okonomi.feature.home.navigation.HomeNavigationItem
 import cc.hosaka.okonomi.feature.home.navigation.HomeSelectAction
+import cc.hosaka.okonomi.feature.home.navigation.HomeSelectionState
 import cc.hosaka.okonomi.feature.home.navigation.LocalHomeReselect
 import cc.hosaka.okonomi.feature.home.navigation.homeFavouritesItem
 import cc.hosaka.okonomi.feature.home.navigation.homeNavigationItems
@@ -69,10 +73,13 @@ import cc.hosaka.okonomi.feature.home.navigation.isAtRoot
 import cc.hosaka.okonomi.feature.home.navigation.popToRootCount
 import cc.hosaka.okonomi.feature.home.navigation.rememberHomeSelectionState
 import cc.hosaka.okonomi.feature.navigation.BackStackNavigationController
+import cc.hosaka.okonomi.feature.navigation.EntryLinks
+import cc.hosaka.okonomi.feature.navigation.appEntryLinks
 import cc.hosaka.okonomi.feature.navigation.LocalNavigationController
 import cc.hosaka.okonomi.feature.navigation.NavigationController
 import cc.hosaka.okonomi.feature.navigation.navigationSavedStateConfiguration
 import cc.hosaka.okonomi.feature.navigation.routeEntryProvider
+import cc.hosaka.okonomi.feature.word.EntryRoute
 import cc.hosaka.okonomi.ui.coach.CoachMarkRegistry
 import cc.hosaka.okonomi.ui.coach.CoachMarksHost
 import cc.hosaka.okonomi.ui.coach.CoachNavigation
@@ -152,13 +159,78 @@ fun HomeScreen(
 }
 
 /**
- * [HomeScreen] with the registry the coach marks report into handed in,
- * so tests can read where the targets landed and what was laid out.
+ * Opens each entry link [links] delivers: the Search section is
+ * selected, dropped back to its root and the entry pushed over it, so
+ * back returns to an empty Search rather than to wherever the reader
+ * had been. Without a Search section links are left unopened.
+ *
+ * The linked entry stays marked as one only while the reader stays on
+ * Search. Switching to another tab means they have taken up okonomi on
+ * its own terms, so the mark is cleared and back on that entry is an
+ * ordinary pop from then on.
+ */
+@Composable
+private fun OpenEntryLinks(
+    links: EntryLinks,
+    selection: HomeSelectionState,
+    sections: List<HomeSection>,
+) {
+    val currentSections by rememberUpdatedState(sections)
+    LaunchedEffect(links, selection) {
+        links.requests.collect { entryId ->
+            val search = currentSections.firstOrNull { it.item.key == homeSearchItem.key } ?: return@collect
+            selection.switchTo(search.item)
+            search.popToRoot()
+            search.controller.navigate(EntryRoute(entryId, openedFromLink = true))
+        }
+    }
+    LaunchedEffect(selection.selectedKey) {
+        if (selection.selectedKey == homeSearchItem.key) return@LaunchedEffect
+        val search = currentSections.firstOrNull { it.item.key == homeSearchItem.key } ?: return@LaunchedEffect
+        clearLinkMarks(search.backStack)
+    }
+}
+
+/**
+ * Makes every link-opened entry on [backStack] an ordinary one, in
+ * place. One already there as an ordinary entry is dropped instead:
+ * two equal keys on one stack is what navigation must never hold (see
+ * `BackStackNavigationController.navigate`).
+ */
+private fun clearLinkMarks(backStack: NavBackStack<NavKey>) {
+    for (index in backStack.indices.reversed()) {
+        val route = backStack[index]
+        if (route !is EntryRoute || !route.openedFromLink) continue
+        val ordinary = route.copy(openedFromLink = false)
+        if (ordinary in backStack) backStack.removeAt(index) else backStack[index] = ordinary
+    }
+}
+
+/**
+ * What a test can see and drive of one section; see [HomeScreen]'s
+ * `onSection`. [select] switches to the section the way a tab tap does,
+ * which a test needs because the bar is hidden while a screen is pushed.
+ */
+internal class HomeSectionProbe(
+    val controller: NavigationController,
+    val stack: () -> List<NavKey>,
+    val select: () -> Unit,
+)
+
+/**
+ * [HomeScreen] with its seams handed in: the registry the coach marks
+ * report into, so tests can read where the targets landed; the entry
+ * links to open; [leaveApp], what system back on a link-opened entry
+ * calls; and [onSection], which hands a test each section's navigation
+ * and back stack.
  */
 @Composable
 internal fun HomeScreen(
     items: List<HomeNavigationItem> = homeNavigationItems,
     coachMarks: CoachMarkRegistry,
+    entryLinks: EntryLinks = appEntryLinks,
+    leaveApp: () -> Unit = rememberLeaveApp(),
+    onSection: ((key: String, probe: HomeSectionProbe) -> Unit)? = null,
 ) {
     require(items.isNotEmpty()) { "Home needs at least one section" }
     require(items.distinctBy { it.key }.size == items.size) { "Home section keys must be unique" }
@@ -179,6 +251,21 @@ internal fun HomeScreen(
         }
     }
     val selection = rememberHomeSelectionState(items)
+    OpenEntryLinks(entryLinks, selection, sections)
+    if (onSection != null) {
+        SideEffect {
+            sections.forEach { section ->
+                onSection(
+                    section.item.key,
+                    HomeSectionProbe(
+                        controller = section.controller,
+                        stack = { section.backStack.toList() },
+                        select = { selection.switchTo(section.item) },
+                    ),
+                )
+            }
+        }
+    }
     val selectedItem = selection.selected
     val selectedSection = sections.first { it.item.key == selectedItem.key }
     // The shell owns both the selection and the per-section back
@@ -272,6 +359,7 @@ internal fun HomeScreen(
                     )
                     HomeNavigationContent(
                         section = selectedSection,
+                        leaveApp = leaveApp,
                         reselectCount = selection.reselectionsOf(selectedItem.key),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -350,6 +438,7 @@ private fun rememberHomeSection(
 @Composable
 private fun HomeNavigationContent(
     section: HomeSection,
+    leaveApp: () -> Unit,
     reselectCount: Int,
     modifier: Modifier = Modifier,
 ) {
@@ -371,8 +460,38 @@ private fun HomeNavigationContent(
                     section.controller.pop()
                 },
             )
+            LeaveFromLinkedEntry(section, leaveApp)
         }
     }
+}
+
+/**
+ * System back on the entry a link opened goes back to the app that sent
+ * the link (AnkiDroid) rather than to okonomi's Search: the section is
+ * dropped to its root first, so the next launch shows Search and not a
+ * stale entry, and then [leaveApp] sends okonomi's task to the back.
+ *
+ * Only while that entry is the top of its section: a screen pushed over
+ * it pops normally first. Registered after the section's NavDisplay so
+ * it outranks the display's own pop — the later handler wins, the same
+ * ordering the section-root handler in [HomeScreen] relies on the other
+ * way round. The entry's header arrow is a plain pop and never reaches
+ * this.
+ */
+@Composable
+private fun LeaveFromLinkedEntry(
+    section: HomeSection,
+    leaveApp: () -> Unit,
+) {
+    val top = section.backStack.lastOrNull()
+    NavigationBackHandler(
+        state = rememberNavigationEventState(NavigationEventInfo.None),
+        isBackEnabled = top is EntryRoute && top.openedFromLink,
+        onBackCompleted = {
+            section.popToRoot()
+            leaveApp()
+        },
+    )
 }
 
 @Composable

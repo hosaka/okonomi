@@ -70,6 +70,7 @@ class AnkiNoteTest {
             note.meaning,
         )
         assertEquals("ねる", note.reading)
+        assertEquals(1L, note.entryId)
     }
 
     @Test
@@ -78,6 +79,42 @@ class AnkiNoteTest {
 
         assertEquals("- one<br>- two<br>- three<br>- four<br>- five", hit(TitleSegment("五")).toAnkiNote(five).meaning)
         assertEquals("- one<br>- two", hit(TitleSegment("二")).toAnkiNote(five.take(2)).meaning)
+    }
+
+    @Test
+    fun `an entry the gloss read had nothing for falls back to the row's lines without the more marker`() {
+        val row = hit(TitleSegment("寝る"), senses = listOf("to sleep", "to go to bed, to lie in bed", "to lie down …"))
+
+        val note = row.toAnkiNote(emptyList())
+
+        assertEquals("- to sleep<br>- to go to bed, to lie in bed<br>- to lie down", note.meaning)
+    }
+
+    @Test
+    fun `a title with several readings keeps every one of them`() {
+        // Not a shape buildHits makes today, which is one form and one
+        // reading at most; pinned so a title that grows does not quietly
+        // drop readings from the card.
+        val note = hit(
+            TitleSegment("今日"),
+            TitleSegment("きょう", readsPreviousSegment = true),
+            TitleSegment("こんにち"),
+        ).toAnkiNote(emptyList())
+
+        assertEquals("きょう、こんにち", note.reading)
+    }
+
+    @Test
+    fun `a highlighted search title reads the same as a plain one`() {
+        // The shape a direct kana match builds: form, then the matched
+        // reading over it with its highlight.
+        val note = hit(
+            TitleSegment("食べる", highlight = null),
+            TitleSegment("たべる", highlight = 0..2, readsPreviousSegment = true),
+        ).toAnkiNote(emptyList())
+
+        assertEquals("食べる", note.word)
+        assertEquals("たべる", note.reading)
     }
 
     @Test
@@ -108,10 +145,10 @@ class AnkiNoteTest {
     }
 
     @Test
-    fun `the fields go out in the note type's order with Word first`() {
-        val note = AnkiNote(word = "w", reading = "r", meaning = "m")
+    fun `the fields go out in the note type's order with Word first and the entry id last`() {
+        val note = AnkiNote(word = "w", reading = "r", meaning = "m", entryId = 1_547_720L)
 
-        assertEquals(listOf("Word", "Reading", "Meaning"), AnkiNoteType.fields)
-        assertEquals(listOf("w", "r", "m"), note.fields)
+        assertEquals(listOf("Word", "Reading", "Meaning", "EntryId"), AnkiNoteType.fields)
+        assertEquals(listOf("w", "r", "m", "1547720"), note.fields)
     }
 }

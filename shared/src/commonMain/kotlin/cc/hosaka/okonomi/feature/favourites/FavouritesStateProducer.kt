@@ -32,6 +32,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
+import okonomi.shared.generated.resources.Res
+import okonomi.shared.generated.resources.anki_card_link
+import org.jetbrains.compose.resources.getString
 
 @Composable
 fun produceFavouritesScreenState(): State<FavouritesState> = produceScreenState(
@@ -74,6 +77,7 @@ suspend fun ScreenStateScope.favouritesScreenStateProducer(
     report: (String, Throwable?) -> Unit = printUserDataFailure,
     anki: AnkiExport? = appAnkiExport(),
     loadGlosses: suspend (List<Long>) -> Map<Long, List<String>> = { entryGlosses(it) },
+    ankiLinkLabel: suspend () -> String = { getString(Res.string.anki_card_link) },
     ankiScope: CoroutineScope = ankiSendScope,
 ): Flow<FavouritesState> {
     // Bumped to re-ask for rows that already failed. Deliberately not
@@ -127,23 +131,26 @@ suspend fun ScreenStateScope.favouritesScreenStateProducer(
     val launchAnkiSend: (List<SearchHit>) -> Unit = { hits ->
         if (anki != null) {
             ankiScope.launch {
-                val result = try {
+                // Whatever happens below, the send ends in a dialog: the
+                // finally leaves the Sending stage even for a Throwable
+                // that is not an Exception, so the menu item can never be
+                // left disabled for good with no dialog coming.
+                var result: AnkiSendResult = AnkiSendResult.Failed(added = 0, attempted = 0)
+                try {
                     // The rows on screen carry only their first senses; a
-                    // card gets the whole entry, read here off the main
-                    // thread rather than at the tap.
+                    // card gets the entry's glosses, read here off the
+                    // main thread rather than at the tap.
                     val glosses = loadGlosses(hits.map { it.entryId })
-                    anki.send(hits.map { it.toAnkiNote(glosses[it.entryId].orEmpty()) })
+                    result = anki.send(hits.map { it.toAnkiNote(glosses[it.entryId].orEmpty()) }, ankiLinkLabel())
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
                     // send() promises not to throw, so this is the
-                    // dictionary failing, or a broken promise. Either way
-                    // the menu item must not stay disabled for good with
-                    // no dialog ever coming.
+                    // dictionary failing, or a broken promise.
                     report("the saved words could not be prepared for AnkiDroid", e)
-                    AnkiSendResult.Failed(added = 0, attempted = hits.size)
+                } finally {
+                    ankiStage.value = AnkiStage.Done(result)
                 }
-                ankiStage.value = AnkiStage.Done(result)
             }
         }
     }
@@ -276,11 +283,19 @@ suspend fun ScreenStateScope.favouritesScreenStateProducer(
                 null
             },
             onAnkiPermissionResult = (stage as? AnkiStage.AwaitingPermission)?.let { waiting ->
-                { granted: Boolean ->
-                    if (granted) {
-                        if (ankiStage.compareAndSet(waiting, AnkiStage.Sending)) launchAnkiSend(waiting.hits)
-                    } else {
-                        ankiStage.compareAndSet(waiting, AnkiStage.Done(AnkiSendResult.PermissionDenied))
+                { answer: AnkiPermissionAnswer ->
+                    when (answer) {
+                        AnkiPermissionAnswer.Granted ->
+                            if (ankiStage.compareAndSet(waiting, AnkiStage.Sending)) launchAnkiSend(waiting.hits)
+
+                        AnkiPermissionAnswer.Denied, AnkiPermissionAnswer.DeniedPermanently -> ankiStage.compareAndSet(
+                            waiting,
+                            AnkiStage.Done(
+                                AnkiSendResult.PermissionDenied(
+                                    permanently = answer == AnkiPermissionAnswer.DeniedPermanently,
+                                ),
+                            ),
+                        )
                     }
                 }
             },

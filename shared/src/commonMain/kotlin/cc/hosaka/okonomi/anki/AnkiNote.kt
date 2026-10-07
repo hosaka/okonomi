@@ -5,18 +5,20 @@ import cc.hosaka.okonomi.db.SearchHit
 import cc.hosaka.okonomi.feature.search.writtenForm
 
 /**
- * One saved word as an AnkiDroid note: the three fields of
- * [AnkiNoteType], already in the HTML Anki stores. [word] is field 0,
- * the one AnkiDroid's duplicate check keys on, so it is also what decides
- * whether a word is already there.
+ * One saved word as an AnkiDroid note: the four fields of
+ * [AnkiNoteType], the first three already in the HTML Anki stores.
+ * [word] stays field 0, the one AnkiDroid sorts and checks on; [entryId]
+ * is field 3, and it is what decides whether a word is already there, so
+ * two entries spelled alike are two notes.
  */
 @Immutable
 data class AnkiNote(
     val word: String,
     val reading: String,
     val meaning: String,
+    val entryId: Long,
 ) {
-    val fields: List<String> get() = listOf(word, reading, meaning)
+    val fields: List<String> get() = listOf(word, reading, meaning, entryId.toString())
 }
 
 /**
@@ -30,10 +32,26 @@ data class AnkiNote(
 fun SearchHit.toAnkiNote(glosses: List<String>): AnkiNote = AnkiNote(
     word = ankiFieldHtml(writtenForm()),
     reading = ankiFieldHtml(kanaReading()),
-    meaning = ankiFieldHtml(ankiMeaning(glosses)),
+    meaning = ankiFieldHtml(ankiMeaning(glosses.ifEmpty { senseLinesWithoutMore() })),
+    entryId = entryId,
 )
 
-/** Alex, 2026-10-07: five keeps a card readable. */
+/**
+ * The row's own lines, for an entry the gloss read had nothing for (a
+ * dictionary that dropped the entry between the row and the send):
+ * something on the card rather than an empty Meaning. The row's " …"
+ * says "more on the entry screen", which on a card means nothing.
+ */
+private fun SearchHit.senseLinesWithoutMore(): List<String> =
+    senseLines.map { it.removeSuffix(SENSE_LINE_MORE) }.filter { it.isNotBlank() }
+
+/** What a row's last sense line ends in when senses were left off; see EntrySearch's senseLines. */
+private const val SENSE_LINE_MORE = " …"
+
+/**
+ * Five glosses keep a card readable; the full entry is a tap away
+ * through the card's "More in Okonomi" link (Alex, 2026-10-07).
+ */
 internal const val ANKI_MEANING_GLOSS_LIMIT = 5
 
 /**
@@ -47,14 +65,20 @@ internal fun ankiMeaning(glosses: List<String>): String =
     glosses.take(ANKI_MEANING_GLOSS_LIMIT).joinToString("\n") { "- $it" }
 
 /**
- * The kana reading of a row, taken from its title segments: a row is
- * the written form followed by its reading, or the reading alone for a
- * word with no kanji form (and for one whose only form is its reading,
- * which the row does not repeat). The reading segment counts whether it
- * sits over the form or beside it — it is the reading either way.
+ * The kana reading of a row, taken from its title segments as
+ * `buildHits` makes them: a written form followed by its reading, or a
+ * single segment for a word with no kanji form (and for one whose form
+ * is its reading, which the row does not repeat).
+ *
+ * Every segment after the first is a reading, whether it sits over the
+ * form or beside it; should a title ever carry more than one, they are
+ * all kept, joined the way Japanese lists alternatives. A lone segment
+ * is the reading.
  */
-internal fun SearchHit.kanaReading(): String =
-    (titleSegments.getOrNull(1) ?: titleSegments.firstOrNull())?.text.orEmpty()
+internal fun SearchHit.kanaReading(): String {
+    val readings = titleSegments.drop(1).map { it.text }.ifEmpty { titleSegments.take(1).map { it.text } }
+    return readings.joinToString("、")
+}
 
 /**
  * Plain text as an Anki field. Anki renders fields as HTML, so the three
