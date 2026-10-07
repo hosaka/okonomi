@@ -15,7 +15,13 @@ Workflows run inside [a purpose-built image](./ci-image) carrying Zulu 21, the A
 
 **Cutting a release:** dispatch `version.yml`. The default `auto` bump picks the version from the pending fragments and fails if there are none; `patch`, `minor` or `major` force a bump and allow an empty notes section. The job batches the fragments into `.changes/vX.Y.Z.md`, regenerates `CHANGELOG.md`, rewrites `app` in the version catalogue, writes the Play "What's new" text to `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt` (whole lines up to 500 characters), commits `chore(release): vX.Y.Z` and pushes tag `vX.Y.Z`. `release.yml` then publishes `.changes/vX.Y.Z.md` as the release body. `app` and `changie latest` must agree or the job stops before writing anything.
 
-**Publishing to GitHub:** `release.yml` also publishes the same notes and the same signed APK to the GitHub. It needs the secret `GH_RELEASE_TOKEN`: a fine-grained personal access token for that one repository with read/write permissions for Contents.
+**Publishing to mirrors:** `release.yml` also publishes the same notes and the same signed APK to other mirrors. Each needs a token stored as a secret, and its step warns and skips without one:
+
+| Secret | Token |
+|---|---|
+| `GH_RELEASE_TOKEN` | GitHub fine-grained personal access token for mirror repo, with *Contents: read and write* |
+| `CODEBERG_RELEASE_TOKEN` | Codeberg access token for mirror repo, with *repository: read and write* |
+
 
 **Refreshing data:** merges reuse the archives cached under the `okonomi-data-v1` key in `build-android.yml` and `release.yml`, so upstream is fetched from only once. Cached entries are immutable, so bumping that key to `v2` is how dictionaries and data can be updated.
 

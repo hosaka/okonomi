@@ -124,7 +124,7 @@ jobs:
           if [ -f "$notes" ]; then
             body=$(sed '1{/^## /d}' "$notes" | awk 'NF { started = 1 } started')
           else
-            echo "::warning::No notes file $notes for $tag; publishing without a body."
+            echo "::warning::No notes file $notes for $tag, publishing without a body."
           fi
 
           # all forges get the same release
@@ -137,15 +137,18 @@ jobs:
               "$@"
           }
 
-          id=$(forgejo --request POST \
+          # Not piped straight into jq: the pipeline's status would be jq's,
+          # so a failed call would carry on with id "null".
+          release=$(forgejo --request POST \
             --header "Content-Type: application/json" \
             --data @/tmp/release.json \
-            "$FORGEJO_URL/api/v1/repos/$FORGEJO_REPOSITORY/releases" | jq -r .id)
+            "$FORGEJO_URL/api/v1/repos/$FORGEJO_REPOSITORY/releases") || { echo "$release" >&2; exit 1; }
+          id=$(printf '%s' "$release" | jq -r .id)
           echo "Created release $id"
 
-          forgejo --request POST \
+          upload=$(forgejo --request POST \
             --form "attachment=@$apk" \
-            "$FORGEJO_URL/api/v1/repos/$FORGEJO_REPOSITORY/releases/$id/assets?name=$(basename "$apk")" > /dev/null
+            "$FORGEJO_URL/api/v1/repos/$FORGEJO_REPOSITORY/releases/$id/assets?name=$(basename "$apk")") || { echo "$upload" >&2; exit 1; }
           echo "Attached $(basename "$apk")"
 
       - name: Publish the GitHub release
@@ -155,7 +158,7 @@ jobs:
         run: |
           set -eu
           if [ -z "$TOKEN" ]; then
-            echo "::warning::No GH_RELEASE_TOKEN secret; not publishing to github.com/$REPO."
+            echo "::warning::No GH_RELEASE_TOKEN secret, not publishing to github.com/$REPO."
             exit 0
           fi
           tag="${{ steps.tag.outputs.tag }}"
@@ -184,12 +187,61 @@ jobs:
               "$@"
           }
 
-          id=$(github --request POST --data @/tmp/release.json \
-            "https://api.github.com/repos/$REPO/releases" | jq -r .id)
+          release=$(github --request POST --data @/tmp/release.json \
+            "https://api.github.com/repos/$REPO/releases") || { echo "$release" >&2; exit 1; }
+          id=$(printf '%s' "$release" | jq -r .id)
           echo "Created GitHub release $id"
 
-          github --request POST \
+          upload=$(github --request POST \
             --header "Content-Type: application/vnd.android.package-archive" \
             --data-binary "@$apk" \
-            "https://uploads.github.com/repos/$REPO/releases/$id/assets?name=$(basename "$apk")" > /dev/null
+            "https://uploads.github.com/repos/$REPO/releases/$id/assets?name=$(basename "$apk")") || { echo "$upload" >&2; exit 1; }
           echo "Attached $(basename "$apk") on GitHub"
+
+      # Codeberg runs Forgejo, so this is the GitHub step's tag handling with
+      # the Forgejo step's API calls.
+      - name: Publish the Codeberg release
+        env:
+          TOKEN: ${{ secrets.CODEBERG_RELEASE_TOKEN }}
+          REPO: hosaka/okonomi
+        run: |
+          set -eu
+          if [ -z "$TOKEN" ]; then
+            echo "::warning::No CODEBERG_RELEASE_TOKEN secret, not publishing to codeberg.org/$REPO."
+            exit 0
+          fi
+          tag="${{ steps.tag.outputs.tag }}"
+          apk="${{ steps.apk.outputs.apk }}"
+
+          # The push mirror may not have synced the tag yet, and Codeberg needs
+          # it before a release can point at it.
+          remote_url="https://x-access-token:$TOKEN@codeberg.org/$REPO.git"
+          local_commit=$(git rev-parse "$tag^{commit}")
+          remote_commit=$(git ls-remote "$remote_url" "refs/tags/$tag^{}" | cut -f1)
+          if [ -z "$remote_commit" ]; then
+            # A shallow checkout cannot push history Codeberg has not seen yet.
+            git fetch --quiet --unshallow origin || true
+            git push --quiet "$remote_url" "refs/tags/$tag"
+            echo "Pushed $tag to $REPO"
+          elif [ "$remote_commit" != "$local_commit" ]; then
+            echo "$tag on $REPO is $remote_commit, here it is $local_commit" >&2
+            exit 1
+          fi
+
+          codeberg() {
+            curl -sS --fail-with-body \
+              --header "Authorization: token $TOKEN" \
+              "$@"
+          }
+
+          release=$(codeberg --request POST \
+            --header "Content-Type: application/json" \
+            --data @/tmp/release.json \
+            "https://codeberg.org/api/v1/repos/$REPO/releases") || { echo "$release" >&2; exit 1; }
+          id=$(printf '%s' "$release" | jq -r .id)
+          echo "Created Codeberg release $id"
+
+          upload=$(codeberg --request POST \
+            --form "attachment=@$apk" \
+            "https://codeberg.org/api/v1/repos/$REPO/releases/$id/assets?name=$(basename "$apk")") || { echo "$upload" >&2; exit 1; }
+          echo "Attached $(basename "$apk") on Codeberg"
