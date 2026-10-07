@@ -126,16 +126,70 @@ jobs:
           else
             echo "::warning::No notes file $notes for $tag; publishing without a body."
           fi
-          payload=$(jq -n --arg tag "$tag" --arg name "okonomi $tag" --arg body "$body" \
-            '{tag_name: $tag, name: $name, body: $body}')
-          id=$(curl -sS --fail --request POST \
-            --header "Authorization: token $TOKEN" \
+
+          # all forges get the same release
+          jq -n --arg tag "$tag" --arg name "okonomi $tag" --arg body "$body" \
+            '{tag_name: $tag, name: $name, body: $body}' > /tmp/release.json
+
+          forgejo() {
+            curl -sS --fail-with-body \
+              --header "Authorization: token $TOKEN" \
+              "$@"
+          }
+
+          id=$(forgejo --request POST \
             --header "Content-Type: application/json" \
-            --data "$payload" \
+            --data @/tmp/release.json \
             "$FORGEJO_URL/api/v1/repos/$FORGEJO_REPOSITORY/releases" | jq -r .id)
           echo "Created release $id"
-          curl -sS --fail --request POST \
-            --header "Authorization: token $TOKEN" \
+
+          forgejo --request POST \
             --form "attachment=@$apk" \
             "$FORGEJO_URL/api/v1/repos/$FORGEJO_REPOSITORY/releases/$id/assets?name=$(basename "$apk")" > /dev/null
           echo "Attached $(basename "$apk")"
+
+      - name: Publish the GitHub release
+        env:
+          TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+          REPO: hosaka/okonomi
+        run: |
+          set -eu
+          if [ -z "$TOKEN" ]; then
+            echo "::warning::No GH_RELEASE_TOKEN secret; not publishing to github.com/$REPO."
+            exit 0
+          fi
+          tag="${{ steps.tag.outputs.tag }}"
+          apk="${{ steps.apk.outputs.apk }}"
+
+          # The push mirror may not have synced the tag yet, and GitHub needs it
+          # before a release can point at it.
+          remote_url="https://x-access-token:$TOKEN@github.com/$REPO.git"
+          local_commit=$(git rev-parse "$tag^{commit}")
+          remote_commit=$(git ls-remote "$remote_url" "refs/tags/$tag^{}" | cut -f1)
+          if [ -z "$remote_commit" ]; then
+            # A shallow checkout cannot push history GitHub has not seen yet.
+            git fetch --quiet --unshallow origin || true
+            git push --quiet "$remote_url" "refs/tags/$tag"
+            echo "Pushed $tag to $REPO"
+          elif [ "$remote_commit" != "$local_commit" ]; then
+            echo "$tag on $REPO is $remote_commit, here it is $local_commit" >&2
+            exit 1
+          fi
+
+          github() {
+            curl -sS --fail-with-body \
+              --header "Authorization: Bearer $TOKEN" \
+              --header "Accept: application/vnd.github+json" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "$@"
+          }
+
+          id=$(github --request POST --data @/tmp/release.json \
+            "https://api.github.com/repos/$REPO/releases" | jq -r .id)
+          echo "Created GitHub release $id"
+
+          github --request POST \
+            --header "Content-Type: application/vnd.android.package-archive" \
+            --data-binary "@$apk" \
+            "https://uploads.github.com/repos/$REPO/releases/$id/assets?name=$(basename "$apk")" > /dev/null
+          echo "Attached $(basename "$apk") on GitHub"
