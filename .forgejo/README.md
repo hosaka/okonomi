@@ -4,7 +4,7 @@ Workflows run inside [a purpose-built image](./ci-image) carrying Zulu 21, the A
 
 | Workflow | Runs on | Runs what |
 |---|---|---|
-| `pr-test.yml` | every PR | tests, migration verification, AGP lint, Android and iOS compilation |
+| `pr-test.yml` | every PR | tests, migration verification, AGP lint, Android and iOS compilation (including the screenshot test sources) |
 | `build-android.yml` | merge to `main` | builds a release APK to prove the packaging path still works |
 | `build-ios.yml` | manual dispatch | placeholder until a macOS runner exists |
 | `release.yml` | tag `v*` | builds a signed APK and publishes it as a release, with that version's notes as the body |

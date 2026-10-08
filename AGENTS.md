@@ -66,7 +66,7 @@ Practical rule: for new screens, follow the same split (see `feature/search/`):
 - `XxxState.kt` for the UI contract (nullable callbacks mean disabled),
 - `XxxStateProducer.kt` with `produceXxxScreenState()` and `suspend fun ScreenStateScope.xxxScreenStateProducer(): Flow<XxxState>` for state composition, persistence, and side effects.
 
-Verification: `./gradlew :androidApp:assembleDebug :shared:compileKotlinIosArm64 :shared:compileTestKotlinIosSimulatorArm64 :shared:testAndroidHostTest :tools:dictgen:test :shared:verifySqlDelightMigration`.
+Verification: `./gradlew :androidApp:assembleDebug :androidApp:compileDebugAndroidTestKotlin :shared:compileKotlinIosArm64 :shared:compileTestKotlinIosSimulatorArm64 :shared:testAndroidHostTest :tools:dictgen:test :shared:verifySqlDelightMigration`.
 
 `fastlane test` runs all of that except `:androidApp:assembleDebug`, plus `:androidApp:lintDebug`; `fastlane unit_tests`, `migrations`, `compile` and `lint` are its parts, and the task lists live at the top of `fastlane/Fastfile`. Add `:androidApp:assembleDebug` separately when a change can affect packaging — it is the only step that needs the dictionary and therefore the only slow one.
 
@@ -82,6 +82,12 @@ repair that.
 iOS task compiles main sources only. `commonTest` grew for months without ever
 being compiled for Kotlin/Native, and by the time anyone looked, 20 test names
 had commas in their backticks — which Kotlin/Native rejects outright.
+
+`:androidApp:compileDebugAndroidTestKotlin` is in the list for the same kind
+of reason: `androidApp/src/androidTest` holds only the screenshot flow, which
+runs on an emulator through `fastlane screenshots` and nothing else, so no
+check ever compiled it and it could stop compiling unnoticed. It pulls in no
+dictionary task.
 
 Compose UI tests live in `commonTest` and run on the JVM through
 `:shared:testAndroidHostTest`, with no emulator or device. Extend

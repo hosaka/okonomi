@@ -35,6 +35,7 @@ jobs:
             :shared:compileKotlinIosArm64 \
             :shared:compileTestKotlinIosSimulatorArm64 \
             :androidApp:compileDebugKotlin \
+            :androidApp:compileDebugAndroidTestKotlin \
             :androidApp:lintDebug
 
       - name: Assert no dictionary sources were fetched

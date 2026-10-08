@@ -18,6 +18,7 @@ COMPILE_TASKS = %w[
   :shared:compileKotlinIosArm64
   :shared:compileTestKotlinIosSimulatorArm64
   :androidApp:compileDebugKotlin
+  :androidApp:compileDebugAndroidTestKotlin
 ].freeze
 
 LINT_TASKS = %w[:androidApp:lintDebug].freeze
@@ -104,7 +105,7 @@ lane :migrations do
   run_gradle(MIGRATION_TASKS)
 end
 
-desc 'Compiles both targets, commonTest for Kotlin/Native included.'
+desc 'Compiles both targets, commonTest for Kotlin/Native and the Android screenshot tests included.'
 lane :compile do
   run_gradle(COMPILE_TASKS)
 end
