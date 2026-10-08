@@ -2,10 +2,7 @@ package cc.hosaka.okonomi.feature.kanji
 
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
@@ -14,6 +11,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.v2.runComposeUiTest
 import cc.hosaka.okonomi.db.KanjiCharacter
 import cc.hosaka.okonomi.ui.test.ComposeUiTestBase
+import cc.hosaka.okonomi.ui.test.hasClickLabel
 import cc.hosaka.okonomi.ui.theme.OkonomiTheme
 import kotlin.test.Test
 import okonomi.shared.generated.resources.Res
@@ -100,17 +98,6 @@ class StrokeOrderSlotUiTest : ComposeUiTestBase() {
         onNodeWithText(LITERAL).assertIsDisplayed()
     }
 }
-
-/**
- * Matches the slot by the label on its click action. `hasClickAction()`
- * alone would match any clickable node the card grew later; this matches
- * the one whose tap is announced as replaying the stroke order, which is
- * the thing under test.
- */
-private fun hasClickLabel(label: String): SemanticsMatcher =
-    SemanticsMatcher("click action labelled \"$label\"") { node ->
-        node.config.getOrNull(SemanticsActions.OnClick)?.label == label
-    }
 
 private const val LITERAL = "食"
 

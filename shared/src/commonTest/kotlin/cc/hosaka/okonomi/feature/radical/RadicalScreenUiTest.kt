@@ -1,9 +1,7 @@
 package cc.hosaka.okonomi.feature.radical
 
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -19,6 +17,7 @@ import cc.hosaka.okonomi.feature.navigation.state.LoadState
 import cc.hosaka.okonomi.ui.SEARCH_FIELD_ICON_TAG
 import cc.hosaka.okonomi.ui.test.ComposeUiTestBase
 import cc.hosaka.okonomi.ui.test.ScreenHost
+import cc.hosaka.okonomi.ui.test.hasClickLabel
 import cc.hosaka.okonomi.ui.theme.OkonomiTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -254,13 +253,3 @@ class RadicalScreenUiTest : ComposeUiTestBase() {
         onNodeWithText(labels.error).assertDoesNotExist()
     }
 }
-
-/**
- * Matches a node by the label on its click action. `hasClickAction()`
- * would match the back control and every character alike; the label says
- * which of them was found.
- */
-private fun hasClickLabel(label: String): SemanticsMatcher =
-    SemanticsMatcher("click action labelled \"$label\"") { node ->
-        node.config.getOrNull(SemanticsActions.OnClick)?.label == label
-    }

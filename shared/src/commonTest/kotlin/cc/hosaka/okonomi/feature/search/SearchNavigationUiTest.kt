@@ -3,6 +3,7 @@ package cc.hosaka.okonomi.feature.search
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -14,10 +15,12 @@ import cc.hosaka.okonomi.feature.navigation.Route
 import cc.hosaka.okonomi.feature.word.EntryRoute
 import cc.hosaka.okonomi.ui.test.ComposeUiTestBase
 import cc.hosaka.okonomi.ui.test.RecordingNavigationController
+import cc.hosaka.okonomi.ui.test.hasClickLabel
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import okonomi.shared.generated.resources.Res
 import okonomi.shared.generated.resources.entry_back
+import okonomi.shared.generated.resources.search_result_open
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -84,6 +87,25 @@ class SearchNavigationUiTest : ComposeUiTestBase() {
         waitForIdle()
 
         assertEquals(emptyList(), opened)
+    }
+
+    /**
+     * Without a label the row is announced as a bare button. The labelled
+     * node must be the row itself, carrying its glosses, not some other
+     * clickable on the screen.
+     */
+    @Test
+    fun `a result's tap is announced as opening its entry`() = runComposeUiTest {
+        val navigation = RecordingNavigationController()
+        lateinit var label: String
+        setContent {
+            label = stringResource(Res.string.search_result_open)
+            SearchUnderTest(navigation = navigation)
+        }
+
+        onNode(hasClickLabel(label) and hasText("- to eat")).performClick()
+
+        assertEquals<List<Route>>(listOf(EntryRoute(TABERU_ID)), navigation.navigated)
     }
 
     @Test

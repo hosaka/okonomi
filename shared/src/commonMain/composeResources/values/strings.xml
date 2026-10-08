@@ -42,6 +42,12 @@
     <string name="name_type_given">given name</string>
     <string name="name_type_fem">female name</string>
     <string name="name_type_masc">male name</string>
+    <!-- The tap label on a search result row, also used by the
+         Favourites and History lists, which draw the same row. Without
+         it the row is announced as a bare button. A verb, because it is
+         spoken as "double-tap to ..."; it does not repeat the word,
+         which the row's own text has already announced. -->
+    <string name="search_result_open">Open entry</string>
     <string name="search_results_fallback">No exact matches — showing the closest entries</string>
     <string name="search_error">Search is unavailable right now. Keep typing to retry.</string>
     <!-- The footer under the last row of a list that pages: shown while

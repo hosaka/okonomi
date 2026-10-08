@@ -33,6 +33,7 @@ import cc.hosaka.okonomi.feature.radical.RadicalRoute
 import cc.hosaka.okonomi.ui.test.ComposeUiTestBase
 import cc.hosaka.okonomi.ui.test.RecordingNavigationController
 import cc.hosaka.okonomi.ui.test.ScreenHost
+import cc.hosaka.okonomi.ui.test.hasClickLabel
 import cc.hosaka.okonomi.ui.theme.OkonomiTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -550,16 +551,6 @@ private class Labels {
         close = stringResource(Res.string.entry_kanji_detail_close, LITERAL)
     }
 }
-
-/**
- * Matches a node by the label on its click action. `hasClickAction()`
- * would match the card, the stroke slot and every radical alike; the
- * label says which of them was found.
- */
-private fun hasClickLabel(label: String): SemanticsMatcher =
-    SemanticsMatcher("click action labelled \"$label\"") { node ->
-        node.config.getOrNull(SemanticsActions.OnClick)?.label == label
-    }
 
 /**
  * Matches the overlay's surface, which is the only node carrying a pane

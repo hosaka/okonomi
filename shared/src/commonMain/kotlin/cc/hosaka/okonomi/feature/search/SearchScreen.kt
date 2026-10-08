@@ -76,6 +76,7 @@ import okonomi.shared.generated.resources.name_type_surname
 import okonomi.shared.generated.resources.search_error
 import okonomi.shared.generated.resources.search_no_results
 import okonomi.shared.generated.resources.search_placeholder
+import okonomi.shared.generated.resources.search_result_open
 import okonomi.shared.generated.resources.search_results_fallback
 import org.jetbrains.compose.resources.stringResource
 
@@ -400,6 +401,7 @@ internal fun SearchResultRow(
     val copy = rememberClipboardCopy()
     ListCard(
         onClick = onClick,
+        onClickLabel = stringResource(Res.string.search_result_open),
         // The written form, not the reading: segments that sit OVER the
         // word as furigana are dropped, so 食(た)べる copies as 食べる.
         onLongClick = { copy(hit.writtenForm()) },
