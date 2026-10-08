@@ -6,9 +6,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
@@ -20,6 +22,7 @@ import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
 import cc.hosaka.okonomi.feature.home.navigation.homeFavouritesItem
 import cc.hosaka.okonomi.feature.home.navigation.homeSearchItem
 import cc.hosaka.okonomi.feature.navigation.EntryLinks
+import cc.hosaka.okonomi.feature.search.SearchRoute
 import cc.hosaka.okonomi.feature.word.EntryRoute
 import cc.hosaka.okonomi.prefs.FakePreferenceStore
 import cc.hosaka.okonomi.ui.coach.CoachMarkRegistry
@@ -31,6 +34,8 @@ import okonomi.shared.generated.resources.Res
 import okonomi.shared.generated.resources.entry_back
 import okonomi.shared.generated.resources.home_favourites_label
 import okonomi.shared.generated.resources.home_search_label
+import okonomi.shared.generated.resources.search_options
+import okonomi.shared.generated.resources.search_names_toggle
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -52,6 +57,9 @@ import org.jetbrains.compose.resources.stringResource
  * system's. Here the hook is counted instead. On a device:
  * `adb shell am start -a android.intent.action.VIEW -d okonomi://entry/1360010`,
  * then `adb shell input keyevent KEYCODE_BACK`.
+ *
+ * The same real shell, probes and back input also host one test of back
+ * ordering on a pushed search, which needs exactly this setup.
  */
 @OptIn(ExperimentalTestApi::class)
 class HomeEntryLinkUiTest : ComposeUiTestBase() {
@@ -66,6 +74,8 @@ class HomeEntryLinkUiTest : ComposeUiTestBase() {
         var searchLabel = ""
         var favouritesLabel = ""
         var backLabel = ""
+        var optionsLabel = ""
+        var namesLabel = ""
 
         val searchStack: List<NavKey> get() = checkNotNull(search).stack()
 
@@ -74,6 +84,8 @@ class HomeEntryLinkUiTest : ComposeUiTestBase() {
             searchLabel = stringResource(Res.string.home_search_label)
             favouritesLabel = stringResource(Res.string.home_favourites_label)
             backLabel = stringResource(Res.string.entry_back)
+            optionsLabel = stringResource(Res.string.search_options)
+            namesLabel = stringResource(Res.string.search_names_toggle)
             BackHost(back) {
                 HomeScreen(
                     coachMarks = remember { CoachMarkRegistry() },
@@ -96,6 +108,9 @@ class HomeEntryLinkUiTest : ComposeUiTestBase() {
     private fun tab(label: String) = hasText(label) and SemanticsMatcher.keyIsDefined(SemanticsProperties.Selected)
 
     private val searchRoot = homeSearchItem.route
+
+    /** The filters menu's Names toggle, which exists only while the menu is open. */
+    private fun namesPill(shell: Shell) = isToggleable() and hasText(shell.namesLabel)
 
     @Test
     fun `a link while on another tab pushes that entry over Search and system back leaves from Search's root`() =
@@ -120,6 +135,41 @@ class HomeEntryLinkUiTest : ComposeUiTestBase() {
             assertEquals(listOf(searchRoot), shell.searchStack)
             onNode(tab(shell.searchLabel)).assertIsSelected()
             onNode(hasSetTextAction()).assertExists()
+        }
+
+    /**
+     * On a pushed search the filters menu's back handler competes with
+     * NavDisplay's pop (the shell's own handler is off while Search, the
+     * default section, is selected). Back with the menu open closes the
+     * menu and leaves the stack alone; only the next back pops the search.
+     * The root-search case is `SearchNamesUiTest`'s "system back closes an
+     * open menu and only an open one".
+     */
+    @Test
+    fun `system back on a pushed search closes its filters menu before popping the search`() =
+        runComposeUiTest {
+            val shell = Shell()
+            setContent { shell.Content() }
+            waitForIdle()
+            // Any query will do — the host tests have no dictionary — but it
+            // must not be null, or the pushed key would equal Search's root.
+            val pushed = SearchRoute(query = "x")
+            runOnIdle { checkNotNull(shell.search).controller.navigate(pushed) }
+            waitForIdle()
+            onNodeWithContentDescription(shell.optionsLabel).performClick()
+            waitForIdle()
+            onNode(namesPill(shell)).assertIsDisplayed()
+
+            runOnIdle { shell.back.back() }
+            waitForIdle()
+
+            onNode(namesPill(shell)).assertDoesNotExist()
+            assertEquals(listOf(searchRoot, pushed), shell.searchStack)
+
+            runOnIdle { shell.back.back() }
+            waitForIdle()
+
+            assertEquals(listOf(searchRoot), shell.searchStack)
         }
 
     @Test
