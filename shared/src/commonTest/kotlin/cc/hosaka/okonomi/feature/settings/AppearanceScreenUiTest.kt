@@ -21,12 +21,13 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import okonomi.shared.generated.resources.Res
 import okonomi.shared.generated.resources.appearance_back
+import okonomi.shared.generated.resources.appearance_per_kanji_furigana
 import okonomi.shared.generated.resources.appearance_show_hints
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * The hints switch is one node: the label, the on/off state and the
- * switch role together, and a tap anywhere on it reports the new value.
+ * Each switch is one node: the label, the on/off state and the switch
+ * role together, and a tap anywhere on it reports the new value.
  */
 @OptIn(ExperimentalTestApi::class)
 class AppearanceScreenUiTest : ComposeUiTestBase() {
@@ -80,6 +81,73 @@ class AppearanceScreenUiTest : ComposeUiTestBase() {
         }
 
         onNode(hasText(label) and isToggleable()).assertIsNotEnabled()
+    }
+
+    @Test
+    fun `the furigana switch is a row of its own reporting its own changes`() = runComposeUiTest {
+        var label = ""
+        val hints = mutableListOf<Boolean>()
+        val furigana = mutableListOf<Boolean>()
+        setContent {
+            label = stringResource(Res.string.appearance_per_kanji_furigana)
+            AppearanceUnderTest(
+                AppearanceState(
+                    showHints = true,
+                    onShowHintsChange = { hints += it },
+                    perKanjiFurigana = false,
+                    onPerKanjiFuriganaChange = { furigana += it },
+                ),
+            )
+        }
+
+        val row = onNode(
+            hasText(label) and isToggleable() and
+                SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch),
+        )
+        row.assertIsOff()
+        row.performClick()
+
+        assertEquals(listOf(true), furigana)
+        assertEquals(emptyList(), hints)
+    }
+
+    @Test
+    fun `the furigana switch is disabled without a callback`() = runComposeUiTest {
+        var label = ""
+        setContent {
+            label = stringResource(Res.string.appearance_per_kanji_furigana)
+            AppearanceUnderTest(
+                AppearanceState(
+                    showHints = true,
+                    onShowHintsChange = {},
+                    perKanjiFurigana = true,
+                    onPerKanjiFuriganaChange = null,
+                ),
+            )
+        }
+
+        onNode(hasText(label) and isToggleable()).assertIsNotEnabled()
+    }
+
+    @Test
+    fun `each switch shows its own value`() = runComposeUiTest {
+        var hintsLabel = ""
+        var furiganaLabel = ""
+        setContent {
+            hintsLabel = stringResource(Res.string.appearance_show_hints)
+            furiganaLabel = stringResource(Res.string.appearance_per_kanji_furigana)
+            AppearanceUnderTest(
+                AppearanceState(
+                    showHints = true,
+                    onShowHintsChange = {},
+                    perKanjiFurigana = false,
+                    onPerKanjiFuriganaChange = {},
+                ),
+            )
+        }
+
+        onNode(hasText(hintsLabel) and isToggleable()).assertIsOn()
+        onNode(hasText(furiganaLabel) and isToggleable()).assertIsOff()
     }
 
     @Test

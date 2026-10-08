@@ -34,6 +34,7 @@ import cc.hosaka.okonomi.ui.furigana.FuriganaSegment
 import cc.hosaka.okonomi.ui.furigana.FuriganaText
 import cc.hosaka.okonomi.ui.furigana.plainText
 import cc.hosaka.okonomi.ui.ListCard
+import cc.hosaka.okonomi.ui.furigana.LocalKanjiReadings
 import cc.hosaka.okonomi.ui.theme.Dimens
 import cc.hosaka.okonomi.ui.theme.horizontalPaddingHalf
 import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
@@ -82,6 +83,7 @@ fun FormsTab(
         // table which of its stems shift; see [conjugationRows].
         reading = entry.headwordReading?.text,
         posCodes = entry.posCodes,
+        kanjiReadings = LocalKanjiReadings.current,
     )
     FormsTabContent(
         state = state.value,

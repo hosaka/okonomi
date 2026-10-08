@@ -36,6 +36,13 @@ class ReadingAlignmentTest {
         assertEquals("[相殺[そうさい]]", aligned("相殺", "そうさい"))
     }
 
+    /** The twin of the above with kanjidic's readings; see `KanjiReadingsTest`. */
+    @Test
+    fun `with kanji readings that run is divided per kanji`() {
+        val segments = alignReading("相殺", "そうさい", kanjidicFixture)
+        assertEquals(listOf(FuriganaSegment("相", "そう"), FuriganaSegment("殺", "さい")), segments)
+    }
+
     /**
      * The case the whole fallback exists for. 大人 is おとな with nothing
      * to divide it on, and お/と/な cannot be handed to 大 and 人 without

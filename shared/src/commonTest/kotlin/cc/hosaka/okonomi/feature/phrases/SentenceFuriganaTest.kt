@@ -2,6 +2,8 @@ package cc.hosaka.okonomi.feature.phrases
 
 import cc.hosaka.okonomi.db.BreakdownWord
 import cc.hosaka.okonomi.db.ExampleSentence
+import cc.hosaka.okonomi.ui.furigana.KanjiReadings
+import cc.hosaka.okonomi.ui.furigana.kanjidicFixture
 import cc.hosaka.okonomi.ui.furigana.plainText
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -37,8 +39,9 @@ class SentenceFuriganaTest {
     private fun rendered(
         sentence: ExampleSentence,
         entryPos: Map<Long, List<String>> = emptyMap(),
+        kanjiReadings: KanjiReadings? = null,
     ): String =
-        sentencePieces(sentence, entryPos).joinToString("") { piece ->
+        sentencePieces(sentence, entryPos, kanjiReadings).joinToString("") { piece ->
             piece.segments.joinToString("") { segment ->
                 segment.reading?.let { "[${segment.text}[$it]]" } ?: segment.text
             }
@@ -62,6 +65,83 @@ class SentenceFuriganaTest {
         )
 
         assertEquals("もっと[果物[くだもの]]を[食[た]]べるべきです。", rendered)
+    }
+
+    /**
+     * The twin of the sentence above with kanjidic's readings: 果物 is
+     * jukujikun and stays whole, 学校 divides, and 相殺 written 相殺した
+     * divides through the transfer path. Every path that aligns is handed
+     * the readings, or one of these stays whole.
+     */
+    @Test
+    fun `with kanji readings a sentence divides the runs its readings settle`() {
+        assertEquals(
+            "[果物[くだもの]]と[学[がっ]][校[こう]]を[相[そう]][殺[さい]]した。",
+            rendered(
+                sentence(
+                    "果物と学校を相殺した。",
+                    BreakdownWord("果物", "くだもの"),
+                    BreakdownWord("と", null),
+                    BreakdownWord("学校", "がっこう"),
+                    BreakdownWord("を", null),
+                    BreakdownWord("相殺", "そうさい", surface = "相殺した"),
+                ),
+                kanjiReadings = kanjidicFixture,
+            ),
+        )
+    }
+
+    /**
+     * The paradigm path: 頭来る/あたまくる written 頭来ない is a row of its
+     * own table, aligned against あたまこない. Divided, 頭 and 来 each
+     * take their own reading, 来 the こ of that row.
+     */
+    @Test
+    fun `with kanji readings a conjugated form divides its stem`() {
+        assertEquals(
+            "[頭[あたま]][来[こ]]ない",
+            rendered(
+                sentence("頭来ない", BreakdownWord("頭来る", "あたまくる", surface = "頭来ない", entryId = 1L)),
+                entryPos = mapOf(1L to listOf("vk")),
+                kanjiReadings = kanjidicFixture,
+            ),
+        )
+    }
+
+    /**
+     * 頭来 is not a row of 頭来る's table, and 来 reads く, き and こ across
+     * it, so it takes no reading. Comparing the headword undivided
+     * (頭来=あたまく) against divided rows (頭=あたま, 来=こ) would find no
+     * claim to contradict and carry 頭[あたま]来[く] onto it.
+     */
+    @Test
+    fun `with kanji readings a shifting stem the table does not list stays plain`() {
+        assertEquals(
+            "頭来",
+            rendered(
+                sentence("頭来", BreakdownWord("頭来る", "あたまくる", surface = "頭来", entryId = 1L)),
+                entryPos = mapOf(1L to listOf("vk")),
+                kanjiReadings = kanjidicFixture,
+            ),
+        )
+    }
+
+    /**
+     * A stem writing one kanji twice (日日 as ひ+び, constructed) holds
+     * across its table, so a surface the table does not list still takes
+     * it. Keyed by the character alone the headword's two claims on 日
+     * collapse into one and every row seems to contradict it.
+     */
+    @Test
+    fun `with kanji readings a kanji written twice keeps both its readings`() {
+        assertEquals(
+            "[日[ひ]][日[び]][見[み]]つつ",
+            rendered(
+                sentence("日日見つつ", BreakdownWord("日日見る", "ひびみる", surface = "日日見つつ", entryId = 1L)),
+                entryPos = mapOf(1L to listOf("v1")),
+                kanjiReadings = kanjidicFixture,
+            ),
+        )
     }
 
     @Test

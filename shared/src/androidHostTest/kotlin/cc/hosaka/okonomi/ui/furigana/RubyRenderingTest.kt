@@ -10,15 +10,26 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import cc.hosaka.okonomi.db.BreakdownWord
 import cc.hosaka.okonomi.db.EntryForm
 import cc.hosaka.okonomi.db.EntryReading
 import cc.hosaka.okonomi.db.ExampleSentence
+import cc.hosaka.okonomi.db.NameHit
+import cc.hosaka.okonomi.db.SearchHit
+import cc.hosaka.okonomi.db.TitleSegment
 import cc.hosaka.okonomi.feature.forms.FormsTab
 import cc.hosaka.okonomi.feature.phrases.PhrasesTabContent
 import cc.hosaka.okonomi.feature.phrases.PhrasesTabContentState
 import cc.hosaka.okonomi.feature.phrases.PhrasesTabState
+import cc.hosaka.okonomi.feature.search.SearchResultsState
+import cc.hosaka.okonomi.feature.search.SearchScreen
+import cc.hosaka.okonomi.feature.search.SearchState
 import cc.hosaka.okonomi.feature.word.WordTab
+import cc.hosaka.okonomi.prefs.FakePreferenceStore
 import cc.hosaka.okonomi.ui.test.ScreenHost
 import cc.hosaka.okonomi.ui.test.entryDetail
 import cc.hosaka.okonomi.ui.test.entrySense
@@ -309,6 +320,176 @@ class RubyRenderingTest {
         assertEquals(listOf("彼" to "かれ", "来" to "こ"), rubyUnits())
     }
 
+    /**
+     * Every site that aligns a reading reads [LocalKanjiReadings] and
+     * hands it on. Each case below is the site drawn with kanjidic's
+     * readings provided, and each goes red if that site is left aligning
+     * without them — the run then arrives whole, as one unit.
+     */
+    @Test
+    fun `a search row divides its title and a name row its headword`() = runComposeUiTest {
+        setContent {
+            WithKanjiReadings {
+                SearchScreen(
+                    SearchState(
+                        query = "動物",
+                        onQueryChange = {},
+                        results = SearchResultsState.Results(
+                            query = "動物",
+                            hits = listOf(
+                                SearchHit(
+                                    entryId = 1L,
+                                    titleSegments = listOf(
+                                        TitleSegment("動物園", highlight = 0..1),
+                                        TitleSegment("どうぶつえん", readsPreviousSegment = true),
+                                    ),
+                                    traceLabels = emptyList(),
+                                    senseLines = listOf("zoo"),
+                                    isCommon = true,
+                                ),
+                            ),
+                            isFallback = false,
+                            names = listOf(
+                                NameHit(id = 2L, kanji = "木曽", reading = "きそ", types = listOf("place"), romanisation = "Kiso"),
+                            ),
+                        ),
+                    ),
+                )
+            }
+        }
+
+        assertEquals(
+            listOf("動" to "どう", "物" to "ぶつ", "園" to "えん", "木" to "き", "曽" to "そ"),
+            rubyUnits(),
+        )
+    }
+
+    @Test
+    fun `the word headword is divided per kanji`() = runComposeUiTest {
+        setContent {
+            WithKanjiReadings {
+                WordTab(
+                    entry = entryDetail(
+                        headword = "動物園",
+                        forms = listOf(EntryForm("動物園", isCommon = true)),
+                        readings = listOf(EntryReading("どうぶつえん", emptyList(), isCommon = true)),
+                    ),
+                    contentPadding = PaddingValues(),
+                )
+            }
+        }
+
+        assertEquals(listOf("動" to "どう", "物" to "ぶつ", "園" to "えん"), rubyUnits())
+    }
+
+    /**
+     * 頭来る's stem is one run, 頭来. Divided, 頭 reads あたま on every
+     * row and drops its ruby while 来 keeps its く, き and こ; whole, the
+     * pair would be one unit reading あたまく and so on.
+     */
+    @Test
+    fun `the forms table divides a stem and keeps only what shifts`() = runComposeUiTest {
+        setContent {
+            WithKanjiReadings {
+                AtamaKuruForms()
+            }
+        }
+
+        val units = rubyUnits()
+        assertTrue(units.isNotEmpty(), "the table sets readings over its shifting stem")
+        assertTrue(units.all { (base, _) -> base == "来" }, "only 来 shifts: $units")
+        assertEquals(setOf("く", "き", "こ"), units.map { (_, reading) -> reading }.toSet())
+    }
+
+    /**
+     * The acceptance case for the switch: off and on again redraws
+     * without a restart. The Forms producer is the one site that is not
+     * a plain `remember` — it lives in a view model created once per key
+     * — so it is the one that could keep drawing the old mode.
+     */
+    @Test
+    fun `the forms table redraws when the setting is turned off and on`() = runComposeUiTest {
+        val preferences = FakePreferenceStore()
+        setContent {
+            ScreenHost {
+                ProvideKanjiReadings(preferences = preferences, load = { kanjidicFixture }) {
+                    AtamaKuruForms()
+                }
+            }
+        }
+
+        waitUntil { rubyUnits().all { (base, _) -> base == "来" } && rubyUnits().isNotEmpty() }
+
+        preferences.setBoolean(PER_KANJI_FURIGANA_PREFERENCE, false)
+        waitForIdle()
+        assertTrue(rubyUnits().isNotEmpty(), "the table still sets readings")
+        assertTrue(rubyUnits().all { (base, _) -> base == "頭来" }, "whole again: ${rubyUnits()}")
+
+        preferences.setBoolean(PER_KANJI_FURIGANA_PREFERENCE, true)
+        waitForIdle()
+        assertTrue(rubyUnits().isNotEmpty(), "the table still sets readings")
+        assertTrue(rubyUnits().all { (base, _) -> base == "来" }, "divided again: ${rubyUnits()}")
+    }
+
+    /**
+     * The Forms producer is keyed on the readings value itself, not on
+     * whether there is one: handed a different value, the table is
+     * rebuilt over it rather than kept from the producer built over the
+     * first. The second value knows nothing of 頭 or 来, so the stem
+     * comes back whole.
+     */
+    @Test
+    fun `the forms table follows a different readings value`() = runComposeUiTest {
+        var readings by mutableStateOf(kanjidicFixture)
+        setContent {
+            ScreenHost {
+                CompositionLocalProvider(LocalKanjiReadings provides readings) {
+                    AtamaKuruForms()
+                }
+            }
+        }
+        waitForIdle()
+        assertTrue(rubyUnits().isNotEmpty() && rubyUnits().all { (base, _) -> base == "来" }, "${rubyUnits()}")
+
+        readings = KanjiReadings.Builder().build()
+        waitForIdle()
+
+        assertTrue(rubyUnits().isNotEmpty(), "the table still sets readings")
+        assertTrue(rubyUnits().all { (base, _) -> base == "頭来" }, "whole over the new value: ${rubyUnits()}")
+    }
+
+    @Test
+    fun `a sentence divides its words per kanji`() = runComposeUiTest {
+        setContent {
+            WithKanjiReadings {
+                PhrasesTabContent(
+                    state = PhrasesTabState(
+                        content = PhrasesTabContentState.Ready(
+                            sentences = listOf(
+                                ExampleSentence(
+                                    id = 1L,
+                                    japanese = "学校で勉強する。",
+                                    english = "translation",
+                                    words = listOf(
+                                        BreakdownWord("学校", "がっこう"),
+                                        BreakdownWord("で", null),
+                                        BreakdownWord("勉強", "べんきょう"),
+                                    ),
+                                ),
+                            ),
+                            entryPos = emptyMap(),
+                        ),
+                    ),
+                    contentPadding = PaddingValues(),
+                )
+            }
+        }
+
+        // 勉 and 強 are not in the fixture, so 勉強 stays whole: a run
+        // the readings say nothing about is drawn exactly as before.
+        assertEquals(listOf("学" to "がっ", "校" to "こう", "勉強" to "べんきょう"), rubyUnits())
+    }
+
     @Test
     fun `a table whose stem never shifts carries no ruby`() = runComposeUiTest {
         setContent {
@@ -328,6 +509,30 @@ class RubyRenderingTest {
         assertEquals(emptyList(), rubyUnits(), "食 reads た on every row and needs no ruby saying so")
         assertTrue(drawnTexts().contains("食べる"), "the table still draws its forms")
     }
+}
+
+/** [content] in a screen host, with kanjidic's readings provided as the app root provides them. */
+@Composable
+private fun WithKanjiReadings(content: @Composable () -> Unit) {
+    ScreenHost {
+        CompositionLocalProvider(LocalKanjiReadings provides kanjidicFixture) {
+            content()
+        }
+    }
+}
+
+/** The Forms tab of 頭来る (あたまくる, a くる verb), with nothing else on it. */
+@Composable
+private fun AtamaKuruForms() {
+    FormsTab(
+        entry = entryDetail(
+            headword = "頭来る",
+            forms = listOf(EntryForm("頭来る", isCommon = false)),
+            readings = listOf(EntryReading("あたまくる", emptyList(), isCommon = false)),
+            senses = listOf(entrySense(posCodes = listOf("vk"), glosses = listOf("to get angry"))),
+        ),
+        contentPadding = PaddingValues(),
+    )
 }
 
 /** One example sentence through the real tab, with nothing else on it. */

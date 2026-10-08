@@ -62,6 +62,7 @@ import androidx.navigation3.ui.NavDisplay
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
+import cc.hosaka.okonomi.db.appKanjiReadings
 import cc.hosaka.okonomi.feature.home.navigation.HomeNavigationItem
 import cc.hosaka.okonomi.feature.home.navigation.HomeSelectAction
 import cc.hosaka.okonomi.feature.home.navigation.HomeSelectionState
@@ -90,6 +91,8 @@ import cc.hosaka.okonomi.ui.coach.CoachMarksHost
 import cc.hosaka.okonomi.ui.coach.CoachNavigation
 import cc.hosaka.okonomi.ui.coach.CoachTarget
 import cc.hosaka.okonomi.ui.coach.coachMarkTarget
+import cc.hosaka.okonomi.ui.furigana.KanjiReadings
+import cc.hosaka.okonomi.ui.furigana.ProvideKanjiReadings
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -227,8 +230,10 @@ internal class HomeSectionProbe(
  * report into, so tests can read where the targets landed; the entry
  * links to open; [leaveApp], what system back on a link-opened entry
  * calls; [onSection], which hands a test each section's navigation
- * and back stack; and [preferences], where the coach marks' on/off
- * setting is read from.
+ * and back stack; [preferences], where the coach marks' on/off setting
+ * and the per-kanji furigana setting are read from; and
+ * [loadKanjiReadings], what that furigana divides kanji runs with (see
+ * [ProvideKanjiReadings], which every section is drawn inside).
  */
 @Composable
 internal fun HomeScreen(
@@ -238,6 +243,7 @@ internal fun HomeScreen(
     leaveApp: () -> Unit = rememberLeaveApp(),
     onSection: ((key: String, probe: HomeSectionProbe) -> Unit)? = null,
     preferences: PreferenceStore = appPreferences(),
+    loadKanjiReadings: suspend () -> KanjiReadings = ::appKanjiReadings,
 ) {
     require(items.isNotEmpty()) { "Home needs at least one section" }
     require(items.distinctBy { it.key }.size == items.size) { "Home section keys must be unique" }
@@ -316,86 +322,88 @@ internal fun HomeScreen(
         preferences.booleanFlow(COACH_MARKS_ENABLED_PREFERENCE, COACH_MARKS_ENABLED_DEFAULT)
     }.collectAsState(initial = false)
 
-    ResponsiveLayout {
-        val horizontalInsets = WindowInsets.systemBars
-            .union(WindowInsets.displayCutout)
-            .only(WindowInsetsSides.Start)
-        CoachMarksHost(
-            enabled = coachMarksEnabled,
-            searchSelected = selectedItem.key == homeSearchItem.key,
-            atRoot = showNavigation,
-            navigation = when (LocalHomeLayout.current) {
-                HomeLayout.Vertical -> CoachNavigation.BottomBar
-                HomeLayout.Horizontal -> CoachNavigation.Rail
-            },
-            registry = coachMarks,
-        ) {
-            Row(
-                modifier = Modifier
-                    .windowInsetsPadding(horizontalInsets),
+    ProvideKanjiReadings(preferences = preferences, load = loadKanjiReadings) {
+        ResponsiveLayout {
+            val horizontalInsets = WindowInsets.systemBars
+                .union(WindowInsets.displayCutout)
+                .only(WindowInsetsSides.Start)
+            CoachMarksHost(
+                enabled = coachMarksEnabled,
+                searchSelected = selectedItem.key == homeSearchItem.key,
+                atRoot = showNavigation,
+                navigation = when (LocalHomeLayout.current) {
+                    HomeLayout.Vertical -> CoachNavigation.BottomBar
+                    HomeLayout.Horizontal -> CoachNavigation.Rail
+                },
+                registry = coachMarks,
             ) {
-                val layout = LocalHomeLayout.current
-                if (layout is HomeLayout.Horizontal) {
-                    AnimatedVisibility(
-                        visible = showNavigation,
-                        enter = expandHorizontally(tween(NAVIGATION_ANIMATION_MILLIS)) +
-                            fadeIn(tween(NAVIGATION_ANIMATION_MILLIS)),
-                        exit = shrinkHorizontally(tween(NAVIGATION_ANIMATION_MILLIS)) +
-                            fadeOut(tween(NAVIGATION_ANIMATION_MILLIS)),
-                    ) {
-                        HomeNavigationRail(
-                            items = items,
-                            selectedItem = selectedItem,
-                            onSelect = onSelect,
-                            enabled = showNavigation,
-                        )
-                    }
-                }
-                Column(
+                Row(
                     modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
+                        .windowInsetsPadding(horizontalInsets),
                 ) {
-                    val bottomInset = WindowInsets.systemBars
-                        .union(WindowInsets.displayCutout)
-                        .only(WindowInsetsSides.Bottom)
-                        .asPaddingValues()
-                        .calculateBottomPadding()
-                    // The bar below handles the bottom insets while it is
-                    // there; with it gone the pushed screen owns that edge and
-                    // needs them back. Handing them over in the same tween the
-                    // bar animates in keeps the content from jumping by the
-                    // inset height at either end of the transition.
-                    val consumedBottom by animateDpAsState(
-                        targetValue = if (layout is HomeLayout.Vertical && showNavigation) bottomInset else 0.dp,
-                        animationSpec = tween(NAVIGATION_ANIMATION_MILLIS),
-                        label = "consumed bottom inset",
-                    )
-                    HomeNavigationContent(
-                        section = selectedSection,
-                        leaveApp = leaveApp,
-                        reselectCount = selection.reselectionsOf(selectedItem.key),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .consumeWindowInsets(PaddingValues(bottom = consumedBottom)),
-                    )
-                    if (layout is HomeLayout.Vertical) {
+                    val layout = LocalHomeLayout.current
+                    if (layout is HomeLayout.Horizontal) {
                         AnimatedVisibility(
                             visible = showNavigation,
-                            enter = expandVertically(tween(NAVIGATION_ANIMATION_MILLIS)) +
+                            enter = expandHorizontally(tween(NAVIGATION_ANIMATION_MILLIS)) +
                                 fadeIn(tween(NAVIGATION_ANIMATION_MILLIS)),
-                            exit = shrinkVertically(tween(NAVIGATION_ANIMATION_MILLIS)) +
+                            exit = shrinkHorizontally(tween(NAVIGATION_ANIMATION_MILLIS)) +
                                 fadeOut(tween(NAVIGATION_ANIMATION_MILLIS)),
                         ) {
-                            HomeNavigationBar(
+                            HomeNavigationRail(
                                 items = items,
                                 selectedItem = selectedItem,
                                 onSelect = onSelect,
-                                // A bar on its way out must not switch section
-                                // under the screen that just pushed over it.
                                 enabled = showNavigation,
                             )
+                        }
+                    }
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                    ) {
+                        val bottomInset = WindowInsets.systemBars
+                            .union(WindowInsets.displayCutout)
+                            .only(WindowInsetsSides.Bottom)
+                            .asPaddingValues()
+                            .calculateBottomPadding()
+                        // The bar below handles the bottom insets while it is
+                        // there; with it gone the pushed screen owns that edge and
+                        // needs them back. Handing them over in the same tween the
+                        // bar animates in keeps the content from jumping by the
+                        // inset height at either end of the transition.
+                        val consumedBottom by animateDpAsState(
+                            targetValue = if (layout is HomeLayout.Vertical && showNavigation) bottomInset else 0.dp,
+                            animationSpec = tween(NAVIGATION_ANIMATION_MILLIS),
+                            label = "consumed bottom inset",
+                        )
+                        HomeNavigationContent(
+                            section = selectedSection,
+                            leaveApp = leaveApp,
+                            reselectCount = selection.reselectionsOf(selectedItem.key),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .consumeWindowInsets(PaddingValues(bottom = consumedBottom)),
+                        )
+                        if (layout is HomeLayout.Vertical) {
+                            AnimatedVisibility(
+                                visible = showNavigation,
+                                enter = expandVertically(tween(NAVIGATION_ANIMATION_MILLIS)) +
+                                    fadeIn(tween(NAVIGATION_ANIMATION_MILLIS)),
+                                exit = shrinkVertically(tween(NAVIGATION_ANIMATION_MILLIS)) +
+                                    fadeOut(tween(NAVIGATION_ANIMATION_MILLIS)),
+                            ) {
+                                HomeNavigationBar(
+                                    items = items,
+                                    selectedItem = selectedItem,
+                                    onSelect = onSelect,
+                                    // A bar on its way out must not switch section
+                                    // under the screen that just pushed over it.
+                                    enabled = showNavigation,
+                                )
+                            }
                         }
                     }
                 }

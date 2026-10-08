@@ -186,6 +186,16 @@ FROM kanji_reading
 WHERE kanji IN :literals
 ORDER BY kanji, rowid;
 
+-- Every on and kun reading of every character, in one pass, for the
+-- furigana aligner's per-kanji division (ui/furigana/KanjiReadings.kt).
+-- Read once per process; nanori are left out because the aligner must
+-- never use them, and the table is read whole because the set of
+-- characters it will meet is every word the app can show.
+onAndKunReadings:
+SELECT kanji, type, text
+FROM kanji_reading
+WHERE type IN ('on', 'kun');
+
 kanjiMeaningsForLiterals:
 SELECT kanji, ord, text
 FROM kanji_meaning

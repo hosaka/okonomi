@@ -6,7 +6,11 @@ import cc.hosaka.okonomi.db.ExampleSentence
 import cc.hosaka.okonomi.lang.conjugate
 import cc.hosaka.okonomi.lang.conjugationClassOf
 import cc.hosaka.okonomi.ui.furigana.FuriganaSegment
+import cc.hosaka.okonomi.ui.furigana.KanjiReadings
+import cc.hosaka.okonomi.ui.furigana.RunKey
 import cc.hosaka.okonomi.ui.furigana.alignReading
+import cc.hosaka.okonomi.ui.furigana.divideAlike
+import cc.hosaka.okonomi.ui.furigana.keyed
 import cc.hosaka.okonomi.ui.furigana.transferReading
 
 /**
@@ -40,6 +44,9 @@ internal data class SentencePiece(
  * reads, put to a second use here. It is what tells 来る from 食べる, and
  * without it neither can be told from the other; see [surfaceSegments].
  *
+ * [kanjiReadings] divides each word's runs of kanji per character
+ * where kanjidic settles it (see `alignReading`); null leaves them whole.
+ *
  * Failure is per word, never per sentence. A word the scan could not
  * place is already absent from `sentence.tokens` and simply leaves its
  * characters in a plain piece; a word whose reading cannot be shown to
@@ -49,6 +56,7 @@ internal data class SentencePiece(
 internal fun sentencePieces(
     sentence: ExampleSentence,
     entryPos: Map<Long, List<String>> = emptyMap(),
+    kanjiReadings: KanjiReadings? = null,
 ): List<SentencePiece> {
     val japanese = sentence.japanese
     val pieces = mutableListOf<SentencePiece>()
@@ -65,6 +73,7 @@ internal fun sentencePieces(
                 word = token.word,
                 written = japanese.substring(token.start, token.end),
                 entryPos = entryPos,
+                kanjiReadings = kanjiReadings,
             ),
             word = token.word,
         )
@@ -126,11 +135,12 @@ private fun surfaceSegments(
     word: BreakdownWord,
     written: String,
     entryPos: Map<Long, List<String>>,
+    kanjiReadings: KanjiReadings?,
 ): List<FuriganaSegment> {
     // A word written in kana already reads as itself, which is every
     // particle and most inflected endings.
     val reading = word.reading ?: return listOf(FuriganaSegment(written))
-    if (written == word.text) return alignReading(word.text, reading)
+    if (written == word.text) return alignReading(word.text, reading, kanjiReadings)
     val codes = word.entryId?.let { entryPos[it] }.orEmpty()
     var sawParadigm = false
     var stemShifts = false
@@ -139,11 +149,11 @@ private fun surfaceSegments(
         if (pairs.isEmpty()) return@forEach
         sawParadigm = true
         val matched = pairs.firstOrNull { (formText, _) -> formText == written }
-        if (matched != null) return alignReading(matched.first, matched.second)
-        if (!stemsHoldAcross(word.text, reading, pairs)) stemShifts = true
+        if (matched != null) return alignReading(matched.first, matched.second, kanjiReadings)
+        if (!stemsHoldAcross(word.text, reading, pairs, kanjiReadings)) stemShifts = true
     }
     if (sawParadigm && stemShifts) return listOf(FuriganaSegment(written))
-    return transferReading(word = word.text, reading = reading, surface = written)
+    return transferReading(word = word.text, reading = reading, surface = written, kanjiReadings = kanjiReadings)
 }
 
 /**
@@ -187,19 +197,34 @@ private fun conjugatedPairs(word: String, reading: String, code: String): List<P
  * A row the aligner could not divide is skipped rather than counted, on
  * `ConjugationFurigana`'s reasoning: it arrives as one segment covering
  * the whole form, which is not a stem and says nothing about one.
+ *
+ * The headword and every row are divided per kanji only if all of them
+ * divide (see `divideAlike`): a headword divided and a row whole, or the
+ * reverse, would compare 頭来 against 頭 and find no claim at all. Runs
+ * are matched by where they sit as well as what they write ([RunKey]),
+ * so a stem that writes one kanji twice (日日, ひ+び) keeps both claims.
  */
-private fun stemsHoldAcross(word: String, reading: String, pairs: List<Pair<String, String>>): Boolean {
-    val stated = alignReading(word, reading)
-        .mapNotNull { segment -> segment.reading?.let { segment.text to it } }
+private fun stemsHoldAcross(
+    word: String,
+    reading: String,
+    pairs: List<Pair<String, String>>,
+    kanjiReadings: KanjiReadings?,
+): Boolean {
+    val cells = divideAlike(
+        listOf(alignReading(word, reading)) + pairs.map { (form, formReading) -> alignReading(form, formReading) },
+        kanjiReadings,
+    )
+    val stated = cells.first()
+        .keyed()
+        .mapNotNull { (key, segment) -> segment.reading?.let { key to it } }
         .toMap()
     if (stated.isEmpty()) return true
-    return pairs.all { (form, formReading) ->
-        val cell = alignReading(form, formReading)
+    return cells.drop(1).all { cell ->
         if (cell.size == 1 && cell.single().reading != null) {
             true
         } else {
-            cell.all { segment ->
-                val claimed = stated[segment.text]
+            cell.keyed().all { (key, segment) ->
+                val claimed = stated[key]
                 claimed == null || segment.reading == null || segment.reading == claimed
             }
         }

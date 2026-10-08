@@ -91,7 +91,10 @@ import kotlin.math.max
  * "I'm not making an app for beginners"). The app assumes a reader who
  * reads kana, and such a reader is not harmed by being shown one. Do not
  * restore the parameter as a missing feature; reopening it is a product
- * question, not a gap in the port.
+ * question, not a gap in the port. (The per-kanji switch,
+ * [PER_KANJI_FURIGANA_PREFERENCE], is not that setting: it changes how
+ * finely a reading is divided before it reaches this file, never whether
+ * one is drawn.)
  */
 
 /**
@@ -117,9 +120,11 @@ data class FuriganaSegment(
      * by たべ, is matched *as a unit* — た is the whole of what 食 says,
      * so both halves light. 相殺関税 with そうさいかんぜい over it,
      * matched by そうさい, is not: the run is undivided precisely
-     * because nobody can say which kanji take そうさい, so lighting the
-     * kanji would claim exactly the division [alignReading] refused to
-     * make. Only the kana that matched light there.
+     * because nothing said which kanji take そうさい, so lighting the
+     * kanji would claim exactly the division [alignReading] did not
+     * make. Only the kana that matched light there. Where kanjidic's
+     * readings did divide the run, every kanji is a unit of its own and
+     * the first case applies to each: 相 and 殺 light whole, 関税 not.
      */
     @Immutable
     sealed interface Highlight {
@@ -183,10 +188,13 @@ private fun piecesOf(text: String, highlighted: IntRange?): List<Piece> {
  * is the whole rule. Upstream spread whenever the two counts matched,
  * which over a run of several characters is a claim about which kana
  * belongs to which — 刑事 laid out as 刑=で, 事=か. [alignReading]
- * refuses to make that claim without evidence (相殺 takes そうさい
- * whole) and the renderer must not make it behind its back: 2,399
- * shipped forms arrive here as one undivided run, and the ones whose
- * reading is short enough to have triggered it are overwhelmingly the
+ * makes that claim only on evidence — kanjidic's readings dividing the
+ * run in exactly one way, when per-kanji furigana is on — and then
+ * hands over one segment per kanji, which arrive here as single
+ * characters and take this path on their own. The renderer must not
+ * make the claim behind its back for a run that stayed whole: with the
+ * setting off 2,399 shipped forms arrive here as one undivided run, and
+ * the runs that stay whole even with it on are overwhelmingly the
  * jukujikun and ateji that have no per-character reading at all.
  *
  * The widths decide the rest: a reading wider than its base has nothing
@@ -596,7 +604,7 @@ private fun rubyAnnotatedString(
  * part of either without touching the other. This is the capability the
  * published library has no way to express — it draws a unit in one
  * colour — and the reason a search for そうさい lights only the そうさい
- * of 相殺関税's ruby.
+ * of 相殺関税's ruby while that run is drawn undivided.
  */
 @Composable
 private fun RubyUnit(

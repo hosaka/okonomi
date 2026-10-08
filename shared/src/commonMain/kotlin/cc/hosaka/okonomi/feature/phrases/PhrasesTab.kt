@@ -37,6 +37,7 @@ import cc.hosaka.okonomi.ui.LoadMoreEffect
 import cc.hosaka.okonomi.ui.PagingFooterState
 import cc.hosaka.okonomi.ui.furigana.FuriganaSegment
 import cc.hosaka.okonomi.ui.furigana.FuriganaText
+import cc.hosaka.okonomi.ui.furigana.LocalKanjiReadings
 import cc.hosaka.okonomi.ui.pagingFooterItem
 import cc.hosaka.okonomi.ui.scrollIndicator
 import cc.hosaka.okonomi.ui.theme.atJapaneseReadingSize
@@ -292,13 +293,14 @@ private fun SentenceText(
     entryPos: Map<Long, List<String>>,
 ) {
     val navigation = LocalNavigationController.current
+    val kanjiReadings = LocalKanjiReadings.current
     // A whole sentence's alignment, conjugation, transfers and tap
     // lambdas, and the item recomposes whenever anything else in it
     // does. Derived once per sentence instead: the sentence, the
     // tappable set, the codes and the controller are all fixed for its
-    // life.
-    val pieces = remember(sentence, tappableWords, wordBeingRead, entryPos, navigation) {
-        sentencePieces(sentence, entryPos).map { piece ->
+    // life, and the kanji readings change only with the setting.
+    val pieces = remember(sentence, tappableWords, wordBeingRead, entryPos, navigation, kanjiReadings) {
+        sentencePieces(sentence, entryPos, kanjiReadings).map { piece ->
             RenderedPiece(
                 segments = piece.segments,
                 onTap = piece.word

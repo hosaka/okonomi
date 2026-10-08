@@ -26,6 +26,7 @@ import cc.hosaka.okonomi.db.EntrySense
 import cc.hosaka.okonomi.ui.CommonWordChip
 import cc.hosaka.okonomi.ui.TagChip
 import cc.hosaka.okonomi.ui.furigana.FuriganaText
+import cc.hosaka.okonomi.ui.furigana.LocalKanjiReadings
 import cc.hosaka.okonomi.ui.furigana.alignReading
 import cc.hosaka.okonomi.ui.furigana.withRoomForRuby
 import cc.hosaka.okonomi.ui.theme.Dimens
@@ -110,8 +111,9 @@ private fun Headword(entry: EntryDetail) {
             ),
     ) {
         val reading = entry.headwordReading?.text
-        val segments = remember(entry.headword, reading) {
-            alignReading(entry.headword, reading ?: entry.headword)
+        val kanjiReadings = LocalKanjiReadings.current
+        val segments = remember(entry.headword, reading, kanjiReadings) {
+            alignReading(entry.headword, reading ?: entry.headword, kanjiReadings)
         }
         val style = MaterialTheme.typography.displayMedium
         FuriganaText(

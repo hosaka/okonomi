@@ -14,8 +14,16 @@ package cc.hosaka.okonomi.ui.furigana
  * reading as one unit. 大人 is おとな with no anchor to divide it, and
  * any split invents a reading the dictionary never claimed: a coarse
  * ruby is right, a confident wrong one teaches something false.
- * Splitting a run of several kanji per character is out of scope for the
- * same reason — 相殺 takes そうさい whole.
+ *
+ * A run of several kanji the kana anchored is divided further only on
+ * a second kind of evidence, and only when it is handed in: kanjidic's
+ * own readings of each character ([KanjiReadings]). Where exactly one
+ * way to spend the run's reading on its characters exists, each takes
+ * its share — 相殺 is 相=そう + 殺=さい. Where none does (大人, every
+ * jukujikun) or two do (合気/あいき), the run stays whole, exactly as
+ * it is without the readings at all. Which kanji is drawn over which
+ * kana is a layout matter and is checked on a device only; what is
+ * asserted in tests is the division itself.
  */
 
 /**
@@ -33,8 +41,19 @@ package cc.hosaka.okonomi.ui.furigana
  * which is what lets a caller map an offset in either onto the segments.
  * (An unalignable pair takes the whole reading, so that holds there too;
  * an empty [reading] is the one case where nothing is claimed at all.)
+ *
+ * [kanjiReadings] refines a run of several kanji the kana left whole
+ * into one segment per character, where they divide its reading in
+ * exactly one way (see [divide]). Null — the setting off, or the
+ * readings not loaded yet — gives exactly what this gave before they
+ * existed. A refined run keeps both invariants: its characters and its
+ * readings are cut out of the run's own.
  */
-fun alignReading(word: String, reading: String): List<FuriganaSegment> {
+fun alignReading(
+    word: String,
+    reading: String,
+    kanjiReadings: KanjiReadings? = null,
+): List<FuriganaSegment> {
     if (word.isEmpty()) return emptyList()
     if (reading.isEmpty() || word == reading) return listOf(FuriganaSegment(word))
     val runs = runsOf(word)
@@ -48,7 +67,23 @@ fun alignReading(word: String, reading: String): List<FuriganaSegment> {
         // and takes the reading whole rather than being read over.
         return if (kanaMatches(word, reading)) listOf(FuriganaSegment(word)) else wholeWord(word, reading)
     }
-    return alignRuns(runs, reading) ?: wholeWord(word, reading)
+    val aligned = alignRuns(runs, reading) ?: return wholeWord(word, reading)
+    return aligned.dividedBy(kanjiReadings)
+}
+
+/**
+ * Every run that took a reading, divided per character where
+ * [kanjiReadings] settles it. Only runs that came out of [alignRuns]
+ * are offered: a whole-word fallback is a pair the kana could not
+ * align, and dividing it would be building on a reading already known
+ * not to fit.
+ */
+private fun List<FuriganaSegment>.dividedBy(kanjiReadings: KanjiReadings?): List<FuriganaSegment> {
+    if (kanjiReadings == null) return this
+    return flatMap { segment ->
+        val reading = segment.reading ?: return@flatMap listOf(segment)
+        kanjiReadings.divide(segment.text, reading) ?: listOf(segment)
+    }
 }
 
 /**
@@ -66,7 +101,12 @@ fun alignReading(word: String, reading: String): List<FuriganaSegment> {
  * being spread over ２０歳 and じゅっぷん over 10分.
  *
  * Whole runs only, never part of one: half of an undivided 相殺/そうさい
- * would be exactly the split [alignReading] declined to make.
+ * would be exactly the split [alignReading] declined to make. That holds
+ * with [kanjiReadings] too. The carry is decided over the runs the kana
+ * anchored, and only what is carried is then divided per character, so
+ * 相殺 written 相殺した carries 相=そう + 殺=さい while 相 alone carries
+ * nothing: a character cut from a compound may read differently on its
+ * own (学校's 学 is がっ only because 校 follows it).
  *
  * **Repeating a run is not on its own enough**, and that is what
  * [carryHolds] is for. [alignReading] divided the reading by matching
@@ -91,9 +131,15 @@ fun alignReading(word: String, reading: String): List<FuriganaSegment> {
  * the paradigm together refuse: 二十歳→２０歳, 十分→10分,
  * バカが移る→馬鹿が移る, 見積り→見積もり, 来る→来.
  */
-fun transferReading(word: String, reading: String, surface: String): List<FuriganaSegment> {
+fun transferReading(
+    word: String,
+    reading: String,
+    surface: String,
+    kanjiReadings: KanjiReadings? = null,
+): List<FuriganaSegment> {
     if (surface.isEmpty()) return emptyList()
-    if (surface == word) return alignReading(word, reading)
+    if (surface == word) return alignReading(word, reading, kanjiReadings)
+    // Deliberately without the readings: the carry is decided over whole runs.
     val segments = alignReading(word, reading)
     var matched = 0
     var carried = 0
@@ -111,8 +157,9 @@ fun transferReading(word: String, reading: String, surface: String): List<Furiga
     if (head.none { it.reading != null }) return listOf(FuriganaSegment(surface))
     val rest = surface.substring(matched)
     if (!carryHolds(head.last(), segments.getOrNull(carried), rest)) return listOf(FuriganaSegment(surface))
-    if (rest.isEmpty()) return head
-    return head + FuriganaSegment(rest)
+    val divided = head.dividedBy(kanjiReadings)
+    if (rest.isEmpty()) return divided
+    return divided + FuriganaSegment(rest)
 }
 
 /**
@@ -152,6 +199,27 @@ private fun carryHolds(carried: FuriganaSegment, next: FuriganaSegment?, rest: S
     if (rest[0] == reading.last()) return false
     val okurigana = next?.text ?: return true
     return !(rest.length < okurigana.length && okurigana.endsWith(rest))
+}
+
+/**
+ * Where a run sits in its spelling of a word, and what it writes: the
+ * key a stem's readings are compared under across a conjugation table
+ * (`feature/forms/ConjugationFurigana.kt`) or between a headword and its
+ * forms (`feature/phrases/SentenceFurigana.kt`).
+ *
+ * The characters alone are not enough once a stem is divided per kanji.
+ * A stem writing one kanji twice with two readings (日日 as ひ+び) would
+ * pool both under 日 and look like a reading that shifts, and two stems
+ * would be confused wherever they share a character. A conjugated form
+ * changes only its tail, so the stem sits at the same offset on every
+ * row.
+ */
+internal data class RunKey(val offset: Int, val text: String)
+
+/** Each segment of the cell paired with its [RunKey]. */
+internal fun List<FuriganaSegment>.keyed(): List<Pair<RunKey, FuriganaSegment>> {
+    var offset = 0
+    return map { segment -> (RunKey(offset, segment.text) to segment).also { offset += segment.text.length } }
 }
 
 private fun wholeWord(word: String, reading: String) = listOf(FuriganaSegment(word, reading))
@@ -360,7 +428,7 @@ private val VOWEL_ROWS: Map<Char, String> = mapOf(
  * are written that way (the net-slang ﾀﾋ), which is not enough to carry
  * a folding table for.
  */
-private fun toHiragana(char: Char): Char = when (char.code) {
+internal fun toHiragana(char: Char): Char = when (char.code) {
     in 0x30A1..0x30F6 -> (char.code - 0x60).toChar()
     else -> char
 }

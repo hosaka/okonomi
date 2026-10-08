@@ -3,6 +3,7 @@ package cc.hosaka.okonomi.feature.search
 import cc.hosaka.okonomi.db.TitleSegment
 import cc.hosaka.okonomi.ui.furigana.FuriganaSegment
 import cc.hosaka.okonomi.ui.furigana.FuriganaSegment.Highlight
+import cc.hosaka.okonomi.ui.furigana.kanjidicFixture
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -169,6 +170,83 @@ class TitleFuriganaTest {
         assertEquals(
             listOf(FuriganaSegment("相殺関税", "そうさいかんぜい", Highlight.PartOfText(0..1))),
             segments,
+        )
+    }
+
+    /**
+     * The acceptance case for per-kanji furigana: 動物 matches the start
+     * of 動物園. Divided by kanjidic's readings, 動 and 物 are units of
+     * their own that the match covers entirely, so they light with their
+     * ruby, and 園 — which the match never reached — stays plain.
+     */
+    @Test
+    fun `with kanji readings a match on part of a run lights the kanji it covers`() {
+        val segments = titleFurigana(
+            listOf(
+                TitleSegment("動物園", highlight = 0..1),
+                TitleSegment("どうぶつえん", readsPreviousSegment = true),
+            ),
+            kanjidicFixture,
+        )
+
+        assertEquals(
+            listOf(
+                FuriganaSegment("動", "どう", Highlight.Whole),
+                FuriganaSegment("物", "ぶつ", Highlight.Whole),
+                FuriganaSegment("園", "えん"),
+            ),
+            segments,
+        )
+    }
+
+    /** The twin of the そうさい case above: the reading's offsets land per kanji too. */
+    @Test
+    fun `with kanji readings a match on part of the reading lights whole kanji`() {
+        val segments = titleFurigana(
+            listOf(
+                TitleSegment("相殺関税"),
+                TitleSegment("そうさいかんぜい", highlight = 0..3, readsPreviousSegment = true),
+            ),
+            kanjidicFixture,
+        )
+
+        assertEquals(
+            listOf(
+                FuriganaSegment("相", "そう", Highlight.Whole),
+                FuriganaSegment("殺", "さい", Highlight.Whole),
+                FuriganaSegment("関", "かん"),
+                FuriganaSegment("税", "ぜい"),
+            ),
+            segments,
+        )
+    }
+
+    /** A match that stops inside one kanji's reading lights only that part of its ruby. */
+    @Test
+    fun `with kanji readings a match ending inside a kanji's reading lights part of it`() {
+        val segments = titleFurigana(
+            listOf(
+                TitleSegment("動物園"),
+                TitleSegment("どうぶつえん", highlight = 0..2, readsPreviousSegment = true),
+            ),
+            kanjidicFixture,
+        )
+
+        assertEquals(
+            listOf(
+                FuriganaSegment("動", "どう", Highlight.Whole),
+                FuriganaSegment("物", "ぶつ", Highlight.PartOfReading(0..0)),
+                FuriganaSegment("園", "えん"),
+            ),
+            segments,
+        )
+    }
+
+    @Test
+    fun `with kanji readings a name is divided too`() {
+        assertEquals(
+            listOf(FuriganaSegment("大", "たい"), FuriganaSegment("気", "き")),
+            nameFurigana("大気", "たいき", kanjidicFixture),
         )
     }
 

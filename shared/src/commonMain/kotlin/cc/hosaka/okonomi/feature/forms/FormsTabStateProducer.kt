@@ -8,6 +8,7 @@ import cc.hosaka.okonomi.feature.navigation.state.ScreenStateScope
 import cc.hosaka.okonomi.feature.navigation.state.produceScreenState
 import cc.hosaka.okonomi.lang.Conjugation
 import cc.hosaka.okonomi.lang.conjugations
+import cc.hosaka.okonomi.ui.furigana.KanjiReadings
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -30,20 +31,28 @@ fun produceFormsTabState(
     base: String,
     reading: String?,
     posCodes: List<String>,
+    kanjiReadings: KanjiReadings?,
 ): State<FormsTabState> {
     // The initial state is the finished table, headed by the JMdict
     // code: there is nothing to wait for, so the first frame is already
     // the answer and only the heading arrives later.
-    val initial = remember(base, reading, posCodes) {
-        FormsTabState(content = formsContent(base, reading, posCodes, labels = emptyMap()))
+    val initial = remember(base, reading, posCodes, kanjiReadings) {
+        FormsTabState(content = formsContent(base, reading, posCodes, labels = emptyMap(), kanjiReadings))
     }
     return produceScreenState(
         // Keyed per entry beside the entry's own screen state, so two
         // entries on the same back stack cannot share one tab's tables.
-        key = "entry-forms-$entryId",
+        // Keyed per readings value too: the producer is created once per
+        // key and never sees a later argument, so turning per-kanji
+        // furigana on or off has to reach a producer of its own to
+        // redraw the table without a restart. Keyed on the instance
+        // (KanjiReadings keeps identity hashing) rather than on whether
+        // there is one, so a different value can never reuse a producer
+        // built over another.
+        key = "entry-forms-$entryId" + kanjiReadings?.let { "-per-kanji-${it.hashCode()}" }.orEmpty(),
         initial = initial,
     ) {
-        formsTabStateProducer(base, reading, posCodes)
+        formsTabStateProducer(base, reading, posCodes, kanjiReadings)
     }
 }
 
@@ -60,6 +69,7 @@ suspend fun ScreenStateScope.formsTabStateProducer(
     base: String,
     reading: String?,
     posCodes: List<String>,
+    kanjiReadings: KanjiReadings? = null,
     load: suspend (List<String>) -> Map<String, String> = { loadTagLabels(it) },
 ): Flow<FormsTabState> {
     val conjugations = conjugations(base, posCodes)
@@ -84,7 +94,9 @@ suspend fun ScreenStateScope.formsTabStateProducer(
             emitAll(
                 labels.map { resolved ->
                     FormsTabState(
-                        content = FormsTabContentState.Ready(conjugations.tables(reading, resolved.orEmpty())),
+                        content = FormsTabContentState.Ready(
+                            conjugations.tables(reading, resolved.orEmpty(), kanjiReadings),
+                        ),
                     )
                 },
             )
@@ -113,12 +125,13 @@ private fun formsContent(
     reading: String?,
     posCodes: List<String>,
     labels: Map<String, String>,
+    kanjiReadings: KanjiReadings?,
 ): FormsTabContentState {
     val conjugations = conjugations(base, posCodes)
     return if (conjugations.isEmpty()) {
         notConjugable(posCodes)
     } else {
-        FormsTabContentState.Ready(conjugations.tables(reading, labels))
+        FormsTabContentState.Ready(conjugations.tables(reading, labels, kanjiReadings))
     }
 }
 
@@ -133,9 +146,10 @@ private fun notConjugable(posCodes: List<String>) =
 private fun List<Conjugation>.tables(
     reading: String?,
     labels: Map<String, String>,
+    kanjiReadings: KanjiReadings?,
 ): List<ConjugationTable> = map { conjugation ->
     ConjugationTable(
         className = labels[conjugation.code] ?: conjugation.code,
-        rows = conjugationRows(conjugation, reading),
+        rows = conjugationRows(conjugation, reading, kanjiReadings),
     )
 }

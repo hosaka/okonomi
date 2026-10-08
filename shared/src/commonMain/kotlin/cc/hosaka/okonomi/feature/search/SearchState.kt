@@ -8,6 +8,7 @@ import cc.hosaka.okonomi.db.forEachWord
 import cc.hosaka.okonomi.db.matchedToken
 import cc.hosaka.okonomi.ui.PagingFooterState
 import cc.hosaka.okonomi.ui.furigana.FuriganaSegment
+import cc.hosaka.okonomi.ui.furigana.KanjiReadings
 import cc.hosaka.okonomi.ui.furigana.alignReading
 
 @Immutable
@@ -150,10 +151,14 @@ sealed interface SearchResultsState {
  * A plain run is split at the highlight's boundaries, so it stays
  * character-exact. A run with a reading lights whole when the match
  * covers a whole half of it and only in part when it does not: たべ
- * against 食べる lights 食-with-た as a unit and べ exactly, while
- * そうさい against 相殺関税 — one undivided run reading そうさいかんぜい
- * — lights the そうさい of the ruby and leaves the kanji alone, because
- * which of those kanji take そうさい is the thing nobody can say.
+ * against 食べる lights 食-with-た as a unit and べ exactly. Without
+ * [kanjiReadings], そうさい against 相殺関税 — one undivided run reading
+ * そうさいかんぜい — lights the そうさい of the ruby and leaves the kanji
+ * alone, because which of those kanji take そうさい is the thing nobody
+ * has said. With them the run arrives divided per kanji wherever
+ * kanjidic settles it, so each kanji is a run of its own and the same
+ * rule lights 相 and 殺 whole with their ruby, and 関 and 税 not at all:
+ * 動物 against 動物園 lights 動 and 物 and leaves 園.
  *
  * Both the form's own offsets and the reading's are honoured, because a
  * Japanese query matches through whichever of the two it was typed as.
@@ -161,7 +166,10 @@ sealed interface SearchResultsState {
  * Pure so the offset math is testable rather than buried in a
  * composable.
  */
-fun titleFurigana(segments: List<TitleSegment>): List<FuriganaSegment> {
+fun titleFurigana(
+    segments: List<TitleSegment>,
+    kanjiReadings: KanjiReadings? = null,
+): List<FuriganaSegment> {
     val title = mutableListOf<FuriganaSegment>()
     var index = 0
     while (index < segments.size) {
@@ -176,7 +184,7 @@ fun titleFurigana(segments: List<TitleSegment>): List<FuriganaSegment> {
         val aligned = if (reading == null) {
             listOf(FuriganaSegment(segment.text))
         } else {
-            alignReading(segment.text, reading.text)
+            alignReading(segment.text, reading.text, kanjiReadings)
         }
         title += highlighted(aligned, segment.highlight, reading?.highlight)
         index += if (reading == null) 1 else 2
@@ -193,11 +201,15 @@ fun titleFurigana(segments: List<TitleSegment>): List<FuriganaSegment> {
  * so there is nothing a highlight would tell the reader that the row does
  * not already say. A kana-only name is drawn as itself, with no ruby.
  */
-fun nameFurigana(kanji: String?, reading: String): List<FuriganaSegment> =
+fun nameFurigana(
+    kanji: String?,
+    reading: String,
+    kanjiReadings: KanjiReadings? = null,
+): List<FuriganaSegment> =
     if (kanji.isNullOrEmpty()) {
         listOf(FuriganaSegment(reading))
     } else {
-        alignReading(kanji, reading)
+        alignReading(kanji, reading, kanjiReadings)
     }
 
 /** What separates two title segments that could not be paired. */
@@ -245,9 +257,11 @@ private fun highlighted(
  * halves light: 食 reads た and nothing else, so a search for たべ has
  * matched 食 as much as it has matched た. A half matched only in part
  * means the run is larger than the match, and only the characters
- * actually typed light — 相殺関税 is one undivided run, and lighting its
- * kanji for a match on そうさい would claim そうさい belongs to 相殺,
- * which is the split [alignReading] declined to make.
+ * actually typed light — where 相殺関税 is one undivided run, lighting
+ * its kanji for a match on そうさい would claim そうさい belongs to 相殺,
+ * which is the split [alignReading] declined to make. Where kanjidic
+ * divided it, each kanji is its own run and this rule applies to each:
+ * the match covers 相 and 殺 entirely and lights them whole.
  */
 private fun rubyHighlight(
     text: IntRange?,

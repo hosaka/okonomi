@@ -61,6 +61,7 @@ import cc.hosaka.okonomi.ui.coach.CoachTarget
 import cc.hosaka.okonomi.ui.coach.coachMarkTarget
 import cc.hosaka.okonomi.ui.coach.coachMarksWanted
 import cc.hosaka.okonomi.ui.furigana.FuriganaText
+import cc.hosaka.okonomi.ui.furigana.LocalKanjiReadings
 import cc.hosaka.okonomi.ui.pagingFooterItem
 import cc.hosaka.okonomi.ui.scrollIndicator
 import cc.hosaka.okonomi.ui.theme.Dimens
@@ -399,6 +400,7 @@ internal fun SearchResultRow(
     onClick: () -> Unit,
 ) {
     val copy = rememberClipboardCopy()
+    val kanjiReadings = LocalKanjiReadings.current
     ListCard(
         onClick = onClick,
         onClickLabel = stringResource(Res.string.search_result_open),
@@ -417,7 +419,7 @@ internal fun SearchResultRow(
             // evenly and squeezed the headword — the one thing on the
             // row that must be readable — behind an explanation of it.
             FuriganaText(
-                segments = remember(hit) { titleFurigana(hit.titleSegments) },
+                segments = remember(hit, kanjiReadings) { titleFurigana(hit.titleSegments, kanjiReadings) },
                 style = MaterialTheme.typography.titleMedium.atJapaneseReadingSize(),
                 highlightStyle = SpanStyle(
                     color = MaterialTheme.colorScheme.primary,
@@ -479,6 +481,7 @@ private fun NameResultRow(
     name: NameHit,
 ) {
     val copy = rememberClipboardCopy()
+    val kanjiReadings = LocalKanjiReadings.current
     ListCard(
         // A name written only in kana has no kanji form, and the
         // reading IS what the row shows in that case.
@@ -489,7 +492,7 @@ private fun NameResultRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             FuriganaText(
-                segments = remember(name) { nameFurigana(name.kanji, name.reading) },
+                segments = remember(name, kanjiReadings) { nameFurigana(name.kanji, name.reading, kanjiReadings) },
                 style = MaterialTheme.typography.titleMedium.atJapaneseReadingSize(),
             )
             name.types.forEach { code ->

@@ -5,7 +5,11 @@ import cc.hosaka.okonomi.lang.Form
 import cc.hosaka.okonomi.lang.conjugate
 import cc.hosaka.okonomi.lang.conjugationClassOf
 import cc.hosaka.okonomi.ui.furigana.FuriganaSegment
+import cc.hosaka.okonomi.ui.furigana.KanjiReadings
+import cc.hosaka.okonomi.ui.furigana.RunKey
 import cc.hosaka.okonomi.ui.furigana.alignReading
+import cc.hosaka.okonomi.ui.furigana.divideAlike
+import cc.hosaka.okonomi.ui.furigana.keyed
 
 /**
  * The rows of one table, with furigana on the cells whose stem shifts
@@ -24,9 +28,22 @@ import cc.hosaka.okonomi.ui.furigana.alignReading
  * work out and what this tab exists to show. 出来る sits in the same
  * table as 為 and is left plain by the same rule, being constant within
  * it.
+ *
+ * [kanjiReadings] divides a stem of several kanji per character where
+ * kanjidic settles it — but only where it settles it on every row (see
+ * `divideAlike`). Each row's stem is divided against that row's own
+ * reading, so one row can divide while another has no division at all;
+ * then the whole table stays undivided, so rows are only ever compared
+ * like for like. Divided, each kanji is compared with the kanji at the
+ * same place in the other rows, and one whose reading never shifts drops
+ * its ruby by the same rule a whole stem does.
  */
-internal fun conjugationRows(conjugation: Conjugation, reading: String?): List<ConjugationRow> {
-    val aligned = alignedRows(conjugation, reading)
+internal fun conjugationRows(
+    conjugation: Conjugation,
+    reading: String?,
+    kanjiReadings: KanjiReadings? = null,
+): List<ConjugationRow> {
+    val aligned = alignedRows(conjugation, reading)?.dividedAlike(kanjiReadings)
         ?: return conjugation.forms.map { form -> plainRow(form) }
     val varying = varyingStems(aligned)
     return aligned.map { row ->
@@ -63,6 +80,19 @@ private fun alignedRows(conjugation: Conjugation, reading: String?): List<Conjug
     }
 }
 
+/** The rows with their kanji runs divided per kanji, if they all divide; see `divideAlike`. */
+private fun List<ConjugationRow>.dividedAlike(kanjiReadings: KanjiReadings?): List<ConjugationRow> {
+    val cells = divideAlike(flatMap { row -> listOfNotNull(row.affirmative, row.negative) }, kanjiReadings)
+    var next = 0
+    return map { row ->
+        ConjugationRow(
+            id = row.id,
+            affirmative = cells[next++],
+            negative = row.negative?.let { cells[next++] },
+        )
+    }
+}
+
 private fun plainRow(form: Form) = ConjugationRow(
     id = form.id,
     affirmative = listOf(FuriganaSegment(form.affirmative)),
@@ -71,8 +101,8 @@ private fun plainRow(form: Form) = ConjugationRow(
 
 /**
  * The written runs that take more than one reading somewhere in the
- * table. Keyed by the characters themselves, so a stem appearing in
- * several rows is one entry however many rows carry it.
+ * table. Keyed by [RunKey], so a stem appearing in several rows is one
+ * entry however many rows carry it.
  *
  * A cell the aligner could not divide is skipped rather than counted. It
  * arrives as one segment covering the whole conjugated form, which is
@@ -82,14 +112,14 @@ private fun plainRow(form: Form) = ConjugationRow(
  * divided — both end in a plain cell, but only the first is a statement
  * about the verb.
  */
-private fun varyingStems(rows: List<ConjugationRow>): Set<String> {
-    val readings = mutableMapOf<String, MutableSet<String>>()
+private fun varyingStems(rows: List<ConjugationRow>): Set<RunKey> {
+    val readings = mutableMapOf<RunKey, MutableSet<String>>()
     rows.forEach { row ->
         listOfNotNull(row.affirmative, row.negative).forEach { cell ->
             if (cell.size == 1 && cell.single().reading != null) return@forEach
-            cell.forEach { segment ->
+            cell.keyed().forEach { (key, segment) ->
                 val reading = segment.reading ?: return@forEach
-                readings.getOrPut(segment.text) { mutableSetOf() } += reading
+                readings.getOrPut(key) { mutableSetOf() } += reading
             }
         }
     }
@@ -102,10 +132,10 @@ private fun varyingStems(rows: List<ConjugationRow>): Set<String> {
  * all is one plain string again, the way it was before the alignment
  * cut it up.
  */
-private fun List<FuriganaSegment>.keepReadingsOf(varying: Set<String>): List<FuriganaSegment> {
+private fun List<FuriganaSegment>.keepReadingsOf(varying: Set<RunKey>): List<FuriganaSegment> {
     val kept = mutableListOf<FuriganaSegment>()
-    forEach { segment ->
-        val annotated = segment.reading != null && segment.text in varying
+    keyed().forEach { (key, segment) ->
+        val annotated = segment.reading != null && key in varying
         val previous = kept.lastOrNull()
         // Runs join only when they are the same run: no reading on
         // either, and the same highlight. This is the one place segments

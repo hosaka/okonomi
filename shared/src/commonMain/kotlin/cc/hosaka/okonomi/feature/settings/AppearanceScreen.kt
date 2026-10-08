@@ -23,6 +23,7 @@ import cc.hosaka.okonomi.ui.toolbar.LargeToolbar
 import cc.hosaka.okonomi.ui.toolbar.util.ToolbarBehavior
 import okonomi.shared.generated.resources.Res
 import okonomi.shared.generated.resources.appearance_back
+import okonomi.shared.generated.resources.appearance_per_kanji_furigana
 import okonomi.shared.generated.resources.appearance_show_hints
 import okonomi.shared.generated.resources.appearance_title
 import org.jetbrains.compose.resources.stringResource
@@ -66,6 +67,16 @@ fun AppearanceScreen(
                 text = stringResource(Res.string.appearance_show_hints),
                 checked = showHints,
                 onCheckedChange = state.onShowHintsChange,
+                modifier = Modifier
+                    .fillMaxWidth(),
+            )
+        }
+        val perKanjiFurigana = state.perKanjiFurigana
+        if (perKanjiFurigana != null) {
+            SwitchRow(
+                text = stringResource(Res.string.appearance_per_kanji_furigana),
+                checked = perKanjiFurigana,
+                onCheckedChange = state.onPerKanjiFuriganaChange,
                 modifier = Modifier
                     .fillMaxWidth(),
             )

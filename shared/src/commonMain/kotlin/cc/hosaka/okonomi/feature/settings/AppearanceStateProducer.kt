@@ -8,8 +8,10 @@ import cc.hosaka.okonomi.prefs.PreferenceStore
 import cc.hosaka.okonomi.prefs.appPreferences
 import cc.hosaka.okonomi.ui.coach.COACH_MARKS_ENABLED_DEFAULT
 import cc.hosaka.okonomi.ui.coach.COACH_MARKS_ENABLED_PREFERENCE
+import cc.hosaka.okonomi.ui.furigana.PER_KANJI_FURIGANA_DEFAULT
+import cc.hosaka.okonomi.ui.furigana.PER_KANJI_FURIGANA_PREFERENCE
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 
 @Composable
 fun produceAppearanceScreenState(): State<AppearanceState> = produceScreenState(
@@ -20,7 +22,7 @@ fun produceAppearanceScreenState(): State<AppearanceState> = produceScreenState(
 }
 
 /**
- * The switch reflects only what the store says: a tap writes, and the new
+ * The switches reflect only what the store says: a tap writes, and the new
  * value comes back through [PreferenceStore.booleanFlow]. A write that
  * fails therefore leaves the switch showing what is actually stored.
  * Nothing is emitted before the store answers, so the state stays at its
@@ -32,11 +34,18 @@ suspend fun ScreenStateScope.appearanceScreenStateProducer(
     val onShowHintsChange: (Boolean) -> Unit = { enabled ->
         preferences.setBoolean(COACH_MARKS_ENABLED_PREFERENCE, enabled)
     }
-    return preferences.booleanFlow(COACH_MARKS_ENABLED_PREFERENCE, COACH_MARKS_ENABLED_DEFAULT)
-        .map { showHints ->
-            AppearanceState(
-                showHints = showHints,
-                onShowHintsChange = onShowHintsChange,
-            )
-        }
+    val onPerKanjiFuriganaChange: (Boolean) -> Unit = { enabled ->
+        preferences.setBoolean(PER_KANJI_FURIGANA_PREFERENCE, enabled)
+    }
+    return combine(
+        preferences.booleanFlow(COACH_MARKS_ENABLED_PREFERENCE, COACH_MARKS_ENABLED_DEFAULT),
+        preferences.booleanFlow(PER_KANJI_FURIGANA_PREFERENCE, PER_KANJI_FURIGANA_DEFAULT),
+    ) { showHints, perKanjiFurigana ->
+        AppearanceState(
+            showHints = showHints,
+            onShowHintsChange = onShowHintsChange,
+            perKanjiFurigana = perKanjiFurigana,
+            onPerKanjiFuriganaChange = onPerKanjiFuriganaChange,
+        )
+    }
 }

@@ -180,6 +180,33 @@ class ReadingTransferTest {
         )
     }
 
+    /**
+     * The same with kanjidic's readings. The carry is still decided over
+     * whole runs, and only what is carried is divided: 相殺した gets 相
+     * and 殺 each with their own reading, and 相 alone still gets
+     * nothing — 相 on its own is not entitled to the reading it takes in
+     * a compound (学校's 学 is がっ only because 校 follows it).
+     */
+    @Test
+    fun `with kanji readings a carried run is divided and part of one still gets nothing`() {
+        assertEquals(
+            "[相[そう]][殺[さい]]した",
+            rendered(transferReading("相殺", "そうさい", surface = "相殺した", kanjiReadings = kanjidicFixture)),
+        )
+        assertEquals(
+            "相",
+            rendered(transferReading("相殺", "そうさい", surface = "相", kanjiReadings = kanjidicFixture)),
+        )
+        assertEquals(
+            "学",
+            rendered(transferReading("学校", "がっこう", surface = "学", kanjiReadings = kanjidicFixture)),
+        )
+        assertEquals(
+            "[学[がっ]][校[こう]]",
+            rendered(transferReading("学校", "がっこう", surface = "学校", kanjiReadings = kanjidicFixture)),
+        )
+    }
+
     @Test
     fun `a run the surface repeats keeps its reading even when more follows`() {
         assertEquals(

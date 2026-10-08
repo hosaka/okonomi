@@ -5,6 +5,7 @@ import cc.hosaka.okonomi.feature.navigation.state.ScreenStateViewModel
 import cc.hosaka.okonomi.prefs.FakePreferenceStore
 import cc.hosaka.okonomi.prefs.PreferenceStore
 import cc.hosaka.okonomi.ui.coach.COACH_MARKS_ENABLED_PREFERENCE
+import cc.hosaka.okonomi.ui.furigana.PER_KANJI_FURIGANA_PREFERENCE
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -87,6 +88,29 @@ class AppearanceStateProducerTest {
 
         assertEquals(listOf(COACH_MARKS_ENABLED_PREFERENCE to false), preferences.writes)
         assertEquals(false, states.first().showHints)
+    }
+
+    @Test
+    fun `per-kanji furigana is on when the key was never written`() = runTest(dispatcher) {
+        val state = FakeScreenStateScope()
+            .appearanceScreenStateProducer(preferences = FakePreferenceStore())
+            .first()
+
+        assertEquals(true, state.perKanjiFurigana)
+    }
+
+    @Test
+    fun `the furigana callback writes its own key and the state follows the store`() = runTest(dispatcher) {
+        val preferences = FakePreferenceStore()
+        val states = FakeScreenStateScope().appearanceScreenStateProducer(preferences = preferences)
+
+        val onChange = assertNotNull(states.first().onPerKanjiFuriganaChange)
+        onChange(false)
+
+        assertEquals(listOf(PER_KANJI_FURIGANA_PREFERENCE to false), preferences.writes)
+        val state = states.first()
+        assertEquals(false, state.perKanjiFurigana)
+        assertEquals(true, state.showHints, "the hints switch is a different setting")
     }
 }
 
