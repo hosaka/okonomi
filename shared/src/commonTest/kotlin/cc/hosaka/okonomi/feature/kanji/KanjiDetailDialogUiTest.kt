@@ -106,18 +106,18 @@ class KanjiDetailDialogUiTest : ComposeUiTestBase() {
             val labels = Labels()
             setContent {
                 labels.read()
-                KanjiListUnderTest(listOf(shoku(strokePaths = STROKES)))
+                KanjiListUnderTest(listOf(shoku(strokePaths = SHOKU_STROKES)))
             }
 
             // The move itself: neither section is on the card any more,
             // and the overlay's heading is not on screen either.
-            onAllNodesWithText(LITERAL).assertCountEquals(0)
+            onAllNodesWithText(SHOKU_LITERAL).assertCountEquals(0)
             onAllNodesWithText(NANORI).assertCountEquals(0)
             onAllNodesWithText(RADICAL).assertCountEquals(0)
 
             onNode(hasClickLabel(labels.open)).performClick()
 
-            onNodeWithText(LITERAL).assertIsDisplayed()
+            onNodeWithText(SHOKU_LITERAL).assertIsDisplayed()
             onNodeWithText(NANORI).assertIsDisplayed()
             onNodeWithText(RADICAL).assertIsDisplayed()
             onNode(hasClickLabel(labels.radical)).assertIsDisplayed()
@@ -138,13 +138,13 @@ class KanjiDetailDialogUiTest : ComposeUiTestBase() {
             val labels = Labels()
             setContent {
                 labels.read()
-                KanjiListUnderTest(listOf(shoku(strokePaths = STROKES)))
+                KanjiListUnderTest(listOf(shoku(strokePaths = SHOKU_STROKES)))
             }
 
             onNode(hasClickLabel(labels.open)).performClick()
 
             onNode(hasPaneTitle(labels.title)).assertExists()
-            onNodeWithText(LITERAL).assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+            onNodeWithText(SHOKU_LITERAL).assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
         }
 
     /**
@@ -399,7 +399,7 @@ class KanjiDetailDialogUiTest : ComposeUiTestBase() {
 
             onNode(hasLongClickLabel(labels.copy)).performTouchInput { longClick() }
 
-            assertEquals(LITERAL, clipboard.copied?.text)
+            assertEquals(SHOKU_LITERAL, clipboard.copied?.text)
             onNodeWithText(NANORI).assertDoesNotExist()
         }
 
@@ -422,7 +422,7 @@ class KanjiDetailDialogUiTest : ComposeUiTestBase() {
 
         onNode(hasLongClickLabel(labels.copy)).performTouchInput { longClick() }
 
-        assertEquals(LITERAL, clipboard.copied?.text)
+        assertEquals(SHOKU_LITERAL, clipboard.copied?.text)
     }
 
     /**
@@ -505,7 +505,7 @@ class KanjiDetailDialogUiTest : ComposeUiTestBase() {
         val labels = Labels()
         setContent {
             labels.read()
-            KanjiListUnderTest(listOf(shoku(strokePaths = STROKES)))
+            KanjiListUnderTest(listOf(shoku(strokePaths = SHOKU_STROKES)))
         }
 
         onNode(hasClickLabel(labels.play)).performClick()
@@ -671,10 +671,10 @@ private fun ComposeUiTest.assertUnshowableRestoreClears(restoredList: List<Kanji
 
     val first = host.recreate(this) { characters = restoredList }
 
-    assertTrue(LITERAL in first.values.flatten())
+    assertTrue(SHOKU_LITERAL in first.values.flatten())
     onNode(hasPaneTitle(labels.title)).assertDoesNotExist()
     val second = host.registry.performSave()
-    assertFalse(LITERAL in second.values.flatten())
+    assertFalse(SHOKU_LITERAL in second.values.flatten())
 }
 
 /**
@@ -727,12 +727,12 @@ private class Labels {
 
     @Composable
     fun read() {
-        open = stringResource(Res.string.entry_kanji_detail_open, LITERAL)
+        open = stringResource(Res.string.entry_kanji_detail_open, SHOKU_LITERAL)
         radical = stringResource(Res.string.entry_kanji_radical_search, RADICAL)
         play = stringResource(Res.string.entry_kanji_stroke_order_play)
         copy = stringResource(Res.string.list_card_copy)
-        title = stringResource(Res.string.entry_kanji_detail_title, LITERAL)
-        close = stringResource(Res.string.entry_kanji_detail_close, LITERAL)
+        title = stringResource(Res.string.entry_kanji_detail_title, SHOKU_LITERAL)
+        close = stringResource(Res.string.entry_kanji_detail_close, SHOKU_LITERAL)
     }
 }
 
@@ -775,8 +775,6 @@ private class RecordingClipboard : ClipboardManager {
     override fun getText(): AnnotatedString? = copied
 }
 
-private const val LITERAL = "食"
-
 private const val NANORI = "ぐい"
 
 private const val OTHER_NANORI = "あき"
@@ -790,17 +788,12 @@ private const val MEANING = "eat"
  */
 private const val RADICAL = "人"
 
-private val STROKES = listOf(
-    "M52.75,10.5c0.11,0.98-0.19,2.67-0.97,3.93",
-    "M52.75,16.25c5.09,4.8,25.71,19.61,33.7,24.9",
-)
-
 private fun shoku(
     nameReadings: List<String> = listOf(NANORI),
     radicals: List<String> = listOf(RADICAL),
     strokePaths: List<String> = emptyList(),
 ) = KanjiCharacter(
-    literal = LITERAL,
+    literal = SHOKU_LITERAL,
     strokeCount = 9,
     grade = 2,
     jlpt = 4,

@@ -44,15 +44,15 @@ class StrokeOrderSlotUiTest : ComposeUiTestBase() {
         lateinit var description: String
         lateinit var playLabel: String
         setContent {
-            description = stringResource(Res.string.entry_kanji_stroke_order_of, LITERAL)
+            description = stringResource(Res.string.entry_kanji_stroke_order_of, SHOKU_LITERAL)
             playLabel = stringResource(Res.string.entry_kanji_stroke_order_play)
-            CardUnderTest(listOf(FIRST_STROKE, SECOND_STROKE))
+            CardUnderTest(listOf(SHOKU_FIRST_STROKE, SHOKU_SECOND_STROKE))
         }
 
         onNodeWithContentDescription(description).assertIsDisplayed().assertHasClickAction()
         // The diagram draws the character, so the card must not also
         // print it: that duplication is what this slot replaced.
-        onNodeWithText(LITERAL).assertDoesNotExist()
+        onNodeWithText(SHOKU_LITERAL).assertDoesNotExist()
         // The label is not decoration: it is the only thing that tells a
         // screen reader what tapping the diagram does, and a click action
         // with no label announces nothing but "button".
@@ -64,7 +64,7 @@ class StrokeOrderSlotUiTest : ComposeUiTestBase() {
         lateinit var description: String
         lateinit var playLabel: String
         setContent {
-            description = stringResource(Res.string.entry_kanji_stroke_order_of, LITERAL)
+            description = stringResource(Res.string.entry_kanji_stroke_order_of, SHOKU_LITERAL)
             playLabel = stringResource(Res.string.entry_kanji_stroke_order_play)
             CardUnderTest(emptyList())
         }
@@ -73,7 +73,7 @@ class StrokeOrderSlotUiTest : ComposeUiTestBase() {
         onNodeWithContentDescription(description).assertDoesNotExist()
         // With no diagram the literal is the only thing identifying the
         // card, so it comes back rather than leaving a nameless square.
-        onNodeWithText(LITERAL).assertIsDisplayed()
+        onNodeWithText(SHOKU_LITERAL).assertIsDisplayed()
     }
 
     /**
@@ -86,24 +86,18 @@ class StrokeOrderSlotUiTest : ComposeUiTestBase() {
         lateinit var description: String
         lateinit var playLabel: String
         setContent {
-            description = stringResource(Res.string.entry_kanji_stroke_order_of, LITERAL)
+            description = stringResource(Res.string.entry_kanji_stroke_order_of, SHOKU_LITERAL)
             playLabel = stringResource(Res.string.entry_kanji_stroke_order_play)
-            CardUnderTest(listOf(FIRST_STROKE, "this is not path data"))
+            CardUnderTest(listOf(SHOKU_FIRST_STROKE, "this is not path data"))
         }
 
         onAllNodes(hasClickLabel(playLabel)).assertCountEquals(0)
         onNodeWithContentDescription(description).assertDoesNotExist()
         // With no diagram the literal is the only thing identifying the
         // card, so it comes back rather than leaving a nameless square.
-        onNodeWithText(LITERAL).assertIsDisplayed()
+        onNodeWithText(SHOKU_LITERAL).assertIsDisplayed()
     }
 }
-
-private const val LITERAL = "食"
-
-private const val FIRST_STROKE = "M52.75,10.5c0.11,0.98-0.19,2.67-0.97,3.93"
-
-private const val SECOND_STROKE = "M52.75,16.25c5.09,4.8,25.71,19.61,33.7,24.9"
 
 @Composable
 private fun CardUnderTest(strokePaths: List<String>) {
@@ -111,7 +105,7 @@ private fun CardUnderTest(strokePaths: List<String>) {
         Surface {
             KanjiCard(
                 KanjiCharacter(
-                    literal = LITERAL,
+                    literal = SHOKU_LITERAL,
                     strokeCount = 9,
                     grade = 2,
                     jlpt = 4,
