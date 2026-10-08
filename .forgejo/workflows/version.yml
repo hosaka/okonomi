@@ -104,30 +104,10 @@ jobs:
             exit 1
           fi
 
-          # Play shows at most 500 characters. Only the bullets go there, so
-          # a cut can never leave a heading with nothing under it, and whole
-          # bullets are kept while they fit. mawk (Debian's awk) counts bytes
-          # rather than characters, which only errs short.
-          changelog="fastlane/metadata/android/en-US/changelogs/$version_code.txt"
-          cut_marker=$(mktemp)
-          mkdir -p "$(dirname "$changelog")"
-          grep '^- ' ".changes/v$next.md" \
-            | awk -v max=500 '
-                { add = length($0) + (NR > 1 ? 1 : 0) }
-                total + add > max { cut = 1; exit }
-                { total += add; print }
-                END { if (cut) print "cut" > "/dev/stderr" }' \
-            > "$changelog" 2> "$cut_marker"
-          if [ -s "$cut_marker" ]; then
-            if [ ! -s "$changelog" ]; then
-              echo "::error::The first note in .changes/v$next.md exceeds Play's 500 characters; shorten it." >&2
-              exit 1
-            fi
-            echo "::warning::Release notes exceed Play's 500 characters; $changelog keeps only the bullets that fit. The Forgejo release has them in full."
-          fi
-          # An explicit bump with nothing pending has no notes; an empty file
-          # would publish a blank "What's new" rather than none.
-          [ -s "$changelog" ] || rm "$changelog"
+          # The Play "What's new" text: whole bullets up to 500 characters,
+          # and no file when there are none. See the script for the rules.
+          sh .forgejo/scripts/release-notes.sh play ".changes/v$next.md" \
+            "fastlane/metadata/android/en-US/changelogs/$version_code.txt"
 
           git config user.name "okonomi[bot]"
           git config user.email "noreply@code.hosaka.cc"

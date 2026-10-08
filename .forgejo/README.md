@@ -4,16 +4,16 @@ Workflows run inside [a purpose-built image](./ci-image) carrying Zulu 21, the A
 
 | Workflow | Runs on | Runs what |
 |---|---|---|
-| `pr-test.yml` | every PR | tests, migration verification, AGP lint, Android and iOS compilation (including the screenshot test sources) |
+| `pr-test.yml` | every PR | tests, migration verification, AGP lint, Android and iOS compilation (including the screenshot test sources), and a dry-run batch of the pending release notes |
 | `build-android.yml` | merge to `main` | builds a release APK to prove the packaging path still works |
 | `build-ios.yml` | manual dispatch | placeholder until a macOS runner exists |
 | `release.yml` | tag `v*` | builds a signed APK and publishes it as a release, with that version's notes as the body |
 | `version.yml` | manual dispatch | batches the release notes, bumps the version, commits and tags - then runs `release.yml` |
 
 
-**Writing release notes:** run `changie new` ([changie](https://changie.dev)) and commit the fragment it writes to `.changes/unreleased/` with the change it describes. Each fragment has a kind: `Added`, `Changed`, `Deprecated` and `Removed` bump the minor version, `Fixed` and `Security` bump the patch. Nothing bumps major; 1.0 is a deliberate `major` dispatch.
+**Writing release notes:** run `changie new` ([changie](https://changie.dev)) and commit the fragment it writes to `.changes/unreleased/` with the change it describes. Each fragment has a kind: `Added`, `Changed`, `Deprecated` and `Removed` bump the minor version, `Fixed` and `Security` bump the patch. Nothing bumps major; 1.0 is a deliberate `major` dispatch. Every PR runs `changie batch auto --dry-run` over the pending fragments and passes the result through `release-notes.sh`'s `play` and `body`, the extractors the release itself uses. An unknown kind, broken YAML, a first note longer than Play's 500 characters, notes that give no Play text, or a body that is empty or keeps its version heading fails the PR instead of the release. A PR with no fragments passes with a notice.
 
-**Cutting a release:** dispatch `version.yml`. The default `auto` bump picks the version from the pending fragments and fails if there are none; `patch`, `minor` or `major` force a bump and allow an empty notes section. The job batches the fragments into `.changes/vX.Y.Z.md`, regenerates `CHANGELOG.md`, rewrites `app` in the version catalogue, writes the Play "What's new" text to `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt` (whole lines up to 500 characters), commits `chore(release): vX.Y.Z` and pushes tag `vX.Y.Z`. `release.yml` then publishes `.changes/vX.Y.Z.md` as the release body. `app` and `changie latest` must agree or the job stops before writing anything.
+**Cutting a release:** dispatch `version.yml`. The default `auto` bump picks the version from the pending fragments and fails if there are none; `patch`, `minor` or `major` force a bump and allow an empty notes section. The job batches the fragments into `.changes/vX.Y.Z.md`, regenerates `CHANGELOG.md`, rewrites `app` in the version catalogue, writes the Play "What's new" text to `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt` (whole bullets up to 500 characters), commits `chore(release): vX.Y.Z` and pushes tag `vX.Y.Z`. `release.yml` then publishes `.changes/vX.Y.Z.md` as the release body. Both the Play text and the body come from [`scripts/release-notes.sh`](./scripts/release-notes.sh), which the PR check also runs. `app` and `changie latest` must agree or the job stops before writing anything.
 
 **Publishing to mirrors:** `release.yml` also publishes the same notes and the same signed APK to other mirrors. Each needs a token stored as a secret, and its step warns and skips without one:
 

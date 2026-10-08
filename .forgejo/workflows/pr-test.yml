@@ -38,6 +38,35 @@ jobs:
             :androidApp:compileDebugAndroidTestKotlin \
             :androidApp:lintDebug
 
+      # A dry-run batch parses every pending fragment.
+      - name: Pending release notes
+        if: ${{ !cancelled() }}
+        run: |
+          set -eu
+          if ! ls .changes/unreleased/*.yaml >/dev/null 2>&1; then
+            echo "::notice::No release notes pending in .changes/unreleased; nothing to check."
+            exit 0
+          fi
+          notes=$(mktemp)
+          changie batch auto --dry-run > "$notes"
+          cat "$notes"
+          # Not piped from changie: without pipefail its failure would be lost.
+          play="$(mktemp -d)/play.txt"
+          sh .forgejo/scripts/release-notes.sh play - "$play" < "$notes"
+          # Fragments are pending, so no Play text means the bullets were not
+          # recognised (a changed changeFormat, say) and the release would
+          # ship a blank "What's new".
+          if [ ! -s "$play" ]; then
+            echo "::error::The pending release notes produced no Play text; check changeFormat in .changie.yaml against release-notes.sh." >&2
+            exit 1
+          fi
+          body=$(sh .forgejo/scripts/release-notes.sh body "$notes")
+          case "$body" in
+            "") echo "::error::The pending release notes produced an empty release body." >&2; exit 1 ;;
+            "## "*) echo "::error::The release body still starts with the version heading; check versionFormat in .changie.yaml against release-notes.sh." >&2; exit 1 ;;
+          esac
+          echo "Pending release notes batch cleanly, fit Play's limit and give a release body."
+
       - name: Assert no dictionary sources were fetched
         run: |
           if [ -d data/archives ]; then

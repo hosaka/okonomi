@@ -64,7 +64,7 @@ call() {
 notes=".changes/$tag.md"
 body=""
 if [ -f "$notes" ]; then
-  body=$(sed '1{/^## /d}' "$notes" | awk 'NF { started = 1 } started')
+  body=$(sh "$(dirname "$0")/release-notes.sh" body "$notes")
 else
   echo "::warning::No notes file $notes for $tag; publishing without a body."
 fi
