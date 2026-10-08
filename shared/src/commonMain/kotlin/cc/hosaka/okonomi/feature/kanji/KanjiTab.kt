@@ -9,6 +9,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import cc.hosaka.okonomi.db.EntryDetail
@@ -111,9 +112,15 @@ internal fun KanjiTabContent(
  * The cards, and the overlay one of them opens.
  *
  * The selection lives here rather than in `KanjiTabState`: which card
- * the reader tapped is ephemeral UI state that no producer needs to know
- * about, and putting it in the state would make a database load and a
- * tap the same kind of event.
+ * the reader tapped is UI state that no producer needs to know about,
+ * and putting it in the state would make a database load and a tap the
+ * same kind of event. It is held in saved state, as the literal alone,
+ * so the overlay survives activity recreation; the character it shows is
+ * resolved against [characters] on every composition, and a selection
+ * that list cannot show is cleared rather than kept for later. That
+ * includes a live list that drops the open literal: the overlay closes
+ * for good, and a later list carrying the literal again does not reopen
+ * it.
  *
  * The dialog is a sibling of the list rather than a child of an item,
  * for two reasons that hold: `LazyListScope` is not a composable scope,
@@ -133,6 +140,10 @@ private fun KanjiList(
     modifier: Modifier = Modifier,
 ) {
     val detail = rememberKanjiDetailDialogState()
+    val shown = detail.characterIn(characters)
+    // After composition rather than during it: a write to state this
+    // composition has just read belongs in an effect.
+    SideEffect { detail.dismissIfUnresolved(characters) }
     val navigation = LocalNavigationController.current
     // Both halves of the tap, in order: the overlay has served its
     // purpose once the reader has chosen where to go, and leaving it
@@ -193,7 +204,8 @@ private fun KanjiList(
             }
         }
         KanjiDetailDialog(
-            state = detail,
+            character = shown,
+            onDismiss = detail::dismiss,
             onRadicalClick = onRadicalClick,
         )
     }

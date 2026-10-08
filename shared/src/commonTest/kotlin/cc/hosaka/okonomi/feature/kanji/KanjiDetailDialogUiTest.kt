@@ -4,12 +4,18 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.LocalSaveableStateRegistry
+import androidx.compose.runtime.saveable.SaveableStateRegistry
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -37,6 +43,8 @@ import cc.hosaka.okonomi.ui.test.hasClickLabel
 import cc.hosaka.okonomi.ui.theme.OkonomiTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import okonomi.shared.generated.resources.Res
 import okonomi.shared.generated.resources.entry_kanji_detail_close
 import okonomi.shared.generated.resources.entry_kanji_detail_open
@@ -49,7 +57,8 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * The overlay as a reader reaches it: a tap on the card, a tap on a
  * radical, a tap outside the surface, a long press that must still copy,
- * and the cards that offer no overlay at all.
+ * the cards that offer no overlay at all, and the overlay surviving
+ * activity recreation.
  *
  * **Only system back is missing from the spec's matrix now.** Nothing in
  * this repo can dispatch the press, so an assertion written for it would
@@ -526,6 +535,181 @@ class KanjiDetailDialogUiTest : ComposeUiTestBase() {
             onAllNodesWithText(NANORI).assertCountEquals(0)
             assertEquals<List<Route>>(emptyList(), navigation.navigated)
         }
+
+    /**
+     * An overlay open when the activity is recreated is open on the same
+     * character afterwards. The composition is saved, thrown away and
+     * built again from what was saved, and the overlay is checked by its
+     * pane title on both sides: gone while the composition is, back once
+     * it is rebuilt.
+     *
+     * The registries here accept any value, so this cannot catch a
+     * selection that is not Bundle-safe; it does not need to, because a
+     * `String` always is. Nor is the real host path exercised — Nav3's
+     * per-entry saved state and the entry pager around the tab — only
+     * the registry the tab's own `rememberSaveable` reads from.
+     */
+    @Test
+    fun `the overlay is still open after the activity is recreated`() = runComposeUiTest {
+        val labels = Labels()
+        val host = RecreatableHost()
+        setContent {
+            labels.read()
+            host.Content { KanjiListUnderTest(listOf(shoku())) }
+        }
+        onNode(hasClickLabel(labels.open)).performClick()
+        onNode(hasPaneTitle(labels.title)).assertExists()
+
+        host.recreate(this) {
+            onNode(hasPaneTitle(labels.title)).assertDoesNotExist()
+        }
+
+        onNode(hasPaneTitle(labels.title)).assertExists()
+        onNodeWithText(NANORI).assertIsDisplayed()
+    }
+
+    /**
+     * Process death, as far as the tab sees it: the saved selection
+     * comes back, but the data does not, because the screen's ViewModels
+     * are in memory only. The tab is rebuilt in Loading, so the list the
+     * selection lives beside is not composed yet, and the overlay must
+     * neither show nor be cleared then. It comes back once the reloaded
+     * list arrives as Ready and can show the literal.
+     *
+     * Driven through [KanjiTabContent] from a mutable [KanjiTabState],
+     * so the Loading to Ready switch is the real `when` over
+     * [KanjiTabContentState] rather than a list handed in directly.
+     */
+    @Test
+    fun `a selection restored into Loading reopens once the list is Ready`() = runComposeUiTest {
+        val labels = Labels()
+        val host = RecreatableHost()
+        var state by mutableStateOf(KanjiTabState(content = KanjiTabContentState.Ready(listOf(shoku()))))
+        setContent {
+            labels.read()
+            host.Content { KanjiTabUnderTest(state) }
+        }
+        onNode(hasClickLabel(labels.open)).performClick()
+        onNode(hasPaneTitle(labels.title)).assertExists()
+
+        host.recreate(this) { state = KanjiTabState(content = KanjiTabContentState.Loading) }
+
+        onNode(hasPaneTitle(labels.title)).assertDoesNotExist()
+
+        state = KanjiTabState(content = KanjiTabContentState.Ready(listOf(shoku())))
+        waitForIdle()
+
+        onNode(hasPaneTitle(labels.title)).assertExists()
+        onNodeWithText(NANORI).assertIsDisplayed()
+    }
+
+    /**
+     * The overlay draws the list it is shown over, not the character the
+     * tap handed it: when the tab's list is replaced while the overlay is
+     * up, the same literal stays open with the new list's data.
+     */
+    @Test
+    fun `a new list for the same literal keeps the overlay open with the new data`() =
+        runComposeUiTest {
+            val labels = Labels()
+            var characters by mutableStateOf(listOf(shoku()))
+            setContent {
+                labels.read()
+                KanjiListUnderTest(characters)
+            }
+            onNode(hasClickLabel(labels.open)).performClick()
+            onNodeWithText(NANORI).assertIsDisplayed()
+
+            characters = listOf(shoku(nameReadings = listOf(OTHER_NANORI)))
+            waitForIdle()
+
+            onNode(hasPaneTitle(labels.title)).assertExists()
+            onNodeWithText(OTHER_NANORI).assertIsDisplayed()
+            onAllNodesWithText(NANORI).assertCountEquals(0)
+        }
+
+    /**
+     * A literal saved while it could be shown, restored over a list whose
+     * character has nothing to show. The overlay stays closed, and the
+     * selection is cleared rather than kept: a save taken afterwards no
+     * longer holds the literal, so it can never reopen the overlay later.
+     */
+    @Test
+    fun `a restored literal with nothing to show stays closed and is not saved again`() =
+        runComposeUiTest {
+            assertUnshowableRestoreClears(listOf(shoku(nameReadings = emptyList(), radicals = emptyList())))
+        }
+
+    /** The same, over a list that no longer carries the literal at all. */
+    @Test
+    fun `a restored literal the list no longer carries stays closed and is not saved again`() =
+        runComposeUiTest {
+            assertUnshowableRestoreClears(listOf(shoku().copy(literal = "生")))
+        }
+}
+
+/**
+ * Opens the overlay on [shoku], recreates the composition over
+ * [restoredList] instead, and checks that nothing came back and nothing
+ * is left to come back.
+ *
+ * The first save is asserted to hold the literal, so the absence in the
+ * second one is the selection being cleared rather than a save that
+ * never carried it.
+ */
+@OptIn(ExperimentalTestApi::class)
+private fun ComposeUiTest.assertUnshowableRestoreClears(restoredList: List<KanjiCharacter>) {
+    val labels = Labels()
+    val host = RecreatableHost()
+    var characters by mutableStateOf(listOf(shoku()))
+    setContent {
+        labels.read()
+        host.Content { KanjiListUnderTest(characters) }
+    }
+    onNode(hasClickLabel(labels.open)).performClick()
+    onNode(hasPaneTitle(labels.title)).assertExists()
+
+    val first = host.recreate(this) { characters = restoredList }
+
+    assertTrue(LITERAL in first.values.flatten())
+    onNode(hasPaneTitle(labels.title)).assertDoesNotExist()
+    val second = host.registry.performSave()
+    assertFalse(LITERAL in second.values.flatten())
+}
+
+/**
+ * A `SaveableStateRegistry` around the content that can be saved and
+ * rebuilt, the way an activity is recreated: the same approach as
+ * `FavouritesScreenUiTest`. Its registries accept any value.
+ */
+private class RecreatableHost {
+    var registry by mutableStateOf(SaveableStateRegistry(null) { true })
+        private set
+    private var shown by mutableStateOf(true)
+
+    @Composable
+    fun Content(content: @Composable () -> Unit) {
+        CompositionLocalProvider(LocalSaveableStateRegistry provides registry) {
+            if (shown) content()
+        }
+    }
+
+    /**
+     * Saves, disposes the content, runs [whileGone] with nothing
+     * composed, then composes again from the saved values. Returns what
+     * was saved.
+     */
+    @OptIn(ExperimentalTestApi::class)
+    fun recreate(test: ComposeUiTest, whileGone: () -> Unit = {}): Map<String, List<Any?>> {
+        val saved = registry.performSave()
+        shown = false
+        test.waitForIdle()
+        whileGone()
+        registry = SaveableStateRegistry(saved) { true }
+        shown = true
+        test.waitForIdle()
+        return saved
+    }
 }
 
 /**
@@ -595,6 +779,8 @@ private const val LITERAL = "食"
 
 private const val NANORI = "ぐい"
 
+private const val OTHER_NANORI = "あき"
+
 private const val MEANING = "eat"
 
 /**
@@ -632,11 +818,22 @@ private fun KanjiListUnderTest(
     characters: List<KanjiCharacter>,
     navigation: RecordingNavigationController = RecordingNavigationController(),
 ) {
+    KanjiTabUnderTest(
+        state = KanjiTabState(content = KanjiTabContentState.Ready(characters)),
+        navigation = navigation,
+    )
+}
+
+@Composable
+private fun KanjiTabUnderTest(
+    state: KanjiTabState,
+    navigation: RecordingNavigationController = RecordingNavigationController(),
+) {
     ScreenHost(navigation = navigation) {
         OkonomiTheme {
             Surface {
                 KanjiTabContent(
-                    state = KanjiTabState(content = KanjiTabContentState.Ready(characters)),
+                    state = state,
                     contentPadding = PaddingValues(),
                 )
             }

@@ -20,7 +20,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,39 +72,104 @@ internal val KanjiCharacter.hasDetailToShow: Boolean
 internal val DIALOG_MARGIN = 24.dp
 
 /**
- * Which character the detail overlay is showing, or null for closed.
+ * Which character the detail overlay is showing, by its literal, or null
+ * for closed.
  *
- * The selection is the only part of this feature a test can stand on,
- * and both ways the overlay closes run through [dismiss]. A tap outside
- * the surface is [KanjiDetailDialog]'s own gesture, so that one is
- * driven directly in `KanjiDetailDialogUiTest`. System back is not: it
- * arrives through `dismissOnBackPress` and nothing in this repo can
- * dispatch the press, so what a host test can still see is the
+ * Only the literal is held, never the [KanjiCharacter] itself, and it is
+ * held in saved state through [Saver]. That is what lets the overlay
+ * survive activity recreation — a rotation on Android — alongside the
+ * rest of the screen, which is kept in back-stack ViewModels: an overlay
+ * open before the recreation is open on the same character after it.
+ * The character shown is always looked up again in the list the tab
+ * currently holds, through [characterIn], so the overlay draws that
+ * list's data rather than a copy taken at the tap.
+ *
+ * Process death goes through the same saved-state registry, so the
+ * literal survives that too. The screen's data does not: its ViewModels
+ * are in memory only and reload from scratch, and the selection waits
+ * through the tab's Loading state untouched. The first Ready list then
+ * decides: if it can show the literal the overlay reopens on it, and if
+ * it cannot the selection is cleared for good.
+ *
+ * Every way the overlay closes runs through [dismiss]:
+ *
+ * - a tap outside the surface, or its screen-reader action, through
+ *   [KanjiDetailDialog]'s `onDismiss`;
+ * - system back, through the dialog's `onDismissRequest`, which is that
+ *   same `onDismiss`;
+ * - a radical tap, which dismisses before it navigates;
+ * - the automatic clear, [dismissIfUnresolved], which `KanjiList` runs
+ *   from a `SideEffect` whenever the list it holds cannot show the
+ *   selection.
+ *
+ * The selection is the only part of this feature a test can stand on.
+ * A tap outside the surface is [KanjiDetailDialog]'s own gesture, so
+ * that one is driven directly in `KanjiDetailDialogUiTest`. System back
+ * is not: it arrives through `dismissOnBackPress` and nothing in this
+ * repo can dispatch the press, so what a host test can still see is the
  * transition it causes, which is what `KanjiDetailDialogStateTest`
- * asserts. Routing
- * `onDismissRequest` through [dismiss] rather than through a raw
- * `mutableStateOf` at the call site is what keeps that reachable.
+ * asserts. Routing `onDismissRequest` through [dismiss] rather than
+ * through a raw `mutableStateOf` at the call site is what keeps that
+ * reachable.
  */
 @Stable
-internal class KanjiDetailDialogState {
-    var character: KanjiCharacter? by mutableStateOf(null)
+internal class KanjiDetailDialogState(initialLiteral: String? = null) {
+    var selectedLiteral: String? by mutableStateOf(initialLiteral)
         private set
 
     fun show(character: KanjiCharacter) {
-        this.character = character
+        selectedLiteral = character.literal
     }
 
     fun dismiss() {
-        character = null
+        selectedLiteral = null
+    }
+
+    /**
+     * The character in [characters] the overlay should show, or null
+     * when it should be closed: nothing is selected, the list does not
+     * carry the selected literal, or the one it carries has nothing to
+     * show. The last two are what a restored literal can meet.
+     */
+    fun characterIn(characters: List<KanjiCharacter>): KanjiCharacter? {
+        val literal = selectedLiteral ?: return null
+        return characters.firstOrNull { it.literal == literal && it.hasDetailToShow }
+    }
+
+    /**
+     * Clears a selection [characterIn] cannot resolve against
+     * [characters]. Left set, it would be saved again on the next
+     * recreation and open the overlay with no tap the moment some later
+     * list carried the literal.
+     */
+    fun dismissIfUnresolved(characters: List<KanjiCharacter>) {
+        if (selectedLiteral != null && characterIn(characters) == null) dismiss()
+    }
+
+    companion object {
+        /**
+         * Round-trips the literal and nothing else. A `String` is always
+         * Bundle-safe, and a closed overlay saves null, which restores to
+         * a fresh closed state.
+         */
+        val Saver: Saver<KanjiDetailDialogState, String> = Saver(
+            save = { it.selectedLiteral },
+            restore = { KanjiDetailDialogState(initialLiteral = it) },
+        )
     }
 }
 
 @Composable
 internal fun rememberKanjiDetailDialogState(): KanjiDetailDialogState =
-    remember { KanjiDetailDialogState() }
+    rememberSaveable(saver = KanjiDetailDialogState.Saver) { KanjiDetailDialogState() }
 
 /**
  * The nanori and radicals of one character, over the entry screen.
+ *
+ * [character] is the one the caller resolved through
+ * [KanjiDetailDialogState.characterIn], null for closed. [onDismiss] is
+ * the one way this composable closes the overlay, for system back and
+ * the outside tap alike; the caller passes the state's own `dismiss`.
  *
  * A `Dialog` and deliberately not a `ModalBottomSheet`, a `Popup` or a
  * scrim drawn inside the tab. Compose Multiplatform renders `Dialog` in
@@ -162,13 +228,14 @@ internal fun rememberKanjiDetailDialogState(): KanjiDetailDialogState =
  */
 @Composable
 internal fun KanjiDetailDialog(
-    state: KanjiDetailDialogState,
+    character: KanjiCharacter?,
+    onDismiss: () -> Unit,
     onRadicalClick: (String) -> Unit,
 ) {
-    val character = state.character ?: return
+    character ?: return
     val paneTitle = stringResource(Res.string.entry_kanji_detail_title, character.literal)
     Dialog(
-        onDismissRequest = { state.dismiss() },
+        onDismissRequest = onDismiss,
         // All three properties written out, defaults included. An
         // unexamined default is what shipped an overlay that could not
         // be dismissed by touch, so what this dialog relies on should be
@@ -196,7 +263,7 @@ internal fun KanjiDetailDialog(
                 .fillMaxSize(),
             contentAlignment = Alignment.Center,
         ) {
-            DismissLayer(literal = character.literal, onDismiss = state::dismiss)
+            DismissLayer(literal = character.literal, onDismiss = onDismiss)
             Surface(
                 // Without a pane title the overlay arrives silently: a
                 // screen reader is given a new window with nothing saying
