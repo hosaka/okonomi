@@ -66,6 +66,55 @@ class TitleFuriganaTest {
         )
     }
 
+    /**
+     * The matrix's reading-match row: たべる typed, 食べる shown, and the
+     * reading it matched not drawn. Nothing lights — not 食, and not べる,
+     * which would say the reader typed what they can see.
+     */
+    @Test
+    fun `with readings hidden a match on the reading lights nothing`() {
+        val segments = titleFurigana(
+            listOf(
+                TitleSegment("食べる"),
+                TitleSegment("たべる", highlight = 0..2, readsPreviousSegment = true),
+            ),
+            readingsShown = false,
+        )
+
+        assertEquals(emptyList(), highlighted(segments))
+    }
+
+    /** What was matched through the written form is on screen either way. */
+    @Test
+    fun `with readings hidden a match on the written form still lights it`() {
+        val segments = titleFurigana(
+            listOf(
+                TitleSegment("食べる", highlight = 0..1),
+                TitleSegment("たべる", readsPreviousSegment = true),
+            ),
+            readingsShown = false,
+        )
+
+        assertEquals(listOf("食", "べ"), highlighted(segments))
+    }
+
+    /**
+     * A reading standing beside the form, not over it, is drawn whether
+     * or not furigana is: カラオケ beside 空オケ keeps its highlight.
+     */
+    @Test
+    fun `with readings hidden a reading beside the form keeps its highlight`() {
+        val segments = titleFurigana(
+            listOf(
+                TitleSegment("空オケ"),
+                TitleSegment("カラオケ", highlight = 0..3, readsPreviousSegment = false),
+            ),
+            readingsShown = false,
+        )
+
+        assertEquals(listOf("カラオケ"), highlighted(segments))
+    }
+
     @Test
     fun `a match on the written form highlights the kanji it covers`() {
         val segments = titleFurigana(

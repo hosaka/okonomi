@@ -731,6 +731,9 @@ class EntrySearchTest {
         assertEquals(listOf(400L, 401L), results.hits.map { it.entryId })
         // The fold is real: neither gloss contains the typed spelling.
         assertTrue(results.hits.all { hit -> hit.senseLines.none { "cafe" in it } })
+        // And the position SQL computed is the gloss the row is titled
+        // by in English, where Kotlin's word matching found nothing.
+        assertEquals("café two", results.hits.single { it.entryId == 401L }.titleGloss)
     }
 
     @Test
@@ -807,6 +810,65 @@ class EntrySearchTest {
             nextToLast.hits.map { it.entryId },
             lastPage.hits.map { it.entryId }.take(nextToLast.hits.size),
         )
+    }
+
+    /**
+     * The spec's own case: "do" reaches 行う through the second gloss of
+     * its first sense, and that is the gloss the row is titled by for a
+     * reader learning English — the word they asked about, not the one
+     * the entry happens to list first.
+     */
+    @Test
+    fun `an english hit is titled by the gloss the query matched`() = runTest {
+        val database = okonauDatabase()
+
+        val okonau = database.searchEntries("do").hits.single { it.entryId == OKONAU_ID }
+
+        assertEquals("to do", okonau.titleGloss)
+    }
+
+    /** A match deeper still: the second gloss of 遣る's sixth sense. */
+    @Test
+    fun `a match in a buried sense titles the row by that sense's gloss`() = runTest {
+        val database = englishRankingDatabase()
+
+        assertEquals("to drink", database.searchEntries("drink").hits.single { it.entryId == 301L }.titleGloss)
+        assertEquals("to eat", database.searchEntries("eat").hits.single { it.entryId == 301L }.titleGloss)
+    }
+
+    /** A Japanese search matched no gloss, so the entry's first titles it. */
+    @Test
+    fun `a japanese hit is titled by its first gloss`() = runTest {
+        val database = okonauDatabase()
+
+        val okonau = database.searchEntries("おこなう").hits.single { it.entryId == OKONAU_ID }
+
+        assertEquals("to perform", okonau.titleGloss)
+    }
+
+    /**
+     * 行う as JMdict has it, give or take: two glosses in its first
+     * sense, a second sense after. The sense ids run against their ords
+     * and the glosses are inserted out of order, so "first" can only
+     * come out right by ord.
+     */
+    private suspend fun okonauDatabase(): DictionaryDatabase {
+        val path = tempDir().resolve(DICTIONARY_DB_NAME).absolutePath
+        val driver = JdbcSqliteDriver("jdbc:sqlite:$path")
+        OkonomiDb.Schema.create(driver).await()
+        val db = OkonomiDb(driver)
+
+        db.entryQueries.insertEntry(OKONAU_ID, 125, 1)
+        db.entryQueries.insertKanjiForm(OKONAU_ID, 0, "行う", 125, 1)
+        db.entryQueries.insertReading(OKONAU_ID, 0, "おこなう", 0, 125, null, 1)
+        db.entryQueries.insertSense(5001, OKONAU_ID, 1, "v5u", null, null, null, null, null)
+        db.entryQueries.insertGloss(5001, 0, "to carry out")
+        db.entryQueries.insertSense(5002, OKONAU_ID, 0, "v5u", null, null, null, null, null)
+        db.entryQueries.insertGloss(5002, 1, "to do")
+        db.entryQueries.insertGloss(5002, 0, "to perform")
+
+        driver.execute(null, "INSERT INTO gloss_fts(gloss_fts) VALUES('rebuild')", 0).await()
+        return DictionaryDatabase(db, driver).also { openedDatabases += it }
     }
 
     @Test
@@ -983,3 +1045,5 @@ class EntrySearchTest {
         assertNull(sanitizeFtsQuery("   "))
     }
 }
+
+private const val OKONAU_ID = 1_000_000L

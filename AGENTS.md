@@ -55,7 +55,7 @@ collected and its state producer is cancelled five seconds later — anything a
 dialog result must come back to has to outlive that, which is what
 `mutablePersistedFlow` is for (see `FavouritesStateProducer`).
 
-- Persisted settings (`prefs/`): `PreferenceStore` is the seam every screen uses; `appPreferences()` is the app-lifetime instance over `androidx.datastore` (one per process — DataStore rejects two over one file). Reads that fail yield the default and writes that fail are dropped, so a broken store can never take a screen down. Tests inject `FakePreferenceStore`.
+- Persisted settings (`prefs/`): `PreferenceStore` is the seam every screen uses, for Booleans and strings alike, with writes of both types on one ordered writer; `appPreferences()` is the app-lifetime instance over `androidx.datastore` (one per process — DataStore rejects two over one file). Reads that fail yield the default and writes that fail are dropped, so a broken store can never take a screen down. Tests inject `FakePreferenceStore`.
 - Send to Anki (`anki/`, Android only): talks to AnkiDroid's `com.ichi2.anki.flashcards` provider directly through `ContentResolver` — no AnkiDroid API dependency. Its permission and `<queries>` entry live in `shared/src/androidMain/AndroidManifest.xml`, which merges into the app. Duplicates are keyed by the note's EntryId field.
 - Deep link `okonomi://entry/<id>` (the cards' "More in Okonomi"): parsed and queued in `:shared` (`feature/navigation/EntryLinks.kt`), opened by `HomeScreen` over Search's root; `MainActivity` (`launchMode="singleTask"`) only forwards the URI from `onCreate`/`onNewIntent`. System back on the linked entry leaves the app for the sender.
 - Text lookup (Android only; `ACTION_PROCESS_TEXT`, "Okonomi" in the text selection toolbar): tidied, capped and queued in `:shared` (`feature/navigation/TextLookups.kt`, a second queue beside `EntryLinks`, not a merge). The filter is on `ProcessTextActivity`, a no-UI trampoline: the toolbar starts it for a result, which puts it in the caller's task whatever the launch mode, so it forwards the query to `MainActivity` with `NEW_TASK` and finishes without a result. Both activities are thin calls into `shared/src/androidMain/.../feature/navigation/AndroidHandOffs.kt` (`processTextForward`, `handOffToShell`), which holds the routing and the Recents and for-result guards and is tested in `androidHostTest`. `HomeScreen` opens a lookup from another app as a marked `SearchRoute` over Search's root, and system back on it leaves for that app; text selected in Okonomi itself (the referrer is Okonomi) opens an ordinary search over the current screen instead. Check with `adb shell am start -n cc.hosaka.okonomi/.ProcessTextActivity -a android.intent.action.PROCESS_TEXT -t text/plain --es android.intent.extra.PROCESS_TEXT '食べた'` (an implicit intent opens the app chooser).
@@ -96,6 +96,12 @@ Compose UI tests live in `commonTest` and run on the JVM through
 `androidx.compose.ui.test.v2.runComposeUiTest`; see that class and the
 `androidHostTest` dependency block for why the runner and Robolectric are wired
 the way they are.
+
+A test that hosts `HomeScreen` and depends on the learning language, or on
+whether furigana is drawn, must pass `deviceLanguage = "en"`. Otherwise it
+runs whatever the machine's language makes it: until a reader chooses, a
+Japanese-language device is assumed to be learning English, and that hides
+furigana throughout.
 
 `:tools:dictgen` is part of the check, not an optional extra: it owns the dictionary's
 shape and its ranking rules, so a regression there changes search results while every

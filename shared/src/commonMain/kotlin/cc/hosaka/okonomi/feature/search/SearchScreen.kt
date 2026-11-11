@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -48,6 +51,8 @@ import cc.hosaka.okonomi.feature.home.navigation.LocalHomeReselect
 import cc.hosaka.okonomi.feature.home.navigation.resolveHomeReselect
 import cc.hosaka.okonomi.feature.navigation.LocalNavigationController
 import cc.hosaka.okonomi.feature.word.EntryRoute
+import cc.hosaka.okonomi.lang.LearningLanguage
+import cc.hosaka.okonomi.lang.LocalLearningLanguage
 import cc.hosaka.okonomi.ui.CenteredBox
 import cc.hosaka.okonomi.ui.CommonWordChip
 import cc.hosaka.okonomi.ui.LoadMoreEffect
@@ -61,6 +66,7 @@ import cc.hosaka.okonomi.ui.coach.CoachTarget
 import cc.hosaka.okonomi.ui.coach.coachMarkTarget
 import cc.hosaka.okonomi.ui.coach.coachMarksWanted
 import cc.hosaka.okonomi.ui.furigana.FuriganaText
+import cc.hosaka.okonomi.ui.furigana.LocalFuriganaShown
 import cc.hosaka.okonomi.ui.furigana.LocalKanjiReadings
 import cc.hosaka.okonomi.ui.pagingFooterItem
 import cc.hosaka.okonomi.ui.scrollIndicator
@@ -348,7 +354,7 @@ private fun SearchResultsList(
                 glossTokens = glossTokens,
                 onClick = {
                     onHitOpened?.invoke(hit.entryId)
-                    navigation.navigate(EntryRoute(hit.entryId))
+                    navigation.navigate(EntryRoute(hit.entryId, titleGloss = hit.titleGloss))
                 },
             )
         }
@@ -392,6 +398,16 @@ private fun SearchResultsList(
  * A title with nowhere left to go wraps rather than clipping, so the
  * word itself is never the thing that is lost. That was already the
  * rule; the larger size only reaches it sooner.
+ *
+ * **For a reader learning English** the row is titled by
+ * [SearchHit.titleGloss] instead, and the word moves down a line: the
+ * English with the common chip beside it, then the Japanese with the
+ * breadcrumb beside it, then the sense lines as they always were. The
+ * title lights the query's words the way a sense line does. Here the
+ * title is what wraps, weighted so the chip keeps its place: an English
+ * gloss runs far longer than a Japanese word, and the chip is a fact
+ * about the word rather than an explanation of it. An entry with no
+ * gloss keeps the Japanese title.
  */
 @Composable
 internal fun SearchResultRow(
@@ -401,56 +417,65 @@ internal fun SearchResultRow(
 ) {
     val copy = rememberClipboardCopy()
     val kanjiReadings = LocalKanjiReadings.current
+    val furiganaShown = LocalFuriganaShown.current
+    val englishTitle = hit.titleGloss.takeIf { LocalLearningLanguage.current == LearningLanguage.English }
+    val japanese = remember(hit, kanjiReadings, furiganaShown) {
+        titleFurigana(hit.titleSegments, kanjiReadings, readingsShown = furiganaShown)
+    }
+    val highlightStyle = SpanStyle(
+        color = MaterialTheme.colorScheme.primary,
+        fontWeight = FontWeight.Medium,
+    )
     ListCard(
         onClick = onClick,
         onClickLabel = stringResource(Res.string.search_result_open),
-        // The written form, not the reading: segments that sit OVER the
-        // word as furigana are dropped, so 食(た)べる copies as 食べる.
-        onLongClick = { copy(hit.writtenForm()) },
+        // The title as it is drawn. For the Japanese, the written form,
+        // not the reading: segments that sit OVER the word as furigana
+        // are dropped, so 食(た)べる copies as 食べる.
+        onLongClick = { copy(englishTitle ?: hit.writtenForm()) },
         onLongClickLabel = stringResource(Res.string.list_card_copy),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // The title takes no weight and the breadcrumb takes it all:
-            // a Row measures its unweighted children first, so the word
-            // claims the width it needs and the breadcrumb explains the
-            // match in whatever is left. Weighting both split the row
-            // evenly and squeezed the headword — the one thing on the
-            // row that must be readable — behind an explanation of it.
-            FuriganaText(
-                segments = remember(hit, kanjiReadings) { titleFurigana(hit.titleSegments, kanjiReadings) },
-                style = MaterialTheme.typography.titleMedium.atJapaneseReadingSize(),
-                highlightStyle = SpanStyle(
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Medium,
-                ),
-            )
-            if (hit.traceLabels.isNotEmpty()) {
-                // Its own text beside the title rather than a second
-                // colour inside it: the title is now furigana, whose
-                // runs are laid out against the reading above them, and
-                // a breadcrumb is neither read nor aligned that way.
-                Spacer(
-                    modifier = Modifier
-                        .width(ROW_GAP),
+        if (englishTitle == null) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // The title takes no weight and the breadcrumb takes it all:
+                // a Row measures its unweighted children first, so the word
+                // claims the width it needs and the breadcrumb explains the
+                // match in whatever is left. Weighting both split the row
+                // evenly and squeezed the headword — the one thing on the
+                // row that must be readable — behind an explanation of it.
+                FuriganaText(
+                    segments = japanese,
+                    style = MaterialTheme.typography.titleMedium.atJapaneseReadingSize(),
+                    highlightStyle = highlightStyle,
                 )
+                TraceBreadcrumb(hit.traceLabels)
+                CommonChipBeside(hit.isCommon)
+            }
+        } else {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
-                    text = TRACE_MARKER + hit.traceLabels.joinToString(", "),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    text = glossTitleText(englishTitle, glossTokens),
+                    style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier
                         .weight(1f, fill = false),
                 )
+                CommonChipBeside(hit.isCommon)
             }
-            if (hit.isCommon) {
-                Spacer(
-                    modifier = Modifier
-                        .width(ROW_GAP),
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Not at the reading size: that size is for the ruby, and
+                // this reader is shown none.
+                FuriganaText(
+                    segments = japanese,
+                    style = MaterialTheme.typography.titleMedium,
+                    highlightStyle = highlightStyle,
                 )
-                CommonWordChip()
+                TraceBreadcrumb(hit.traceLabels)
             }
         }
         hit.senseLines.forEach { line ->
@@ -461,6 +486,44 @@ internal fun SearchResultRow(
             )
         }
     }
+}
+
+/**
+ * The muted `‹ rule, rule` beside the Japanese of a deinflected hit, or
+ * nothing for a direct match.
+ *
+ * Its own text beside the title rather than a second colour inside it:
+ * the title is furigana, whose runs are laid out against the reading
+ * above them, and a breadcrumb is neither read nor aligned that way. The
+ * only weighted child of its row, so it is what gives way.
+ */
+@Composable
+private fun RowScope.TraceBreadcrumb(traceLabels: List<String>) {
+    if (traceLabels.isEmpty()) return
+    Spacer(
+        modifier = Modifier
+            .width(ROW_GAP),
+    )
+    Text(
+        text = TRACE_MARKER + traceLabels.joinToString(", "),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .weight(1f, fill = false),
+    )
+}
+
+/** The "common word" chip beside a row's title, or nothing for a word that is not. */
+@Composable
+private fun CommonChipBeside(isCommon: Boolean) {
+    if (!isCommon) return
+    Spacer(
+        modifier = Modifier
+            .width(ROW_GAP),
+    )
+    CommonWordChip()
 }
 
 /**
@@ -475,6 +538,13 @@ internal fun SearchResultRow(
  * Deliberately not clickable (Alex's ruling). The Entry View is built out
  * of senses, forms and a kanji breakdown, none of which a name has, and a
  * screen made for one could only repeat this row back.
+ *
+ * The reading is drawn whatever language the reader is learning, so this
+ * row turns furigana back on for itself. A name's kanji are where readings
+ * stop being predictable even to a native reader, and the reading is the
+ * fact the row exists to give. For a reader learning English it is drawn
+ * over the whole name rather than divided per kanji: the division is off
+ * for them along with every other furigana (see `ProvideKanjiReadings`).
  */
 @Composable
 private fun NameResultRow(
@@ -491,10 +561,12 @@ private fun NameResultRow(
         Row(
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            FuriganaText(
-                segments = remember(name, kanjiReadings) { nameFurigana(name.kanji, name.reading, kanjiReadings) },
-                style = MaterialTheme.typography.titleMedium.atJapaneseReadingSize(),
-            )
+            CompositionLocalProvider(LocalFuriganaShown provides true) {
+                FuriganaText(
+                    segments = remember(name, kanjiReadings) { nameFurigana(name.kanji, name.reading, kanjiReadings) },
+                    style = MaterialTheme.typography.titleMedium.atJapaneseReadingSize(),
+                )
+            }
             name.types.forEach { code ->
                 Spacer(
                     modifier = Modifier
@@ -537,19 +609,38 @@ private fun senseLineText(line: String, glossTokens: List<String>): AnnotatedStr
     val highlightColor = MaterialTheme.colorScheme.primary
     return remember(line, glossTokens, highlightColor) {
         val rendered = senseLine(line, glossTokens)
-        buildAnnotatedString {
-            append(rendered.text)
-            rendered.highlights.forEach { range ->
-                addStyle(
-                    style = SpanStyle(
-                        color = highlightColor,
-                        fontWeight = FontWeight.Medium,
-                    ),
-                    start = range.first,
-                    end = range.last + 1,
-                )
-            }
-        }
+        highlightedText(rendered.text, rendered.highlights, highlightColor)
+    }
+}
+
+/**
+ * An English title lit the way a sense line is — it is one of the
+ * entry's glosses, after all — and with no bullet: it is the row's
+ * headline, not one of the lines explaining it.
+ */
+@Composable
+private fun glossTitleText(gloss: String, glossTokens: List<String>): AnnotatedString {
+    val highlightColor = MaterialTheme.colorScheme.primary
+    return remember(gloss, glossTokens, highlightColor) {
+        highlightedText(gloss, glossHighlights(gloss, glossTokens), highlightColor)
+    }
+}
+
+private fun highlightedText(
+    text: String,
+    highlights: List<IntRange>,
+    highlightColor: Color,
+): AnnotatedString = buildAnnotatedString {
+    append(text)
+    highlights.forEach { range ->
+        addStyle(
+            style = SpanStyle(
+                color = highlightColor,
+                fontWeight = FontWeight.Medium,
+            ),
+            start = range.first,
+            end = range.last + 1,
+        )
     }
 }
 

@@ -161,7 +161,13 @@ sealed interface SearchResultsState {
  * 動物 against 動物園 lights 動 and 物 and leaves 園.
  *
  * Both the form's own offsets and the reading's are honoured, because a
- * Japanese query matches through whichever of the two it was typed as.
+ * Japanese query matches through whichever of the two it was typed as —
+ * unless [readingsShown] is false. Then the reading set over the form is
+ * never drawn, and a match through it is dropped entirely, kana and all:
+ * たべる against 食べる lights nothing, since lighting べる would say the
+ * reader typed what they can see, and they typed what they cannot. A
+ * reading that stands beside the form rather than over it is drawn either
+ * way and keeps its highlight.
  *
  * Pure so the offset math is testable rather than buried in a
  * composable.
@@ -169,6 +175,7 @@ sealed interface SearchResultsState {
 fun titleFurigana(
     segments: List<TitleSegment>,
     kanjiReadings: KanjiReadings? = null,
+    readingsShown: Boolean = true,
 ): List<FuriganaSegment> {
     val title = mutableListOf<FuriganaSegment>()
     var index = 0
@@ -186,7 +193,7 @@ fun titleFurigana(
         } else {
             alignReading(segment.text, reading.text, kanjiReadings)
         }
-        title += highlighted(aligned, segment.highlight, reading?.highlight)
+        title += highlighted(aligned, segment.highlight, reading?.highlight?.takeIf { readingsShown })
         index += if (reading == null) 1 else 2
     }
     return title

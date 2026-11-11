@@ -14,8 +14,21 @@ data class AppearanceState(
     /**
      * Whether a run of kanji is divided into one ruby per kanji where
      * kanjidic's readings settle it; null until the store has answered.
+     * Always false while [furiganaHidden], when the division is off
+     * whatever is stored (see `ProvideKanjiReadings`).
      */
     val perKanjiFurigana: Boolean? = null,
-    /** Null until the producer is running; the switch is disabled meanwhile. */
+    /**
+     * Null until the producer is running, and while [furiganaHidden]; the
+     * switch is disabled meanwhile.
+     */
     val onPerKanjiFuriganaChange: ((Boolean) -> Unit)? = null,
+    /**
+     * True while the reader is learning English, when words are drawn with
+     * no furigana and the names that keep theirs are not divided. The
+     * per-kanji switch is then shown off and disabled, with a note saying
+     * why, and what it has stored is left alone: learning Japanese again
+     * brings the reader's own choice back.
+     */
+    val furiganaHidden: Boolean = false,
 )

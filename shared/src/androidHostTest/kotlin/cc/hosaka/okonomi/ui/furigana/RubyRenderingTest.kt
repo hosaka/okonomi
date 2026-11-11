@@ -29,6 +29,11 @@ import cc.hosaka.okonomi.feature.search.SearchResultsState
 import cc.hosaka.okonomi.feature.search.SearchScreen
 import cc.hosaka.okonomi.feature.search.SearchState
 import cc.hosaka.okonomi.feature.word.WordTab
+import cc.hosaka.okonomi.lang.LEARNING_LANGUAGE_PREFERENCE
+import cc.hosaka.okonomi.lang.LearningLanguage
+import cc.hosaka.okonomi.lang.LocalLearningLanguage
+import cc.hosaka.okonomi.lang.ProvideLearningLanguage
+import cc.hosaka.okonomi.lang.setLearningLanguage
 import cc.hosaka.okonomi.prefs.FakePreferenceStore
 import cc.hosaka.okonomi.ui.test.ScreenHost
 import cc.hosaka.okonomi.ui.test.entryDetail
@@ -364,6 +369,62 @@ class RubyRenderingTest {
         )
     }
 
+    /**
+     * The sibling of the case above, under the real providers: per-kanji
+     * stored on, but the reader learning English. The name row keeps its
+     * furigana, drawn over the whole name, because Appearance shows the
+     * division off for this reader and it is off. Learning Japanese again
+     * divides it, with nothing rewritten in between.
+     */
+    @Test
+    fun `learning english a name row keeps its reading undivided`() = runComposeUiTest {
+        val preferences = FakePreferenceStore(
+            initial = mapOf(PER_KANJI_FURIGANA_PREFERENCE to true),
+            strings = mapOf(LEARNING_LANGUAGE_PREFERENCE to "english"),
+        )
+        setContent {
+            ScreenHost {
+                ProvideLearningLanguage(preferences = preferences, deviceLanguage = "en") {
+                    ProvideKanjiReadings(preferences = preferences, load = { kanjidicFixture }) {
+                        SearchScreen(
+                            SearchState(
+                                query = "きそ",
+                                onQueryChange = {},
+                                results = SearchResultsState.Results(
+                                    query = "きそ",
+                                    hits = emptyList(),
+                                    isFallback = false,
+                                    names = listOf(
+                                        NameHit(
+                                            id = 2L,
+                                            kanji = "木曽",
+                                            reading = "きそ",
+                                            types = listOf("place"),
+                                            romanisation = "Kiso",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+        waitForIdle()
+
+        assertEquals(listOf("木曽" to "きそ"), rubyUnits(), "learning English, the name is one unit")
+
+        preferences.setLearningLanguage(LearningLanguage.Japanese)
+        waitUntil { rubyUnits().size == 2 }
+
+        assertEquals(listOf("木" to "き", "曽" to "そ"), rubyUnits())
+        assertEquals(
+            listOf<Pair<String, Any>>(LEARNING_LANGUAGE_PREFERENCE to "japanese"),
+            preferences.writes,
+            "the per-kanji switch was never written",
+        )
+    }
+
     @Test
     fun `the word headword is divided per kanji`() = runComposeUiTest {
         setContent {
@@ -490,6 +551,145 @@ class RubyRenderingTest {
         assertEquals(listOf("学" to "がっ", "校" to "こう", "勉強" to "べんきょう"), rubyUnits())
     }
 
+    /**
+     * A reader learning English is shown no furigana: the word row titled
+     * by its gloss draws its Japanese with no ruby, while the name row
+     * under it keeps its own, because a name's reading is what the row is
+     * for. Every site here goes through the same suppression, so each
+     * half of this goes red on its own: the word's ruby back if the
+     * suppression goes, the name's gone if its opt-out does.
+     */
+    @Test
+    fun `learning english a word row draws no ruby and a name row keeps its own`() = runComposeUiTest {
+        setContent {
+            LearningEnglish {
+                SearchScreen(
+                    SearchState(
+                        query = "zoo",
+                        onQueryChange = {},
+                        results = SearchResultsState.Results(
+                            query = "zoo",
+                            hits = listOf(
+                                SearchHit(
+                                    entryId = 1L,
+                                    titleSegments = listOf(
+                                        TitleSegment("動物園"),
+                                        TitleSegment("どうぶつえん", readsPreviousSegment = true),
+                                    ),
+                                    traceLabels = emptyList(),
+                                    senseLines = listOf("zoo"),
+                                    isCommon = true,
+                                    titleGloss = "zoo",
+                                ),
+                            ),
+                            isFallback = false,
+                            names = listOf(
+                                NameHit(id = 2L, kanji = "木曽", reading = "きそ", types = listOf("place"), romanisation = "Kiso"),
+                            ),
+                        ),
+                    ),
+                )
+            }
+        }
+
+        assertEquals(listOf("木曽" to "きそ"), rubyUnits())
+        assertTrue(drawnTexts().contains("動物園"), "the word is still drawn: ${drawnTexts()}")
+    }
+
+    /**
+     * With no gloss to title it by, the headword stays the Japanese one
+     * and goes through [FuriganaText] — so this is the headword path whose
+     * ruby only the hiding removes. A gloss would title it in English and
+     * draw the word as plain text, which carries no ruby either way.
+     */
+    @Test
+    fun `learning english a headword with no gloss draws no ruby`() = runComposeUiTest {
+        setContent {
+            LearningEnglish {
+                WordTab(
+                    entry = entryDetail(
+                        headword = "相殺",
+                        forms = listOf(EntryForm("相殺", isCommon = true)),
+                        readings = listOf(EntryReading("そうさい", emptyList(), isCommon = true)),
+                    ),
+                    contentPadding = PaddingValues(),
+                    titleGloss = null,
+                )
+            }
+        }
+
+        assertEquals(emptyList(), rubyUnits())
+        assertTrue(drawnTexts().contains("相殺"), "the word is still drawn: ${drawnTexts()}")
+    }
+
+    @Test
+    fun `learning english the forms table draws no ruby`() = runComposeUiTest {
+        setContent {
+            LearningEnglish {
+                FormsTab(
+                    entry = entryDetail(
+                        headword = "為る",
+                        forms = listOf(EntryForm("為る", isCommon = true)),
+                        readings = listOf(EntryReading("する", emptyList(), isCommon = true)),
+                        senses = listOf(entrySense(posCodes = listOf("vs-i"), glosses = listOf("to do"))),
+                    ),
+                    contentPadding = PaddingValues(),
+                )
+            }
+        }
+
+        assertEquals(emptyList(), rubyUnits())
+        assertTrue(drawnTexts().any { it.startsWith("為") }, "the forms are still drawn: ${drawnTexts()}")
+    }
+
+    @Test
+    fun `learning english a sentence draws no ruby`() = runComposeUiTest {
+        setContent {
+            LearningEnglish {
+                PhrasesUnderTest(
+                    japanese = "学校で勉強する。",
+                    words = listOf(
+                        BreakdownWord("学校", "がっこう"),
+                        BreakdownWord("で", null),
+                        BreakdownWord("勉強", "べんきょう"),
+                    ),
+                )
+            }
+        }
+
+        assertEquals(emptyList(), rubyUnits())
+        assertTrue(drawnTexts().contains("学校"), "the sentence is still drawn: ${drawnTexts()}")
+    }
+
+    /**
+     * The acceptance case for the per-kanji switch: stored on, it is
+     * overridden while the reader learns English, and learning Japanese
+     * again draws divided ruby with nothing rewritten in between.
+     */
+    @Test
+    fun `learning japanese again brings back divided ruby`() = runComposeUiTest {
+        val preferences = FakePreferenceStore(
+            initial = mapOf(PER_KANJI_FURIGANA_PREFERENCE to true),
+            strings = mapOf(LEARNING_LANGUAGE_PREFERENCE to "english"),
+        )
+        setContent {
+            ScreenHost {
+                ProvideLearningLanguage(preferences = preferences, deviceLanguage = "en") {
+                    ProvideKanjiReadings(preferences = preferences, load = { kanjidicFixture }) {
+                        AtamaKuruForms()
+                    }
+                }
+            }
+        }
+        waitForIdle()
+        assertEquals(emptyList(), rubyUnits(), "learning English, the table carries no ruby")
+
+        preferences.setLearningLanguage(LearningLanguage.Japanese)
+        waitUntil { rubyUnits().isNotEmpty() }
+
+        assertTrue(rubyUnits().all { (base, _) -> base == "来" }, "divided again: ${rubyUnits()}")
+    }
+
     @Test
     fun `a table whose stem never shifts carries no ruby`() = runComposeUiTest {
         setContent {
@@ -508,6 +708,19 @@ class RubyRenderingTest {
 
         assertEquals(emptyList(), rubyUnits(), "食 reads た on every row and needs no ruby saying so")
         assertTrue(drawnTexts().contains("食べる"), "the table still draws its forms")
+    }
+}
+
+/** [content] in a screen host, drawn as it is for a reader learning English. */
+@Composable
+private fun LearningEnglish(content: @Composable () -> Unit) {
+    ScreenHost {
+        CompositionLocalProvider(
+            LocalLearningLanguage provides LearningLanguage.English,
+            LocalFuriganaShown provides false,
+        ) {
+            content()
+        }
     }
 }
 

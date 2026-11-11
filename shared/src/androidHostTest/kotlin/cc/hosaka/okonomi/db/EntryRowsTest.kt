@@ -50,6 +50,18 @@ class EntryRowsTest {
         db.entryQueries.insertSense(20, 2, 0, "n", null, null, null, null, null)
         db.entryQueries.insertGloss(20, 0, "food")
 
+        // Two senses whose ids run against their ords, and glosses
+        // inserted out of order: the first gloss is "to perform" by ord
+        // and by nothing else.
+        db.entryQueries.insertEntry(3, 125, 1)
+        db.entryQueries.insertKanjiForm(3, 0, "行う", 125, 1)
+        db.entryQueries.insertReading(3, 0, "おこなう", 0, 125, null, 1)
+        db.entryQueries.insertSense(30, 3, 1, "v5u", null, null, null, null, null)
+        db.entryQueries.insertGloss(30, 0, "to carry out")
+        db.entryQueries.insertSense(31, 3, 0, "v5u", null, null, null, null, null)
+        db.entryQueries.insertGloss(31, 1, "to do")
+        db.entryQueries.insertGloss(31, 0, "to perform")
+
         return DictionaryDatabase(db, driver).also { openedDatabases += it }
     }
 
@@ -124,5 +136,19 @@ class EntryRowsTest {
             "a saved word was not matched against anything, so nothing in it may be lit",
         )
         assertEquals(emptyList(), rows.single().traceLabels)
+    }
+
+    /**
+     * A saved word was chosen by no query, so for a reader learning
+     * English it is titled by its first gloss — the same 行う a Japanese
+     * search would show, never the gloss some earlier search matched.
+     */
+    @Test
+    fun `rows are titled by the entry's first gloss`() = runTest {
+        val database = seededDatabase()
+
+        val rows = database.entryRows(listOf(3L, 1L))
+
+        assertEquals(listOf("to perform", "to eat"), rows.map { it.titleGloss })
     }
 }

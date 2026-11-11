@@ -23,9 +23,12 @@ import androidx.compose.ui.unit.sp
 import cc.hosaka.okonomi.db.EntryDetail
 import cc.hosaka.okonomi.db.EntryReading
 import cc.hosaka.okonomi.db.EntrySense
+import cc.hosaka.okonomi.lang.LearningLanguage
+import cc.hosaka.okonomi.lang.LocalLearningLanguage
 import cc.hosaka.okonomi.ui.CommonWordChip
 import cc.hosaka.okonomi.ui.TagChip
 import cc.hosaka.okonomi.ui.furigana.FuriganaText
+import cc.hosaka.okonomi.ui.furigana.LocalFuriganaShown
 import cc.hosaka.okonomi.ui.furigana.LocalKanjiReadings
 import cc.hosaka.okonomi.ui.furigana.alignReading
 import cc.hosaka.okonomi.ui.furigana.withRoomForRuby
@@ -52,22 +55,37 @@ private val SENSE_NUMBER_WIDTH = 28.dp
  * The word's own reading: the headword with its reading set above it,
  * the readings that one does not cover, and every sense with its
  * labels, glosses and notes.
+ *
+ * [titleGloss] is the English the headword is titled by for a reader
+ * learning English (see [LocalLearningLanguage]); null, or a reader
+ * learning Japanese, titles it by the word itself. A reader learning
+ * English is shown no readings at all, so the Reading section is left
+ * out for them too.
  */
 @Composable
 fun WordTab(
     entry: EntryDetail,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
+    titleGloss: String? = null,
 ) {
+    // Not for a reader learning English: the section lists the readings
+    // the headword's ruby does not show, and with no ruby drawn it would
+    // show 今日's こんにち while きょう appeared nowhere. No reading
+    // anywhere is the rule for this reader.
+    val otherReadings = if (LocalLearningLanguage.current == LearningLanguage.English) {
+        emptyList()
+    } else {
+        entry.otherReadings
+    }
     LazyColumn(
         modifier = modifier
             .fillMaxSize(),
         contentPadding = contentPadding,
     ) {
         item(key = "headword") {
-            Headword(entry)
+            Headword(entry, titleGloss)
         }
-        val otherReadings = entry.otherReadings
         if (otherReadings.isNotEmpty()) {
             item(key = "reading-header") {
                 SectionHeader(stringResource(Res.string.entry_section_reading))
@@ -100,8 +118,19 @@ fun WordTab(
     }
 }
 
+/**
+ * The headword, titled one of two ways.
+ *
+ * For a reader learning Japanese, the word with its reading over it. For
+ * one learning English, the English the reader tapped ([titleGloss]) is
+ * the headword, and the word is the smaller line beneath it, written
+ * alone: this reader reads the kanji, so no reading is drawn anywhere —
+ * not as ruby, and not as a Reading row added to make up for it (Alex,
+ * 2026-11-11). An entry with no English to title it by keeps the
+ * Japanese headword, without its ruby.
+ */
 @Composable
-private fun Headword(entry: EntryDetail) {
+private fun Headword(entry: EntryDetail, titleGloss: String?) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -110,28 +139,19 @@ private fun Headword(entry: EntryDetail) {
                 vertical = Dimens.verticalPaddingHalf,
             ),
     ) {
-        val reading = entry.headwordReading?.text
-        val kanjiReadings = LocalKanjiReadings.current
-        val segments = remember(entry.headword, reading, kanjiReadings) {
-            alignReading(entry.headword, reading ?: entry.headword, kanjiReadings)
+        val englishTitle = titleGloss.takeIf { LocalLearningLanguage.current == LearningLanguage.English }
+        if (englishTitle != null) {
+            Text(
+                text = englishTitle,
+                style = MaterialTheme.typography.displayMedium,
+            )
+            Text(
+                text = entry.headword,
+                style = MaterialTheme.typography.headlineMedium,
+            )
+        } else {
+            JapaneseHeadword(entry)
         }
-        val style = MaterialTheme.typography.displayMedium
-        FuriganaText(
-            segments = segments,
-            // displayMedium's own 52sp line box is less than half what a
-            // 45sp reading needs above the characters, so the ruby was
-            // drawn above the composable — and this is the top row of a
-            // LazyColumn, which clips its viewport 8dp higher up. 葡萄棚
-            // arrived with the top of its dakuten cut off. Stated rather
-            // than measured into a constant: see [withRoomForRuby].
-            //
-            // Asked for only where a reading is actually drawn, and on
-            // the same test FuriganaText itself branches on. ありがとう
-            // and every other kana headword aligns to segments carrying
-            // no reading at all, and 43.2sp of room for one that will
-            // never be drawn is a hole in the page.
-            style = if (segments.any { it.reading != null }) style.withRoomForRuby() else style,
-        )
         val alternates = entry.alternateForms
         if (alternates.isNotEmpty()) {
             // Rarer spellings of the same word: the reader needs to
@@ -144,6 +164,37 @@ private fun Headword(entry: EntryDetail) {
             )
         }
     }
+}
+
+@Composable
+private fun JapaneseHeadword(entry: EntryDetail) {
+    val reading = entry.headwordReading?.text
+    val kanjiReadings = LocalKanjiReadings.current
+    val segments = remember(entry.headword, reading, kanjiReadings) {
+        alignReading(entry.headword, reading ?: entry.headword, kanjiReadings)
+    }
+    val style = MaterialTheme.typography.displayMedium
+    FuriganaText(
+        segments = segments,
+        // displayMedium's own 52sp line box is less than half what a
+        // 45sp reading needs above the characters, so the ruby was
+        // drawn above the composable — and this is the top row of a
+        // LazyColumn, which clips its viewport 8dp higher up. 葡萄棚
+        // arrived with the top of its dakuten cut off. Stated rather
+        // than measured into a constant: see [withRoomForRuby].
+        //
+        // Asked for only where a reading is actually drawn, and on
+        // the same tests FuriganaText itself branches on. ありがとう
+        // and every other kana headword aligns to segments carrying
+        // no reading at all, and while furigana is hidden no headword
+        // carries one on screen; 43.2sp of room for a reading that
+        // will never be drawn is a hole in the page.
+        style = if (LocalFuriganaShown.current && segments.any { it.reading != null }) {
+            style.withRoomForRuby()
+        } else {
+            style
+        },
+    )
 }
 
 @Composable

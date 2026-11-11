@@ -563,7 +563,7 @@ private fun FavouritesList(
                     // record into, not because anything checks it — no
                     // host test can watch a recording that has no path.
                     onClick = {
-                        navigation.navigate(EntryRoute(hit.entryId))
+                        navigation.navigate(EntryRoute(hit.entryId, titleGloss = hit.titleGloss))
                     },
                 )
             }

@@ -147,6 +147,9 @@ class ProvideKanjiReadingsUiTest : ComposeUiTestBase() {
                 preferences = remember { FakePreferenceStore() },
                 onSection = { key, probe -> if (key == homeSearchItem.key) search = probe },
                 loadKanjiReadings = { kanjidicFixture },
+                // Not Japanese: on a Japanese device the reader is taken
+                // to be learning English, when no readings are loaded.
+                deviceLanguage = "en",
             )
         }
         waitForIdle()

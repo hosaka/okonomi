@@ -93,6 +93,20 @@ data class SearchHit(
     val traceLabels: List<String>,
     val senseLines: List<String>,
     val isCommon: Boolean,
+    /**
+     * The English the row is titled by for a reader learning English,
+     * verbatim (brackets included), or null for an entry with no gloss
+     * at all, which keeps its Japanese title.
+     *
+     * An English search titles a row by the gloss the query matched —
+     * "do" finds 行う through "to do", and that is the word the reader
+     * asked about. Anything else — a Japanese search, Favourites, History
+     * — has no gloss to prefer and takes the entry's first.
+     *
+     * A field of its own rather than another [titleSegments] entry: the
+     * Anki card reads the reading off that list by position.
+     */
+    val titleGloss: String? = null,
 )
 
 data class SearchResults(
@@ -490,12 +504,23 @@ private suspend fun DictionaryDatabase.searchEnglish(query: String, limit: Int):
         hits = buildHits(
             matches = shown.map { (entryId, _) -> RankedMatch(entryId) },
             content = content,
-            matchedSenseOrds = shown.associate { (entryId, rank) -> entryId to rank.senseOrd },
+            matchedGlosses = shown.associate { (entryId, rank) ->
+                entryId to GlossPosition(senseOrd = rank.senseOrd, glossOrd = rank.glossOrd)
+            },
         ),
         hasMore = ranked.size > limit,
         glossTokens = tokens,
     )
 }
+
+/**
+ * Where an English query matched in an entry: the sense, and the gloss
+ * within it, by their ords.
+ */
+private class GlossPosition(
+    val senseOrd: Long,
+    val glossOrd: Long,
+)
 
 /** Where and how well an entry matched an English query. */
 private class EnglishRank(
@@ -722,6 +747,25 @@ private class SenseContent(
     fun line(): String = glosses.joinToString(", ") { it.text }
 }
 
+/**
+ * The gloss a row is titled by in English: the one at [matched] when the
+ * query matched one, and otherwise the entry's first — the first gloss of
+ * the first sense, or of the first sense that has any.
+ *
+ * A [matched] position that names no gloss falls to the first rather than
+ * to nothing: the row still has English to show, only not the gloss the
+ * match would have picked.
+ */
+private fun RankingContent.titleGloss(matched: GlossPosition?): String? {
+    if (matched != null) {
+        val gloss = senses.firstOrNull { it.ord == matched.senseOrd }
+            ?.glosses
+            ?.firstOrNull { it.ord == matched.glossOrd }
+        if (gloss != null) return gloss.text
+    }
+    return senses.firstNotNullOfOrNull { it.glosses.firstOrNull() }?.text
+}
+
 private class GlossContent(
     val ord: Long,
     val text: String,
@@ -753,14 +797,15 @@ private suspend fun DictionaryDatabase.loadRankingContent(ids: List<Long>): Map<
 
 /**
  * Turns the matches that will actually be shown into rows, fetching
- * the forms and readings only for those. [matchedSenseOrds] names, per
- * entry, the sense the English query matched in, so a match buried
- * below the visible senses is still one of the lines on screen.
+ * the forms and readings only for those. [matchedGlosses] names, per
+ * entry, where the English query matched: its sense, so a match buried
+ * below the visible senses is still one of the lines on screen, and its
+ * gloss, which titles the row for a reader learning English.
  */
 private suspend fun DictionaryDatabase.buildHits(
     matches: List<RankedMatch>,
     content: Map<Long, RankingContent>,
-    matchedSenseOrds: Map<Long, Long> = emptyMap(),
+    matchedGlosses: Map<Long, GlossPosition> = emptyMap(),
 ): List<SearchHit> {
     if (matches.isEmpty()) return emptyList()
     coroutineContext.ensureActive()
@@ -818,15 +863,17 @@ private suspend fun DictionaryDatabase.buildHits(
         // A degenerate entry with nothing to title cannot render a row.
         if (segments.isEmpty()) return@mapNotNull null
 
+        val matchedGloss = matchedGlosses[match.entryId]
         SearchHit(
             entryId = match.entryId,
             titleSegments = segments,
             traceLabels = match.trace.map { JapaneseDeinflector.ruleDisplayName(it) },
             senseLines = senseLines(
                 senses = entryContent?.senses.orEmpty(),
-                matchedSenseOrd = matchedSenseOrds[match.entryId],
+                matchedSenseOrd = matchedGloss?.senseOrd,
             ),
             isCommon = entryContent?.isCommon == true,
+            titleGloss = entryContent?.titleGloss(matchedGloss),
         )
     }
 }

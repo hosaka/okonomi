@@ -89,6 +89,8 @@ import cc.hosaka.okonomi.feature.navigation.navigationSavedStateConfiguration
 import cc.hosaka.okonomi.feature.navigation.routeEntryProvider
 import cc.hosaka.okonomi.feature.search.SearchRoute
 import cc.hosaka.okonomi.feature.word.EntryRoute
+import cc.hosaka.okonomi.lang.ProvideLearningLanguage
+import cc.hosaka.okonomi.lang.currentDeviceLanguage
 import cc.hosaka.okonomi.prefs.PreferenceStore
 import cc.hosaka.okonomi.prefs.appPreferences
 import cc.hosaka.okonomi.ui.coach.COACH_MARKS_ENABLED_DEFAULT
@@ -274,10 +276,13 @@ internal class HomeSectionProbe(
  * links and the text lookups to open; [leaveApp], what system back on a
  * link-opened entry or a looked-up search calls; [onSection], which
  * hands a test each section's navigation and back stack;
- * [preferences], where the coach marks' on/off setting
- * and the per-kanji furigana setting are read from; and
- * [loadKanjiReadings], what that furigana divides kanji runs with (see
- * [ProvideKanjiReadings], which every section is drawn inside).
+ * [preferences], where the coach marks' on/off setting, the language
+ * the reader is learning and the per-kanji furigana setting are read
+ * from; [loadKanjiReadings], what that furigana divides kanji runs
+ * with (see [ProvideReadingSettings], which every section is drawn
+ * inside); and [deviceLanguage], the language code a reader who never
+ * chose a learning language is defaulted from, so a test does not
+ * depend on the language of the machine it runs on.
  */
 @Composable
 internal fun HomeScreen(
@@ -289,6 +294,7 @@ internal fun HomeScreen(
     onSection: ((key: String, probe: HomeSectionProbe) -> Unit)? = null,
     preferences: PreferenceStore = appPreferences(),
     loadKanjiReadings: suspend () -> KanjiReadings = ::appKanjiReadings,
+    deviceLanguage: String = currentDeviceLanguage(),
 ) {
     require(items.isNotEmpty()) { "Home needs at least one section" }
     require(items.distinctBy { it.key }.size == items.size) { "Home section keys must be unique" }
@@ -369,7 +375,11 @@ internal fun HomeScreen(
         preferences.booleanFlow(COACH_MARKS_ENABLED_PREFERENCE, COACH_MARKS_ENABLED_DEFAULT)
     }.collectAsState(initial = false)
 
-    ProvideKanjiReadings(preferences = preferences, load = loadKanjiReadings) {
+    ProvideReadingSettings(
+        preferences = preferences,
+        loadKanjiReadings = loadKanjiReadings,
+        deviceLanguage = deviceLanguage,
+    ) {
         ResponsiveLayout {
             val horizontalInsets = WindowInsets.systemBars
                 .union(WindowInsets.displayCutout)
@@ -456,6 +466,26 @@ internal fun HomeScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * Everything that decides how a word is drawn, for every section at
+ * once: the language the reader is learning, and with it whether
+ * furigana is shown ([ProvideLearningLanguage]), and the kanji readings
+ * that furigana divides its runs with ([ProvideKanjiReadings]).
+ */
+@Composable
+private fun ProvideReadingSettings(
+    preferences: PreferenceStore,
+    loadKanjiReadings: suspend () -> KanjiReadings,
+    deviceLanguage: String,
+    content: @Composable () -> Unit,
+) {
+    // Outside the kanji readings, which stop dividing while furigana is
+    // hidden and read that from here.
+    ProvideLearningLanguage(preferences = preferences, deviceLanguage = deviceLanguage) {
+        ProvideKanjiReadings(preferences = preferences, load = loadKanjiReadings, content = content)
     }
 }
 

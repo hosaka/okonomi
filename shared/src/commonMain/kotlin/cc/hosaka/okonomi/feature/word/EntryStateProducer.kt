@@ -2,6 +2,7 @@ package cc.hosaka.okonomi.feature.word
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.staticCompositionLocalOf
 import cc.hosaka.okonomi.db.EntryDetail
 import cc.hosaka.okonomi.db.invalidateDictionary
 import cc.hosaka.okonomi.db.loadEntryDetail
@@ -16,18 +17,36 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.onStart
 
-@Composable
-fun produceEntryScreenState(entryId: Long): State<EntryState> = produceScreenState(
-    // One screen state per entry: two entries on the same back stack
-    // must not share a view model, or the second would show the first.
-    key = "entry-$entryId",
-    initial = EntryState(entryId),
-) {
-    entryScreenStateProducer(entryId)
+/**
+ * What an entry screen loads its entry with: the shared app dictionary,
+ * except under a host test, which has no dictionary file and provides a
+ * loader of its own so that a route can be driven from
+ * [EntryRoute.Content] to a loaded screen.
+ */
+internal val LocalEntryDetailLoader = staticCompositionLocalOf<suspend (Long) -> EntryDetail?> {
+    { entryId -> loadEntryDetail(entryId) }
 }
 
+@Composable
+fun produceEntryScreenState(entryId: Long, titleGloss: String? = null): State<EntryState> {
+    val load = LocalEntryDetailLoader.current
+    return produceScreenState(
+        // One screen state per entry: two entries on the same back stack
+        // must not share a view model, or the second would show the first.
+        key = "entry-$entryId",
+        initial = EntryState(entryId, titleGloss = titleGloss),
+    ) {
+        entryScreenStateProducer(entryId, titleGloss, load = load)
+    }
+}
+
+/**
+ * [titleGloss] is the gloss the route carries; see [EntryState.titleGloss]
+ * for what stands in for it when there is none.
+ */
 suspend fun ScreenStateScope.entryScreenStateProducer(
     entryId: Long,
+    titleGloss: String? = null,
     load: suspend (Long) -> EntryDetail? = { loadEntryDetail(it) },
     invalidate: suspend () -> Unit = { invalidateDictionary() },
     favourites: FavouritesStore = appFavourites(),
@@ -62,6 +81,7 @@ suspend fun ScreenStateScope.entryScreenStateProducer(
                 is LoadState.Ready -> EntryContentState.Ready(state.value)
                 is LoadState.Error -> EntryContentState.Error(state.onRetry)
             },
+            titleGloss = titleGloss ?: (state as? LoadState.Ready)?.value?.firstGloss(),
             isFavourite = isFavourite,
             // Only an entry that loaded can be saved: the button is not
             // drawn over a spinner or an error, and a null callback is
@@ -70,3 +90,10 @@ suspend fun ScreenStateScope.entryScreenStateProducer(
         )
     }
 }
+
+/**
+ * The entry's first gloss: the first of the first sense, or of the first
+ * sense that has any. The same rule a result row titles itself by when no
+ * query chose a gloss, so a link lands on the title its row would show.
+ */
+internal fun EntryDetail.firstGloss(): String? = senses.firstNotNullOfOrNull { it.glosses.firstOrNull() }

@@ -26,6 +26,8 @@ import okio.Path.Companion.toPath
 
 private const val KEY = "search.names_enabled"
 
+private const val STRING_KEY = "dictionary.learning_language"
+
 /**
  * The real storage behind the Names toggle.
  *
@@ -116,6 +118,48 @@ class DataStorePreferenceStoreTest {
         assertFalse(
             store.booleanFlow(KEY, default = true).first(),
             "the last write asked for was false, so false is what must be stored",
+        )
+    }
+
+    /**
+     * The string half of the seam, which the learning language is stored
+     * through: unset reads as the default, and a written value comes back
+     * and is on disk.
+     */
+    @Test
+    fun `a written string comes back and reaches the file`() = runTest {
+        val file = tempFile()
+        val store = storeOver(file, backgroundScope)
+        val values = store.stringFlow(STRING_KEY, default = "unset")
+
+        assertEquals("unset", values.first())
+        store.setString(STRING_KEY, "english")
+
+        assertEquals("english", values.first { it != "unset" })
+        assertTrue(file.isFile && file.length() > 0, "the value has to survive the process, not just the flow")
+    }
+
+    /**
+     * Strings go through the same single writer as Booleans, so writes of
+     * the two types land in the order they were asked for, not merely
+     * each type in its own order. On this fake every write costs less
+     * than the one before it, so a second writer of its own — ordered or
+     * not — would run the Boolean beside the first string and land it
+     * first.
+     */
+    @Test
+    fun `string and boolean writes share one ordered writer`() = runTest {
+        val slow = FlakyDataStore(failuresBeforeSuccess = 0, writeCostFallsBy = 1.milliseconds)
+        val store = DataStorePreferenceStore(slow, backgroundScope)
+
+        store.setString(STRING_KEY, "japanese")
+        store.setBoolean(KEY, true)
+        store.setString(STRING_KEY, "english")
+        slow.awaitAttempts(3)
+
+        assertEquals(
+            listOf<Pair<String, Any>>(STRING_KEY to "japanese", KEY to true, STRING_KEY to "english"),
+            slow.applied,
         )
     }
 
@@ -211,6 +255,12 @@ private class FlakyDataStore(
         private set
 
     /**
+     * Each applied write as the key it changed and the value it left,
+     * in the order the writes landed.
+     */
+    val applied = mutableListOf<Pair<String, Any>>()
+
+    /**
      * Suspends until [count] writes have been applied. The writer runs
      * on a scope the test does not await, so this rather than a clock
      * nudge is what makes the assertion deterministic.
@@ -232,8 +282,12 @@ private class FlakyDataStore(
             val started = writesStarted++
             delay(writeCostFallsBy * (MAX_WRITE_COST - started).coerceAtLeast(1))
         }
-        return transform(stored.value).also {
-            stored.value = it
+        return transform(stored.value).also { updated ->
+            val before = stored.value.asMap()
+            updated.asMap()
+                .filter { (key, value) -> before[key] != value }
+                .forEach { (key, value) -> applied += key.name to value }
+            stored.value = updated
             attempts.value++
         }
     }

@@ -282,6 +282,8 @@
     <string name="settings_title">Settings</string>
     <string name="settings_appearance_title">Appearance</string>
     <string name="settings_appearance_description">Main tab hints and furigana</string>
+    <string name="settings_dictionary_category_title">Dictionary</string>
+    <string name="settings_dictionary_category_description">The language you are learning</string>
     <string name="settings_about_title">About</string>
     <string name="settings_about_description">Dictionary, credits and licences</string>
     <string name="about_title">About</string>
@@ -290,6 +292,19 @@
     <string name="appearance_back">Back</string>
     <string name="appearance_show_hints">Show hints on main tab</string>
     <string name="appearance_per_kanji_furigana">Furigana over each kanji</string>
+    <!-- Under the per-kanji switch, which is off and disabled while the
+         reader is learning English: words are drawn with no furigana
+         then, and the names that keep theirs are not divided per kanji. -->
+    <string name="appearance_per_kanji_furigana_hidden">Only available while learning Japanese</string>
+    <string name="dictionary_settings_title">Dictionary</string>
+    <string name="dictionary_settings_back">Back</string>
+    <string name="dictionary_settings_learning">Learning</string>
+    <!-- The two choices of language to learn, each written in its own
+         language. Never translated: they read the same in every locale,
+         so a reader finds their language by the name it calls itself
+         whatever language the rest of the app is in. -->
+    <string name="dictionary_settings_learning_japanese">日本語</string>
+    <string name="dictionary_settings_learning_english">English</string>
     <string name="settings_dictionary_label">Dictionary</string>
     <string name="settings_dictionary_value">JMdict %1$s · %2$s entries</string>
     <string name="settings_credits_title">Credits</string>

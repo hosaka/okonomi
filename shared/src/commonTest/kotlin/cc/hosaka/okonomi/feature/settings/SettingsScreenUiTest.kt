@@ -3,6 +3,7 @@ package cc.hosaka.okonomi.feature.settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
@@ -19,6 +20,8 @@ import okonomi.shared.generated.resources.settings_about_description
 import okonomi.shared.generated.resources.settings_about_title
 import okonomi.shared.generated.resources.settings_appearance_description
 import okonomi.shared.generated.resources.settings_appearance_title
+import okonomi.shared.generated.resources.settings_dictionary_category_description
+import okonomi.shared.generated.resources.settings_dictionary_category_title
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -30,7 +33,7 @@ import org.jetbrains.compose.resources.stringResource
 @OptIn(ExperimentalTestApi::class)
 class SettingsScreenUiTest : ComposeUiTestBase() {
     @Test
-    fun `both categories are listed with their descriptions`() = runComposeUiTest {
+    fun `all three categories are listed with their descriptions`() = runComposeUiTest {
         val labels = Labels()
         setContent {
             labels.read()
@@ -39,8 +42,25 @@ class SettingsScreenUiTest : ComposeUiTestBase() {
 
         onNodeWithText(labels.appearance).assertIsDisplayed()
         onNodeWithText(labels.appearanceDescription).assertIsDisplayed()
+        onNodeWithText(labels.dictionary).assertIsDisplayed()
+        onNodeWithText(labels.dictionaryDescription).assertIsDisplayed()
         onNodeWithText(labels.about).assertIsDisplayed()
         onNodeWithText(labels.aboutDescription).assertIsDisplayed()
+        onAllNodes(hasClickAction()).assertCountEquals(3)
+    }
+
+    @Test
+    fun `tapping dictionary pushes the dictionary screen`() = runComposeUiTest {
+        val labels = Labels()
+        val navigation = RecordingNavigationController()
+        setContent {
+            labels.read()
+            SettingsUnderTest(navigation)
+        }
+
+        onNode(hasText(labels.dictionaryDescription) and hasClickAction()).performClick()
+
+        assertEquals(listOf<Any>(DictionarySettingsRoute), navigation.navigated)
     }
 
     @Test
@@ -82,6 +102,8 @@ private fun SettingsUnderTest(navigation: RecordingNavigationController) {
 private class Labels {
     var appearance = ""
     var appearanceDescription = ""
+    var dictionary = ""
+    var dictionaryDescription = ""
     var about = ""
     var aboutDescription = ""
 
@@ -89,6 +111,8 @@ private class Labels {
     fun read() {
         appearance = stringResource(Res.string.settings_appearance_title)
         appearanceDescription = stringResource(Res.string.settings_appearance_description)
+        dictionary = stringResource(Res.string.settings_dictionary_category_title)
+        dictionaryDescription = stringResource(Res.string.settings_dictionary_category_description)
         about = stringResource(Res.string.settings_about_title)
         aboutDescription = stringResource(Res.string.settings_about_description)
     }

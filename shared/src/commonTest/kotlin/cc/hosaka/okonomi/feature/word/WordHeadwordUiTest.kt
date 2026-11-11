@@ -1,18 +1,26 @@
 package cc.hosaka.okonomi.feature.word
 
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.text.TextLayoutResult
 import cc.hosaka.okonomi.db.EntryForm
 import cc.hosaka.okonomi.db.EntryReading
+import cc.hosaka.okonomi.lang.LearningLanguage
+import cc.hosaka.okonomi.lang.LocalLearningLanguage
+import cc.hosaka.okonomi.ui.furigana.LocalFuriganaShown
 import cc.hosaka.okonomi.ui.test.ComposeUiTestBase
+import cc.hosaka.okonomi.ui.test.ScreenHost
 import cc.hosaka.okonomi.ui.test.entryDetail
+import cc.hosaka.okonomi.ui.test.entrySense
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import okonomi.shared.generated.resources.Res
@@ -149,6 +157,143 @@ class WordHeadwordUiTest : ComposeUiTestBase() {
     }
 
     /**
+     * While furigana is hidden nothing is drawn above the headword, so it
+     * takes the ordinary box: the room above would be a gap under a word
+     * with nothing over it.
+     */
+    @Test
+    fun `a headword with furigana hidden takes the ordinary line box`() = runComposeUiTest {
+        setContent {
+            CompositionLocalProvider(LocalFuriganaShown provides false) {
+                WordTab(
+                    entry = entryDetail(
+                        headword = "葡萄棚",
+                        forms = listOf(EntryForm("葡萄棚", isCommon = false)),
+                        readings = listOf(EntryReading("ぶどうだな", emptyList(), isCommon = false)),
+                    ),
+                    contentPadding = PaddingValues(),
+                )
+            }
+        }
+
+        val style = onNodeWithText("葡萄棚").textLayout().layoutInput.style
+        val roomForRuby = style.fontSize.value * (1f + 2f * (0.45f + 0.03f))
+        assertTrue(
+            style.lineHeight.value < roomForRuby,
+            "no reading is drawn above these characters, got a ${style.lineHeight} box",
+        )
+    }
+
+    /**
+     * For a reader learning English the gloss they tapped is the
+     * headword, and the word is the line beneath it — even where the
+     * gloss is not the entry's first.
+     */
+    @Test
+    fun `learning english the tapped gloss is the headword with the word beneath`() = runComposeUiTest {
+        setContent {
+            LearningEnglish {
+                WordTab(
+                    entry = okonau(),
+                    contentPadding = PaddingValues(),
+                    titleGloss = "to do",
+                )
+            }
+        }
+
+        // Exact text, so the gloss line "to do" of the senses below — a
+        // separate text after its bullet — is the only other match, and
+        // it sits lower down still.
+        val headword = onAllNodesWithText("to do", useUnmergedTree = true).fetchSemanticsNodes()
+            .minBy { it.boundsInRoot.top }
+        val word = onNodeWithText("行う", useUnmergedTree = true).fetchSemanticsNode()
+        assertTrue(headword.boundsInRoot.top < word.boundsInRoot.top, "the gloss heads the tab, the word beneath it")
+        val glossLine = onAllNodesWithText("to do", useUnmergedTree = true).fetchSemanticsNodes()
+            .maxBy { it.boundsInRoot.top }
+        assertTrue(word.boundsInRoot.top < glossLine.boundsInRoot.top, "the headword is above the senses")
+    }
+
+    /** The entry view hands the state's gloss on to the tab it titles. */
+    @Test
+    fun `the entry screen titles its word tab by the state's gloss`() = runComposeUiTest {
+        setContent {
+            ScreenHost {
+                LearningEnglish {
+                    EntryScreen(
+                        EntryState(
+                            entryId = 1L,
+                            content = EntryContentState.Ready(okonau()),
+                            titleGloss = "to do",
+                        ),
+                    )
+                }
+            }
+        }
+
+        val headword = onAllNodesWithText("to do", useUnmergedTree = true).fetchSemanticsNodes()
+            .minBy { it.boundsInRoot.top }
+        val word = onNodeWithText("行う", useUnmergedTree = true).fetchSemanticsNode()
+        assertTrue(headword.boundsInRoot.top < word.boundsInRoot.top, "the gloss heads the tab, the word beneath it")
+    }
+
+    /**
+     * No Reading row stands in for the ruby that is gone (Alex,
+     * 2026-11-11). Whether a ruby is drawn cannot be seen at this SDK;
+     * `RubyRenderingTest` holds that end.
+     */
+    @Test
+    fun `learning english no reading row is added for the hidden ruby`() = runComposeUiTest {
+        lateinit var heading: String
+        setContent {
+            heading = stringResource(Res.string.entry_section_reading)
+            LearningEnglish {
+                WordTab(
+                    entry = okonau(),
+                    contentPadding = PaddingValues(),
+                    titleGloss = "to do",
+                )
+            }
+        }
+
+        onNodeWithText("行う", useUnmergedTree = true).assertIsDisplayed()
+        onNodeWithText(heading).assertDoesNotExist()
+        onNodeWithText("おこなう", useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    /**
+     * And the readings the ruby never covered are not listed either.
+     * 今日 reads きょう over the headword and こんにち in the Reading
+     * section; with the ruby hidden, listing こんにち alone would show the
+     * rarer reading and never the one the word is known by.
+     */
+    @Test
+    fun `learning english the other readings are not listed`() = runComposeUiTest {
+        lateinit var heading: String
+        setContent {
+            heading = stringResource(Res.string.entry_section_reading)
+            LearningEnglish {
+                WordTab(
+                    entry = entryDetail(
+                        headword = "今日",
+                        forms = listOf(EntryForm("今日", isCommon = true)),
+                        readings = listOf(
+                            EntryReading("きょう", emptyList(), isCommon = true),
+                            EntryReading("こんにち", emptyList(), isCommon = true),
+                        ),
+                        senses = listOf(entrySense(glosses = listOf("today"))),
+                    ),
+                    contentPadding = PaddingValues(),
+                    titleGloss = "today",
+                )
+            }
+        }
+
+        onNodeWithText("今日", useUnmergedTree = true).assertIsDisplayed()
+        onNodeWithText("こんにち", useUnmergedTree = true).assertDoesNotExist()
+        onNodeWithText(heading).assertDoesNotExist()
+    }
+
+    /**
      * A word written in kana alone is its own reading. It gets no ruby
      * and no section repeating the headword underneath it.
      */
@@ -170,6 +315,24 @@ class WordHeadwordUiTest : ComposeUiTestBase() {
         onNodeWithText("ラーメン").assertIsDisplayed()
         onNodeWithText(heading).assertDoesNotExist()
     }
+}
+
+/** 行う: two glosses in its first sense, and one reading. */
+private fun okonau() = entryDetail(
+    headword = "行う",
+    forms = listOf(EntryForm("行う", isCommon = true)),
+    readings = listOf(EntryReading("おこなう", emptyList(), isCommon = true)),
+    senses = listOf(entrySense(posCodes = listOf("v5u"), glosses = listOf("to perform", "to do"))),
+)
+
+/** [content] as the app draws it for a reader learning English. */
+@Composable
+private fun LearningEnglish(content: @Composable () -> Unit) {
+    CompositionLocalProvider(
+        LocalLearningLanguage provides LearningLanguage.English,
+        LocalFuriganaShown provides false,
+        content = content,
+    )
 }
 
 /**

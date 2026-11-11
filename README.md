@@ -26,6 +26,7 @@
 
 ## Features
 - **Search** the dictionary for words in English or Japanese using Kanji or Hiragana.
+- Learning **English** instead? Flip the dictionary to English to invert the search.
 - **Filter** what you are searching for to find words that are most relevant to you.
 - Look up **Kanji** with readings, **Radicals** composition and **Stroke Order** animation.
 - See example **Phrases** right from the search results, tap words in a sentence to search them.

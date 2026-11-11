@@ -23,12 +23,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import cc.hosaka.okonomi.db.BreakdownWord
 import cc.hosaka.okonomi.db.EntryDetail
 import cc.hosaka.okonomi.db.ExampleSentence
 import cc.hosaka.okonomi.feature.navigation.LocalNavigationController
 import cc.hosaka.okonomi.feature.search.SearchRoute
+import cc.hosaka.okonomi.lang.LearningLanguage
+import cc.hosaka.okonomi.lang.LocalLearningLanguage
 import cc.hosaka.okonomi.ui.CenteredBox
 import cc.hosaka.okonomi.ui.CenteredMessage
 import cc.hosaka.okonomi.ui.ListCard
@@ -51,6 +54,9 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * Example sentences for the word, two lines each: the Japanese sentence
  * with its readings set over it, and the English translation under it.
+ * For a reader learning English the two swap places: the English is the
+ * line on top, and the Japanese, still tappable word by word, sits under
+ * it (see [SentenceBlock]).
  *
  * There is no word-by-word breakdown row any more. It existed to supply
  * readings the sentence itself did not carry, and to be somewhere to
@@ -181,6 +187,18 @@ private fun SentenceList(
     }
 }
 
+/**
+ * One example: the sentence in the language the reader is learning on
+ * top, and its translation, in the language they already read, under it.
+ *
+ * For a reader learning English that is the inverse of the usual card,
+ * styles included: the English takes the plain body style the Japanese
+ * would have had, and the Japanese takes the muted, smaller one the
+ * English had, at no reading size, since no ruby is drawn for this
+ * reader. Its words stay tappable and keep the primary colour that says
+ * so, because a reader learning English still wants to follow the words
+ * that make up a sentence into the dictionary.
+ */
 @Composable
 private fun SentenceBlock(
     sentence: ExampleSentence,
@@ -189,24 +207,42 @@ private fun SentenceBlock(
     entryPos: Map<Long, List<String>>,
 ) {
     val copy = rememberClipboardCopy()
+    val learningEnglish = LocalLearningLanguage.current == LearningLanguage.English
     ListCard(
-        // The Japanese sentence alone. The English is a translation the
-        // reader can already read; what goes into a note or a search box
-        // is the Japanese.
-        onLongClick = { copy(sentence.japanese) },
+        // The sentence in the language being learned, alone: the line on
+        // top. The other is a translation the reader can already read;
+        // what goes into a note or a search box is the one they are
+        // learning.
+        onLongClick = { copy(if (learningEnglish) sentence.english else sentence.japanese) },
         onLongClickLabel = stringResource(Res.string.list_card_copy),
     ) {
-        SentenceText(
-            sentence = sentence,
-            tappableWords = tappableWords,
-            wordBeingRead = wordBeingRead,
-            entryPos = entryPos,
-        )
-        Text(
-            text = sentence.english,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        if (learningEnglish) {
+            Text(
+                text = sentence.english,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            SentenceText(
+                sentence = sentence,
+                tappableWords = tappableWords,
+                wordBeingRead = wordBeingRead,
+                entryPos = entryPos,
+                style = MaterialTheme.typography.bodyMedium,
+                inertColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            SentenceText(
+                sentence = sentence,
+                tappableWords = tappableWords,
+                wordBeingRead = wordBeingRead,
+                entryPos = entryPos,
+                style = MaterialTheme.typography.bodyLarge.atJapaneseReadingSize(),
+            )
+            Text(
+                text = sentence.english,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -291,6 +327,8 @@ private fun SentenceText(
     tappableWords: Set<BreakdownWord>,
     wordBeingRead: String,
     entryPos: Map<Long, List<String>>,
+    style: TextStyle,
+    inertColor: Color = Color.Unspecified,
 ) {
     val navigation = LocalNavigationController.current
     val kanjiReadings = LocalKanjiReadings.current
@@ -309,7 +347,6 @@ private fun SentenceText(
             )
         }
     }
-    val style = MaterialTheme.typography.bodyLarge.atJapaneseReadingSize()
     val contentWordColor = MaterialTheme.colorScheme.primary
     FlowRow {
         pieces.forEach { piece ->
@@ -358,7 +395,7 @@ private fun SentenceText(
                     // to its segments so both halves of a ruby unit take
                     // it, since the base and the reading are drawn from
                     // this one style.
-                    color = if (piece.onTap != null) contentWordColor else Color.Unspecified,
+                    color = if (piece.onTap != null) contentWordColor else inertColor,
                 )
             }
         }

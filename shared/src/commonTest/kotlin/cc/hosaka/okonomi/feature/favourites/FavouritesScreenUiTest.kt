@@ -44,6 +44,9 @@ import cc.hosaka.okonomi.db.SearchHit
 import cc.hosaka.okonomi.db.TitleSegment
 import cc.hosaka.okonomi.feature.navigation.Route
 import cc.hosaka.okonomi.feature.word.EntryRoute
+import cc.hosaka.okonomi.lang.LearningLanguage
+import cc.hosaka.okonomi.lang.LocalLearningLanguage
+import cc.hosaka.okonomi.ui.furigana.LocalFuriganaShown
 import cc.hosaka.okonomi.ui.test.ComposeUiTestBase
 import cc.hosaka.okonomi.ui.test.RecordingNavigationController
 import cc.hosaka.okonomi.ui.test.ScreenHost
@@ -118,6 +121,35 @@ class FavouritesScreenUiTest : ComposeUiTestBase() {
         waitForIdle()
 
         assertEquals(listOf<Route>(EntryRoute(1_358_280L)), navigation.navigated)
+    }
+
+    /**
+     * For a reader learning English a saved row is titled by its gloss —
+     * the first, since no query chose one; see `EntryRowsTest` — and it
+     * opens the entry under that same gloss, so the Word tab is headed by
+     * the word the reader tapped.
+     */
+    @Test
+    fun `learning english a row is titled by its gloss and opens the entry under it`() = runComposeUiTest {
+        val navigation = RecordingNavigationController()
+        setContent {
+            CompositionLocalProvider(
+                LocalLearningLanguage provides LearningLanguage.English,
+                LocalFuriganaShown provides false,
+            ) {
+                FavouritesUnderTest(
+                    content = FavouritesContentState.Ready(listOf(hit(1_358_280L).copy(titleGloss = "to eat"))),
+                    navigation = navigation,
+                )
+            }
+        }
+
+        onNodeWithText("to eat", useUnmergedTree = true).assertIsDisplayed()
+
+        onNodeWithText("- to eat").performClick()
+        waitForIdle()
+
+        assertEquals(listOf<Route>(EntryRoute(1_358_280L, titleGloss = "to eat")), navigation.navigated)
     }
 
     @Test

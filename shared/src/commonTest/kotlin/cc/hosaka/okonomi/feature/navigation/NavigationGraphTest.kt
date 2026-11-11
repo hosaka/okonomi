@@ -7,6 +7,7 @@ import cc.hosaka.okonomi.feature.radical.RadicalRoute
 import cc.hosaka.okonomi.feature.search.SearchRoute
 import cc.hosaka.okonomi.feature.settings.AboutRoute
 import cc.hosaka.okonomi.feature.settings.AppearanceRoute
+import cc.hosaka.okonomi.feature.settings.DictionarySettingsRoute
 import cc.hosaka.okonomi.feature.word.EntryRoute
 import kotlin.test.Test
 import kotlin.test.assertNotNull
@@ -35,6 +36,7 @@ class NavigationGraphTest {
             LibrariesRoute,
             // The Settings categories, pushed from its root.
             AppearanceRoute,
+            DictionarySettingsRoute,
             AboutRoute,
             EntryRoute(entryId = 1),
             // Search is both a section root and a pushed screen: a

@@ -2,11 +2,13 @@ package cc.hosaka.okonomi.prefs
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -68,20 +70,22 @@ internal expect fun preferencesFilePath(): String
  * Writes are **ordered**. Each one is queued to a single writer rather
  * than launched on its own: `DataStore.edit` serialises its callers, but
  * the order independent coroutines reach it is not the order they were
- * asked in, so a quick on-then-off could persist "on".
+ * asked in, so a quick on-then-off could persist "on". Strings share the
+ * queue with Booleans rather than having one of their own, so the order
+ * holds across types too.
  */
 internal class DataStorePreferenceStore(
     private val store: DataStore<Preferences>,
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) : PreferenceStore {
 
-    private val writes = Channel<Write>(Channel.UNLIMITED)
+    private val writes = Channel<Write<*>>(Channel.UNLIMITED)
 
     init {
         scope.launch {
             for (write in writes) {
                 try {
-                    store.edit { preferences -> preferences[write.key] = write.value }
+                    store.edit { preferences -> write.applyTo(preferences) }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
@@ -93,33 +97,49 @@ internal class DataStorePreferenceStore(
         }
     }
 
-    override fun booleanFlow(key: String, default: Boolean): Flow<Boolean> {
-        val preferenceKey = booleanPreferencesKey(key)
-        return store.data
-            .retryWhen { cause, attempt ->
-                if (cause is CancellationException) return@retryWhen false
-                emit(emptyPreferences())
-                delay(retryDelay(attempt))
-                true
-            }
-            .map { preferences -> preferences[preferenceKey] ?: default }
-            // The file carries every setting, so a write to any other
-            // key emits here too; without this, toggling something
-            // unrelated would re-run whatever this value gates. It also
-            // absorbs the repeated defaults a retry loop emits.
-            .distinctUntilChanged()
-    }
+    override fun booleanFlow(key: String, default: Boolean): Flow<Boolean> =
+        valueFlow(booleanPreferencesKey(key), default)
 
     override fun setBoolean(key: String, value: Boolean) {
-        // trySend on an unlimited channel never fails and never
-        // reorders, which is the whole point of queueing here.
-        writes.trySend(Write(booleanPreferencesKey(key), value))
+        enqueue(Write(booleanPreferencesKey(key), value))
     }
 
-    private class Write(
-        val key: Preferences.Key<Boolean>,
-        val value: Boolean,
-    )
+    override fun stringFlow(key: String, default: String): Flow<String> =
+        valueFlow(stringPreferencesKey(key), default)
+
+    override fun setString(key: String, value: String) {
+        enqueue(Write(stringPreferencesKey(key), value))
+    }
+
+    private fun <T> valueFlow(key: Preferences.Key<T>, default: T): Flow<T> = store.data
+        .retryWhen { cause, attempt ->
+            if (cause is CancellationException) return@retryWhen false
+            emit(emptyPreferences())
+            delay(retryDelay(attempt))
+            true
+        }
+        .map { preferences -> preferences[key] ?: default }
+        // The file carries every setting, so a write to any other
+        // key emits here too; without this, toggling something
+        // unrelated would re-run whatever this value gates. It also
+        // absorbs the repeated defaults a retry loop emits.
+        .distinctUntilChanged()
+
+    private fun enqueue(write: Write<*>) {
+        // trySend on an unlimited channel never fails and never
+        // reorders, which is the whole point of queueing here.
+        writes.trySend(write)
+    }
+
+    /** One queued write, typed so the key and its value cannot disagree. */
+    private class Write<T>(
+        private val key: Preferences.Key<T>,
+        private val value: T,
+    ) {
+        fun applyTo(preferences: MutablePreferences) {
+            preferences[key] = value
+        }
+    }
 }
 
 private fun retryDelay(attempt: Long): Duration {

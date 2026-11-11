@@ -8,6 +8,14 @@ data class EntryState(
     val entryId: Long,
     val content: EntryContentState = EntryContentState.Loading,
     /**
+     * The English the Word tab is titled by for a reader learning
+     * English: the gloss the route carries — the one the reader tapped —
+     * or, for a route that carries none, the entry's first gloss once it
+     * has loaded. Null for an entry with no gloss at all, which keeps its
+     * Japanese headword.
+     */
+    val titleGloss: String? = null,
+    /**
      * Whether this entry is in the reader's Favourites list. Read back
      * from storage rather than held optimistically, so a write that
      * could not land is seen to refuse rather than seen to lie; see

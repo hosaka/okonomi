@@ -58,6 +58,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flowOf
 import okonomi.shared.generated.resources.Res
 import okonomi.shared.generated.resources.home_favourites_label
 import okonomi.shared.generated.resources.search_clear
@@ -465,7 +466,10 @@ private fun HomeUnderTest(
     )
 }
 
-/** A store whose reads emit nothing until [answer] is called. */
+/**
+ * A store whose Boolean reads emit nothing until [answer] is called. Its
+ * strings read as unset at once: what is held back is the switch.
+ */
 private class UnansweredPreferenceStore : PreferenceStore {
     private val stored = MutableStateFlow<Boolean?>(null)
 
@@ -478,6 +482,10 @@ private class UnansweredPreferenceStore : PreferenceStore {
     override fun setBoolean(key: String, value: Boolean) {
         stored.value = value
     }
+
+    override fun stringFlow(key: String, default: String): Flow<String> = flowOf(default)
+
+    override fun setString(key: String, value: String) = Unit
 }
 
 /** A 640×360 window, placed at the root's origin whatever the real window is. */

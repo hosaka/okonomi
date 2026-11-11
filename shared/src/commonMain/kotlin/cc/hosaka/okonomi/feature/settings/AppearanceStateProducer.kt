@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import cc.hosaka.okonomi.feature.navigation.state.ScreenStateScope
 import cc.hosaka.okonomi.feature.navigation.state.produceScreenState
+import cc.hosaka.okonomi.lang.currentDeviceLanguage
+import cc.hosaka.okonomi.lang.learningLanguageFlow
 import cc.hosaka.okonomi.prefs.PreferenceStore
 import cc.hosaka.okonomi.prefs.appPreferences
 import cc.hosaka.okonomi.ui.coach.COACH_MARKS_ENABLED_DEFAULT
@@ -27,9 +29,17 @@ fun produceAppearanceScreenState(): State<AppearanceState> = produceScreenState(
  * fails therefore leaves the switch showing what is actually stored.
  * Nothing is emitted before the store answers, so the state stays at its
  * unknown initial value rather than guessing the default.
+ *
+ * The per-kanji switch is the one exception to "what the store says".
+ * While the reader is learning English the division is off whatever is
+ * stored — `ProvideKanjiReadings` stops following the switch — so the
+ * switch is shown off and cannot be moved. Nothing is written: the stored
+ * value is the reader's choice for when they learn Japanese again, and
+ * forcing it off on disk would lose it.
  */
 suspend fun ScreenStateScope.appearanceScreenStateProducer(
     preferences: PreferenceStore = appPreferences(),
+    deviceLanguage: () -> String = ::currentDeviceLanguage,
 ): Flow<AppearanceState> {
     val onShowHintsChange: (Boolean) -> Unit = { enabled ->
         preferences.setBoolean(COACH_MARKS_ENABLED_PREFERENCE, enabled)
@@ -40,12 +50,15 @@ suspend fun ScreenStateScope.appearanceScreenStateProducer(
     return combine(
         preferences.booleanFlow(COACH_MARKS_ENABLED_PREFERENCE, COACH_MARKS_ENABLED_DEFAULT),
         preferences.booleanFlow(PER_KANJI_FURIGANA_PREFERENCE, PER_KANJI_FURIGANA_DEFAULT),
-    ) { showHints, perKanjiFurigana ->
+        preferences.learningLanguageFlow(deviceLanguage),
+    ) { showHints, perKanjiFurigana, learningLanguage ->
+        val furiganaShown = learningLanguage.showsFurigana
         AppearanceState(
             showHints = showHints,
             onShowHintsChange = onShowHintsChange,
-            perKanjiFurigana = perKanjiFurigana,
-            onPerKanjiFuriganaChange = onPerKanjiFuriganaChange,
+            perKanjiFurigana = perKanjiFurigana && furiganaShown,
+            onPerKanjiFuriganaChange = onPerKanjiFuriganaChange.takeIf { furiganaShown },
+            furiganaHidden = !furiganaShown,
         )
     }
 }

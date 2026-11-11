@@ -22,6 +22,7 @@ import kotlin.test.assertEquals
 import okonomi.shared.generated.resources.Res
 import okonomi.shared.generated.resources.appearance_back
 import okonomi.shared.generated.resources.appearance_per_kanji_furigana
+import okonomi.shared.generated.resources.appearance_per_kanji_furigana_hidden
 import okonomi.shared.generated.resources.appearance_show_hints
 import org.jetbrains.compose.resources.stringResource
 
@@ -127,6 +128,52 @@ class AppearanceScreenUiTest : ComposeUiTestBase() {
         }
 
         onNode(hasText(label) and isToggleable()).assertIsNotEnabled()
+    }
+
+    /**
+     * Learning English, the switch is shown off and cannot be moved, and
+     * the row says why rather than leaving a dead switch unexplained. The
+     * note is part of the switch's own node, so it is read out with it.
+     */
+    @Test
+    fun `with furigana hidden the per-kanji switch is off and disabled and says why`() = runComposeUiTest {
+        var label = ""
+        var note = ""
+        setContent {
+            label = stringResource(Res.string.appearance_per_kanji_furigana)
+            note = stringResource(Res.string.appearance_per_kanji_furigana_hidden)
+            AppearanceUnderTest(
+                AppearanceState(
+                    showHints = true,
+                    onShowHintsChange = {},
+                    perKanjiFurigana = false,
+                    onPerKanjiFuriganaChange = null,
+                    furiganaHidden = true,
+                ),
+            )
+        }
+
+        val row = onNode(hasText(label) and hasText(note) and isToggleable())
+        row.assertIsOff()
+        row.assertIsNotEnabled()
+    }
+
+    @Test
+    fun `with furigana shown the per-kanji switch carries no note`() = runComposeUiTest {
+        var note = ""
+        setContent {
+            note = stringResource(Res.string.appearance_per_kanji_furigana_hidden)
+            AppearanceUnderTest(
+                AppearanceState(
+                    showHints = true,
+                    onShowHintsChange = {},
+                    perKanjiFurigana = true,
+                    onPerKanjiFuriganaChange = {},
+                ),
+            )
+        }
+
+        onNode(hasText(note)).assertDoesNotExist()
     }
 
     @Test

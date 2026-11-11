@@ -805,7 +805,7 @@ class SearchStateProducerTest {
         assertEquals(listOf(1L), results.hits.map { it.entryId })
         assertEquals(listOf("田中"), results.names.map { it.kanji })
         assertEquals(
-            listOf(NAMES_IN_SEARCH_PREFERENCE to true),
+            listOf<Pair<String, Any>>(NAMES_IN_SEARCH_PREFERENCE to true),
             preferences.writes,
             "the toggle must reach storage, or it cannot survive a relaunch",
         )
@@ -852,7 +852,7 @@ class SearchStateProducerTest {
 
         assertFalse(states.last().namesEnabled)
         assertEquals(
-            listOf(NAMES_IN_SEARCH_PREFERENCE to true, NAMES_IN_SEARCH_PREFERENCE to false),
+            listOf<Pair<String, Any>>(NAMES_IN_SEARCH_PREFERENCE to true, NAMES_IN_SEARCH_PREFERENCE to false),
             preferences.writes,
             "two taps in a row must land as on and then off",
         )
@@ -1260,6 +1260,10 @@ private class SilentPreferenceStore : PreferenceStore {
     override fun booleanFlow(key: String, default: Boolean): Flow<Boolean> = emptyFlow()
 
     override fun setBoolean(key: String, value: Boolean) = Unit
+
+    override fun stringFlow(key: String, default: String): Flow<String> = emptyFlow()
+
+    override fun setString(key: String, value: String) = Unit
 }
 
 /** A store whose reads neither answer nor fail — a wedged file. */
@@ -1267,6 +1271,10 @@ private class HangingPreferenceStore : PreferenceStore {
     override fun booleanFlow(key: String, default: Boolean): Flow<Boolean> = flow { awaitCancellation() }
 
     override fun setBoolean(key: String, value: Boolean) = Unit
+
+    override fun stringFlow(key: String, default: String): Flow<String> = flow { awaitCancellation() }
+
+    override fun setString(key: String, value: String) = Unit
 }
 
 /** A store that answers, but only after [answerAfter] — a cold file read. */
@@ -1280,6 +1288,13 @@ private class SlowPreferenceStore(
     }
 
     override fun setBoolean(key: String, value: Boolean) = Unit
+
+    override fun stringFlow(key: String, default: String): Flow<String> = flow {
+        delay(answerAfter)
+        emit(default)
+    }
+
+    override fun setString(key: String, value: String) = Unit
 }
 
 /**

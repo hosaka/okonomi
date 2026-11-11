@@ -15,6 +15,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -278,6 +279,82 @@ class EntryStateProducerTest {
 
         assertIs<EntryContentState.Error>(states.last().content)
     }
+
+    /**
+     * The gloss the reader tapped titles the Word tab for a reader
+     * learning English — even when it is not the entry's first, and
+     * before the entry has loaded. 行う tapped as "to do" stays "to do".
+     */
+    @Test
+    fun `the gloss the route carries titles the entry`() = runTest {
+        val loaded = CompletableDeferred<Unit>()
+        val states = collectStates(
+            FakeScreenStateScope().entryScreenStateProducer(
+                entryId = 1,
+                titleGloss = "to do",
+                load = {
+                    loaded.await()
+                    okonau(it)
+                },
+                invalidate = neverInvalidate,
+                favourites = FakeFavouritesStore(),
+            ),
+        )
+        assertIs<EntryContentState.Loading>(states.last().content)
+        assertEquals("to do", states.last().titleGloss, "the gloss is there before the entry is")
+
+        loaded.complete(Unit)
+        runCurrent()
+
+        assertIs<EntryContentState.Ready>(states.last().content)
+        assertEquals("to do", states.last().titleGloss)
+    }
+
+    /**
+     * A link carries no gloss, so the entry titles itself by its first:
+     * "to perform", not the "to do" beside it or the sense after.
+     */
+    @Test
+    fun `an entry opened without a gloss is titled by its first`() = runTest {
+        val states = collectStates(
+            FakeScreenStateScope().entryScreenStateProducer(
+                entryId = 1,
+                load = { okonau(it) },
+                invalidate = neverInvalidate,
+                favourites = FakeFavouritesStore(),
+            ),
+        )
+
+        assertIs<EntryContentState.Ready>(states.last().content)
+        assertEquals("to perform", states.last().titleGloss)
+    }
+
+    /** 行う, with two glosses in its first sense and one after. */
+    private fun okonau(entryId: Long) = EntryDetail(
+        entryId = entryId,
+        headword = "行う",
+        forms = listOf(EntryForm("行う", isCommon = true)),
+        readings = listOf(EntryReading("おこなう", emptyList(), isCommon = true)),
+        senses = listOf(
+            EntrySense(
+                posCodes = listOf("v5u"),
+                tags = listOf("Godan verb"),
+                glosses = listOf("to perform", "to do"),
+                info = null,
+                restrictions = emptyList(),
+            ),
+            EntrySense(
+                posCodes = listOf("v5u"),
+                tags = listOf("Godan verb"),
+                glosses = listOf("to carry out"),
+                info = null,
+                restrictions = emptyList(),
+            ),
+        ),
+        isCommon = true,
+        commonRank = 125,
+        hasSentences = true,
+    )
 }
 
 /**

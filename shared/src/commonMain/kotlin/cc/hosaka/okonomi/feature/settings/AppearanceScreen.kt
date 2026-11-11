@@ -1,5 +1,6 @@
 package cc.hosaka.okonomi.feature.settings
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -24,6 +25,7 @@ import cc.hosaka.okonomi.ui.toolbar.util.ToolbarBehavior
 import okonomi.shared.generated.resources.Res
 import okonomi.shared.generated.resources.appearance_back
 import okonomi.shared.generated.resources.appearance_per_kanji_furigana
+import okonomi.shared.generated.resources.appearance_per_kanji_furigana_hidden
 import okonomi.shared.generated.resources.appearance_show_hints
 import okonomi.shared.generated.resources.appearance_title
 import org.jetbrains.compose.resources.stringResource
@@ -77,6 +79,11 @@ fun AppearanceScreen(
                 text = stringResource(Res.string.appearance_per_kanji_furigana),
                 checked = perKanjiFurigana,
                 onCheckedChange = state.onPerKanjiFuriganaChange,
+                supportingText = if (state.furiganaHidden) {
+                    stringResource(Res.string.appearance_per_kanji_furigana_hidden)
+                } else {
+                    null
+                },
                 modifier = Modifier
                     .fillMaxWidth(),
             )
@@ -86,7 +93,8 @@ fun AppearanceScreen(
 
 /**
  * The whole row toggles, and the [Switch] takes no input of its own, so a
- * screen reader finds one node carrying both the label and the state.
+ * screen reader finds one node carrying both the label and the state —
+ * and [supportingText], the line under the label, when there is one.
  */
 @Composable
 private fun SwitchRow(
@@ -94,6 +102,7 @@ private fun SwitchRow(
     checked: Boolean,
     onCheckedChange: ((Boolean) -> Unit)?,
     modifier: Modifier = Modifier,
+    supportingText: String? = null,
 ) {
     Row(
         modifier = modifier
@@ -109,13 +118,23 @@ private fun SwitchRow(
             ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyLarge,
+        Column(
             modifier = Modifier
                 .weight(1f)
                 .padding(end = Dimens.horizontalPadding),
-        )
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            if (supportingText != null) {
+                Text(
+                    text = supportingText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
         Switch(
             checked = checked,
             onCheckedChange = null,

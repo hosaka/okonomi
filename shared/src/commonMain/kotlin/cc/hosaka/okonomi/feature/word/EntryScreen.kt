@@ -118,6 +118,7 @@ fun EntryScreen(
 
                 is EntryContentState.Ready -> EntryTabs(
                     entry = content.entry,
+                    titleGloss = state.titleGloss,
                     contentPadding = contentPadding,
                     isFavourite = state.isFavourite,
                     onToggleFavourite = state.onToggleFavourite,
@@ -147,6 +148,7 @@ private fun EntryBackButton() {
 @Composable
 private fun EntryTabs(
     entry: EntryDetail,
+    titleGloss: String?,
     contentPadding: PaddingValues,
     isFavourite: Boolean,
     onToggleFavourite: (() -> Unit)?,
@@ -208,6 +210,7 @@ private fun EntryTabs(
                 EntryTab.Word -> WordTab(
                     entry = entry,
                     contentPadding = contentPadding,
+                    titleGloss = titleGloss,
                 )
 
                 EntryTab.Kanji -> KanjiTab(

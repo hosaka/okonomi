@@ -31,6 +31,7 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -85,17 +86,36 @@ import kotlin.math.max
  * and the memo key is the input rather than upstream's
  * `isSystemInDarkTheme()` proxy for it.
  *
- * Upstream's `furiganaEnabled` is gone too, and that one is a product
- * decision rather than a trim: furigana is always on, and there is no
- * setting for it (Alex, 2026-08-26 — the same call as dropping romaji,
- * "I'm not making an app for beginners"). The app assumes a reader who
- * reads kana, and such a reader is not harmed by being shown one. Do not
- * restore the parameter as a missing feature; reopening it is a product
- * question, not a gap in the port. (The per-kanji switch,
- * [PER_KANJI_FURIGANA_PREFERENCE], is not that setting: it changes how
- * finely a reading is divided before it reaches this file, never whether
- * one is drawn.)
+ * Upstream's `furiganaEnabled` parameter is gone too, and that one is a
+ * product decision rather than a trim. There is no furigana setting of
+ * its own (Alex, 2026-08-26 — the same call as dropping romaji, "I'm not
+ * making an app for beginners"), and there still is not: furigana follows
+ * the language the reader is learning (Alex, 2026-11-11). Someone learning
+ * Japanese is shown it everywhere; someone learning English is a Japanese
+ * speaker, reads the kanji already, and is shown none. That arrives here
+ * as [LocalFuriganaShown] — a composition local rather than the old
+ * parameter, so no call site can forget it, and named for what it does
+ * rather than for the learner, so this file knows nothing of languages.
+ * Do not add an on/off switch as a missing feature; reopening that is a
+ * product question, not a gap in the port. (The per-kanji switch,
+ * [PER_KANJI_FURIGANA_PREFERENCE], is not that setting either: it changes
+ * how finely a reading is divided before it reaches this file, never
+ * whether one is drawn.)
  */
+
+/**
+ * Whether [FuriganaText] sets readings over the kanji. False draws every
+ * line as its characters alone — no ruby, and no room reserved for any —
+ * which is what a reader learning English is shown.
+ *
+ * Separate from the learning language on purpose, and not merely as a
+ * convenience: a person-name row provides true for itself whatever the
+ * language, because a name's reading is the whole point of the row and
+ * not a crutch for reading it.
+ *
+ * True when nothing provides it, which is what the app always drew.
+ */
+val LocalFuriganaShown = staticCompositionLocalOf { true }
 
 /**
  * One run of a furigana line: [text] as it is written, with [reading]
@@ -298,6 +318,14 @@ fun TextStyle.withRoomForRuby(): TextStyle {
  * view can carry survives — colour, size, typeface, weight, letter
  * spacing, font features — so a background, a decoration or a shadow
  * asked for there is silently absent on Android.
+ *
+ * While [LocalFuriganaShown] is false the readings are not drawn and the
+ * line is ordinary text in the caller's own style, with no line height
+ * raised for a reading that is not there. A highlight survives only where
+ * it lit the characters themselves: one that sat on a reading alone —
+ * [FuriganaSegment.Highlight.PartOfReading] — would point at nothing on
+ * screen, and moving it onto the characters below would claim a division
+ * of the run nobody made.
  */
 @Composable
 fun FuriganaText(
@@ -312,6 +340,25 @@ fun FuriganaText(
 ) {
     val contentColor = LocalContentColor.current
     val requestedStyle = style.merge(color = color.takeOrElse { style.color.takeOrElse { contentColor } })
+
+    if (!LocalFuriganaShown.current) {
+        // Before any of the ruby arithmetic below, and in particular
+        // before the floor: with nothing drawn above the line, the room
+        // for it would be a gap under every line instead.
+        BasicText(
+            text = remember(segments, highlightStyle) {
+                plainAnnotatedString(segments, highlightStyle, readingsShown = false)
+            },
+            modifier = modifier,
+            style = requestedStyle.let {
+                if (it.lineHeightStyle != null) it else it.copy(lineHeightStyle = CENTRED_IN_LINE)
+            },
+            overflow = overflow,
+            softWrap = softWrap,
+            maxLines = maxLines,
+        )
+        return
+    }
 
     // Every size below is derived by scaling this one, and the ruby is
     // then positioned against the line height in the same unit. An em
@@ -454,20 +501,32 @@ private val CENTRED_IN_LINE = LineHeightStyle(
 private fun plainAnnotatedString(
     segments: List<FuriganaSegment>,
     highlightStyle: SpanStyle,
+    readingsShown: Boolean = true,
 ): AnnotatedString = buildAnnotatedString {
-    segments.forEach { segment -> appendPlain(segment, highlightStyle) }
+    segments.forEach { segment -> appendPlain(segment, highlightStyle, readingsShown) }
 }
 
 /**
- * A run with no reading, styled character-exactly. A caller marking a
+ * A run drawn without ruby, styled character-exactly. A caller marking a
  * whole run does so because it split the run at the boundary itself, so
  * this usually appends one piece.
+ *
+ * A run with no reading reads as itself, so a highlight on its "reading"
+ * is a highlight on its characters. A run whose reading is not shown
+ * ([readingsShown] false) is different: only what lit its characters is
+ * drawn, and a highlight on the hidden reading is dropped.
  */
 private fun AnnotatedString.Builder.appendPlain(
     segment: FuriganaSegment,
     highlightStyle: SpanStyle,
+    readingsShown: Boolean = true,
 ) {
-    piecesOf(segment.text, segment.highlightedText ?: segment.highlightedReading).forEach { piece ->
+    val highlighted = if (segment.reading != null && !readingsShown) {
+        segment.highlightedText
+    } else {
+        segment.highlightedText ?: segment.highlightedReading
+    }
+    piecesOf(segment.text, highlighted).forEach { piece ->
         if (piece.highlighted) {
             withStyle(highlightStyle) { append(piece.text) }
         } else {

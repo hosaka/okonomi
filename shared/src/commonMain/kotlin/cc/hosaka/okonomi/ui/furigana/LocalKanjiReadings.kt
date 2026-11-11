@@ -34,7 +34,16 @@ internal const val PER_KANJI_FURIGANA_DEFAULT = true
 
 /**
  * Provides [LocalKanjiReadings] to [content]: what [load] returns while
- * the setting in [preferences] is on, null otherwise.
+ * the setting in [preferences] is on and furigana is shown, null
+ * otherwise.
+ *
+ * Furigana hidden ([LocalFuriganaShown] false where this is provided,
+ * which is what a reader learning English is given) turns the division
+ * off whatever is stored. The only furigana left on screen then is the
+ * name rows' own, and Appearance shows the switch off for this reader;
+ * dividing those names regardless would make the switch say one thing
+ * and the screen another. Nothing is written: the stored value comes
+ * back into force with the furigana. Nothing is loaded meanwhile either.
  *
  * Nothing is loaded until the setting is first seen on, and [load] is
  * expected to remember its answer (`appKanjiReadings` does), so turning
@@ -56,9 +65,10 @@ fun ProvideKanjiReadings(
 ) {
     // False until the store answers, so a reader who turned the switch
     // off never sees divided runs flash in on a cold start.
-    val enabled by remember(preferences) {
+    val stored by remember(preferences) {
         preferences.booleanFlow(PER_KANJI_FURIGANA_PREFERENCE, PER_KANJI_FURIGANA_DEFAULT)
     }.collectAsState(initial = false)
+    val enabled = stored && LocalFuriganaShown.current
     val readings by produceState<KanjiReadings?>(initialValue = null, enabled, load) {
         // The state outlives a restart of this block, so off has to
         // withdraw what on provided.
