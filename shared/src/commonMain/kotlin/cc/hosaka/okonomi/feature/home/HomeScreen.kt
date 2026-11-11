@@ -49,6 +49,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavEntry
@@ -79,8 +82,12 @@ import cc.hosaka.okonomi.feature.navigation.EntryLinks
 import cc.hosaka.okonomi.feature.navigation.appEntryLinks
 import cc.hosaka.okonomi.feature.navigation.LocalNavigationController
 import cc.hosaka.okonomi.feature.navigation.NavigationController
+import cc.hosaka.okonomi.feature.navigation.Route
+import cc.hosaka.okonomi.feature.navigation.TextLookups
+import cc.hosaka.okonomi.feature.navigation.appTextLookups
 import cc.hosaka.okonomi.feature.navigation.navigationSavedStateConfiguration
 import cc.hosaka.okonomi.feature.navigation.routeEntryProvider
+import cc.hosaka.okonomi.feature.search.SearchRoute
 import cc.hosaka.okonomi.feature.word.EntryRoute
 import cc.hosaka.okonomi.prefs.PreferenceStore
 import cc.hosaka.okonomi.prefs.appPreferences
@@ -167,49 +174,85 @@ fun HomeScreen(
 }
 
 /**
- * Opens each entry link [links] delivers: the Search section is
- * selected, dropped back to its root and the entry pushed over it, so
- * back returns to an empty Search rather than to wherever the reader
- * had been. Without a Search section links are left unopened.
+ * Opens what other apps hand okonomi: each entry link [links] delivers
+ * and each text from another app [lookups] delivers. Both are opened
+ * the same way: the Search section is selected, dropped back to its
+ * root and a marked route pushed over it (the entry, or a search for
+ * the text), so back returns to an empty Search rather than to wherever
+ * the reader had been. Without a Search section neither is opened.
  *
- * The linked entry stays marked as one only while the reader stays on
- * Search. Switching to another tab means they have taken up okonomi on
- * its own terms, so the mark is cleared and back on that entry is an
- * ordinary pop from then on.
+ * Text selected in okonomi itself is not a hand-off: the reader is still
+ * reading the screen it came from. Its search is pushed, unmarked, over
+ * that screen in whichever section is selected, so back returns to it.
+ *
+ * The pushed route stays marked only while the reader stays on Search.
+ * Switching to another tab means they have taken up okonomi on its own
+ * terms, so the mark is cleared and back on that route is an ordinary
+ * pop from then on.
  */
 @Composable
-private fun OpenEntryLinks(
+private fun OpenHandOffs(
     links: EntryLinks,
+    lookups: TextLookups,
     selection: HomeSelectionState,
     sections: List<HomeSection>,
 ) {
     val currentSections by rememberUpdatedState(sections)
     LaunchedEffect(links, selection) {
         links.requests.collect { entryId ->
-            val search = currentSections.firstOrNull { it.item.key == homeSearchItem.key } ?: return@collect
-            selection.switchTo(search.item)
-            search.popToRoot()
-            search.controller.navigate(EntryRoute(entryId, openedFromLink = true))
+            openOverSearchRoot(EntryRoute(entryId, openedFromLink = true), selection, currentSections)
+        }
+    }
+    LaunchedEffect(lookups, selection) {
+        lookups.requests.collect { lookup ->
+            if (lookup.fromOkonomi) {
+                currentSections.firstOrNull { it.item.key == selection.selectedKey }
+                    ?.controller
+                    ?.navigate(SearchRoute(lookup.query))
+            } else {
+                openOverSearchRoot(SearchRoute(lookup.query, openedFromSelection = true), selection, currentSections)
+            }
         }
     }
     LaunchedEffect(selection.selectedKey) {
         if (selection.selectedKey == homeSearchItem.key) return@LaunchedEffect
         val search = currentSections.firstOrNull { it.item.key == homeSearchItem.key } ?: return@LaunchedEffect
-        clearLinkMarks(search.backStack)
+        clearHandOffMarks(search.backStack)
     }
 }
 
+/** Selects the Search section, drops it to its root and pushes [route]. */
+private fun openOverSearchRoot(
+    route: Route,
+    selection: HomeSelectionState,
+    sections: List<HomeSection>,
+) {
+    val search = sections.firstOrNull { it.item.key == homeSearchItem.key } ?: return
+    selection.switchTo(search.item)
+    search.popToRoot()
+    search.controller.navigate(route)
+}
+
 /**
- * Makes every link-opened entry on [backStack] an ordinary one, in
- * place. One already there as an ordinary entry is dropped instead:
- * two equal keys on one stack is what navigation must never hold (see
+ * [route] as an ordinary route of its kind, or null when it carries no
+ * hand-off mark: a link-opened entry or a search opened from another
+ * app's selection.
+ */
+private fun withoutHandOffMark(route: NavKey): NavKey? = when {
+    route is EntryRoute && route.openedFromLink -> route.copy(openedFromLink = false)
+    route is SearchRoute && route.openedFromSelection -> route.copy(openedFromSelection = false)
+    else -> null
+}
+
+/**
+ * Makes every hand-off route on [backStack] an ordinary one, in place.
+ * One already there as an ordinary route is dropped instead: two equal
+ * keys on one stack is what navigation must never hold (see
  * `BackStackNavigationController.navigate`).
  */
-private fun clearLinkMarks(backStack: NavBackStack<NavKey>) {
+private fun clearHandOffMarks(backStack: NavBackStack<NavKey>) {
     for (index in backStack.indices.reversed()) {
-        val route = backStack[index]
-        if (route !is EntryRoute || !route.openedFromLink) continue
-        val ordinary = route.copy(openedFromLink = false)
+        val ordinary = withoutHandOffMark(backStack[index]) ?: continue
         if (ordinary in backStack) backStack.removeAt(index) else backStack[index] = ordinary
     }
 }
@@ -228,9 +271,10 @@ internal class HomeSectionProbe(
 /**
  * [HomeScreen] with its seams handed in: the registry the coach marks
  * report into, so tests can read where the targets landed; the entry
- * links to open; [leaveApp], what system back on a link-opened entry
- * calls; [onSection], which hands a test each section's navigation
- * and back stack; [preferences], where the coach marks' on/off setting
+ * links and the text lookups to open; [leaveApp], what system back on a
+ * link-opened entry or a looked-up search calls; [onSection], which
+ * hands a test each section's navigation and back stack;
+ * [preferences], where the coach marks' on/off setting
  * and the per-kanji furigana setting are read from; and
  * [loadKanjiReadings], what that furigana divides kanji runs with (see
  * [ProvideKanjiReadings], which every section is drawn inside).
@@ -240,6 +284,7 @@ internal fun HomeScreen(
     items: List<HomeNavigationItem> = homeNavigationItems,
     coachMarks: CoachMarkRegistry,
     entryLinks: EntryLinks = appEntryLinks,
+    textLookups: TextLookups = appTextLookups,
     leaveApp: () -> Unit = rememberLeaveApp(),
     onSection: ((key: String, probe: HomeSectionProbe) -> Unit)? = null,
     preferences: PreferenceStore = appPreferences(),
@@ -253,7 +298,9 @@ internal fun HomeScreen(
     // per-entry saved state and view models are kept.
     val entryDecorators = listOf(
         rememberSaveableStateHolderNavEntryDecorator<NavKey>(),
-        rememberViewModelStoreNavEntryDecorator<NavKey>(),
+        rememberViewModelStoreNavEntryDecorator<NavKey>(
+            viewModelStoreOwner = rememberEntryViewModelStoreOwner(),
+        ),
     )
     val sections = items.map { item ->
         key(item.key) {
@@ -264,7 +311,7 @@ internal fun HomeScreen(
         }
     }
     val selection = rememberHomeSelectionState(items)
-    OpenEntryLinks(entryLinks, selection, sections)
+    OpenHandOffs(entryLinks, textLookups, selection, sections)
     if (onSection != null) {
         SideEffect {
             sections.forEach { section ->
@@ -413,6 +460,38 @@ internal fun HomeScreen(
 }
 
 /**
+ * The owner the entries' view models are kept under: the current
+ * [LocalViewModelStoreOwner]'s store, and nothing else of it.
+ *
+ * Handed the activity itself, `rememberViewModelStoreNavEntryDecorator`
+ * builds its store provider remembered on the owner's creation extras.
+ * A `ComponentActivity` puts its intent's extras in those, and
+ * `Intent.getExtras()` returns a new `Bundle` on every read, so while the
+ * intent carries extras (every forwarded lookup does, and `MainActivity`
+ * keeps it with `setIntent`; so does a link with any extra) each
+ * recomposition of the shell built a new provider. Disposing the old one
+ * cleared every entry's store: every screen lost its state, Search's root
+ * its typed query, on every lookup.
+ *
+ * Not being a `HasDefaultViewModelProviderFactory`, this owner gives the
+ * decorator constant empty extras and the default factory. That is all
+ * the app's one view model needs (`ScreenStateViewModel`, built by an
+ * initializer); a `SavedStateHandle` would not be available through it.
+ */
+@Composable
+private fun rememberEntryViewModelStoreOwner(): ViewModelStoreOwner {
+    val owner = checkNotNull(LocalViewModelStoreOwner.current) {
+        "HomeScreen needs a ViewModelStoreOwner for its entries' view models"
+    }
+    return remember(owner) {
+        object : ViewModelStoreOwner {
+            override val viewModelStore: ViewModelStore
+                get() = owner.viewModelStore
+        }
+    }
+}
+
+/**
  * A top-level section with its own back stack, navigation
  * controller and decorated entries.
  */
@@ -482,33 +561,38 @@ private fun HomeNavigationContent(
                     section.controller.pop()
                 },
             )
-            LeaveFromLinkedEntry(section, leaveApp)
+            LeaveFromHandOff(section, leaveApp)
         }
     }
 }
 
 /**
- * System back on the entry a link opened goes back to the app that sent
- * the link (AnkiDroid) rather than to okonomi's Search: the section is
- * dropped to its root first, so the next launch shows Search and not a
- * stale entry, and then [leaveApp] sends okonomi's task to the back.
+ * System back on a route another app handed over goes back to that app
+ * rather than to okonomi's Search: from the entry a link opened, to the
+ * app that sent the link (AnkiDroid); from the search a text selection
+ * opened, to the app the text was selected in. The section is dropped to
+ * its root first, so the next launch shows Search and not a stale
+ * screen, and then [leaveApp] sends okonomi's task to the back.
  *
- * Only while that entry is the top of its section: a screen pushed over
+ * Only while that route is the top of its section: a screen pushed over
  * it pops normally first. Registered after the section's NavDisplay so
  * it outranks the display's own pop — the later handler wins, the same
  * ordering the section-root handler in [HomeScreen] relies on the other
- * way round. The entry's header arrow is a plain pop and never reaches
- * this.
+ * way round. A screen's own handler still outranks this one (the search
+ * filters menu's registers once the screen's state has loaded), so back
+ * with a lookup's menu open closes the menu; `HomeEntryLinkUiTest` holds
+ * that. The header arrow on either route is a plain pop and never
+ * reaches this.
  */
 @Composable
-private fun LeaveFromLinkedEntry(
+private fun LeaveFromHandOff(
     section: HomeSection,
     leaveApp: () -> Unit,
 ) {
     val top = section.backStack.lastOrNull()
     NavigationBackHandler(
         state = rememberNavigationEventState(NavigationEventInfo.None),
-        isBackEnabled = top is EntryRoute && top.openedFromLink,
+        isBackEnabled = top != null && withoutHandOffMark(top) != null,
         onBackCompleted = {
             section.popToRoot()
             leaveApp()

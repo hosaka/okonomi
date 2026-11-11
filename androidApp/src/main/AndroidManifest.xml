@@ -35,6 +35,27 @@
                     android:scheme="okonomi" />
             </intent-filter>
         </activity>
+        <!-- "Okonomi" in the text selection toolbar of every app, okonomi
+             included, labelled with app_name since neither the activity
+             nor the filter sets a label. The toolbar starts it expecting
+             a result, and Android then puts it in the caller's task
+             whatever its launch mode, so it is a trampoline with no UI
+             rather than a filter on MainActivity: it forwards the
+             selection to MainActivity with NEW_TASK, which honours
+             singleTask, and finishes. The filter lives here alone, so the
+             toolbar lists okonomi once. -->
+        <activity
+            android:exported="true"
+            android:name=".ProcessTextActivity"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
     </application>
 
 </manifest>

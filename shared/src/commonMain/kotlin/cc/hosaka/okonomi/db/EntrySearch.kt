@@ -273,7 +273,12 @@ internal fun containsJapaneseText(text: String): Boolean {
     return found
 }
 
-private fun isJapaneseCodePoint(code: Int): Boolean = isHanCodePoint(code) || isKanaCodePoint(code)
+/**
+ * Kana or han, as [containsJapaneseText] counts them. Shared with text
+ * lookups (`selectionQuery`), which join Japanese text a line break split
+ * by this same rule, so what they join is what Search reads as Japanese.
+ */
+internal fun isJapaneseCodePoint(code: Int): Boolean = isHanCodePoint(code) || isKanaCodePoint(code)
 
 private fun isKanaCodePoint(code: Int): Boolean = when (code) {
     in 0x3040..0x309F, // hiragana

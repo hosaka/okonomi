@@ -47,7 +47,9 @@ const val NAMES_IN_SEARCH_DEFAULT = false
 
 /**
  * [initialQuery] is the route's query (see `SearchRoute`): the word a
- * sentence breakdown was tapped on, or null for the Search tab's root.
+ * sentence breakdown or a kanji was tapped on, the text a lookup brought
+ * from a selection (in another app or in okonomi itself), or null for
+ * the Search tab's root.
  * It seeds the state the screen is first shown with as well as the
  * query sink, so a pushed search draws its field already filled rather
  * than blank for a frame.
@@ -96,9 +98,11 @@ suspend fun ScreenStateScope.searchScreenStateProducer(
         initial = initialQuery.orEmpty(),
     )
     // A route with no query is a section root — that is how
-    // `homeSearchItem` defines the Search tab, and a breakdown tap is
-    // the only thing that ever pushes a SearchRoute, always with the
-    // word in it. One instance rather than one per emission, so two
+    // `homeSearchItem` defines the Search tab, and everything that
+    // pushes a SearchRoute (a breakdown or kanji tap, text looked up
+    // from another app) always puts its text in it. The arrow is a plain
+    // pop even on a lookup; only system back there leaves the app (see
+    // `HomeScreen`). One instance rather than one per emission, so two
     // otherwise equal states stay equal.
     val onBack: (() -> Unit)? = if (initialQuery == null) null else { -> navigation.pop() }
     // How many hits the current query is asking for. Paging is a larger
