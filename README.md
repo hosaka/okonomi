@@ -3,6 +3,7 @@
   <img src="assets/logo.svg" alt="Okonomi" width="160">
 </div>
 
+[![AI:X EXECUTE](https://img.shields.io/badge/AI-EXECUTE-grey?style=flat&logoSize=auto&labelColor=13171f)](https://0rwx.com)
 
 <div align="center">
   <p>
@@ -23,9 +24,29 @@
 
 </div>
 
+## Features
+- **Search** the dictionary for words in English or Japanese using Kanji or Hiragana.
+- **Filter** what you are searching for to find words that are most relevant to you.
+- Look up **Kanji** with readings, **Radicals** composition and **Stroke Order** animation.
+- See example **Phrases** right from the search results, tap words in a sentence to search them.
+- Keep a list of your **Favourite** words, export and import them in JSON format.
+- Send you favourites straight to an **Anki** deck and keep in sync for further memorization.
+- Remember you search **History**, swipe a word to remove it from the list.
+- Open straight from your **Selected Text** via the context menu to avoid copy pasting.
+- Requires **No Internet** connection, everything is in **Local** storage on your device.
+
+> [!NOTE]
+> This is not a all-in-one study app. It does one thing and aims to do it well - to be a solid dictionary.
+
 ## Building
 
 Dependencies, building from source and testing specific instructions live in [BUILDING.md](BUILDING.md).
+
+## AI Use
+
+> | How | Why |
+> | :--- | :--- |
+> | ![AI:X](https://github.com/jdonszelmann/0rwx.com/blob/main/static/50x50/AI-X-50x50.png?raw=true) | [AI:X](http://0rwx.com) **Most of the project is written with LLM assistance using the [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD). Documentation is written by me. I simply wanted an open source dictionary, with no sign ups or ads. I couldn't find one so I built my own.** |
 
 ## Licenses
 - The EDRDG files are used under the [EDRDG licence](https://www.edrdg.org/edrdg/licence.html).
