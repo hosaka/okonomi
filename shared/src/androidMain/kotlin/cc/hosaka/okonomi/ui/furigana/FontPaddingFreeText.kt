@@ -19,6 +19,7 @@ package cc.hosaka.okonomi.ui.furigana
 
 import android.graphics.Typeface
 import android.os.Build
+import android.os.LocaleList
 import android.text.SpannableString
 import android.text.Spanned
 import android.util.TypedValue
@@ -57,7 +58,8 @@ private val FALLBACK_COLOR = Color.Black
  * are put back on top through [ComposeLineHeightSpan], so the line sits
  * where the rest of the screen expects it to.
  *
- * Only the style properties a ruby unit actually sets are carried over;
+ * Only the style properties a ruby unit actually sets are carried over,
+ * plus the locale, which comes from the theme rather than the ruby unit;
  * upstream mapped the whole of [TextStyle] onto spans, and every branch
  * of that this app never reaches was dropped rather than kept for
  * diffability.
@@ -101,6 +103,24 @@ internal fun FontPaddingFreeText(
             textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSize.value)
             textView.typeface = typeface
             style.fontFeatureSettings?.let { textView.fontFeatureSettings = it }
+            // Only the reading, which is kana, is drawn here; the word under
+            // it is Compose text (see RubyUnit), so no kanji shape depends
+            // on this. What the locale buys is agreement: the reading comes
+            // from the same CJK fallback typeface and metrics as the word,
+            // not from whatever the process default picks (the phone's
+            // languages, or Settings → Language). That matters most on OEM
+            // phones whose Chinese fallback is a different font family.
+            // Assigned on every update, so a reused view whose new style
+            // names no locale goes back to its own default instead of
+            // keeping the last one. The platform throws on an empty list,
+            // and on a repeated locale up to at least API 30 (later releases
+            // drop the repeat), hence the two guards.
+            val locales = style.localeList.orEmpty().map { it.platformLocale }.distinct()
+            textView.textLocales = if (locales.isEmpty()) {
+                LocaleList.getAdjustedDefault()
+            } else {
+                LocaleList(*locales.toTypedArray())
+            }
             // TextView states letter spacing in ems; Compose styles here
             // state it in sp, except where a caller passes 0 in either.
             textView.letterSpacing = when {
