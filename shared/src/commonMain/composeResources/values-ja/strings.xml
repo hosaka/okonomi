@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The Japanese UI, reviewed by Alex on 2026-11-11. The English
+         values/strings.xml is the source and carries the notes on what
+         each string is for; those notes apply here too.
+         TranslationCompletenessTest holds the two files to the same
+         names and placeholders. Plurals carry only "other", the one
+         quantity Japanese has. -->
+    <string name="app_name">okonomi</string>
+    <string name="common_word_badge">一般</string>
+    <string name="home_search_label">検索</string>
+    <string name="home_favourites_label">お気に入り</string>
+    <string name="home_settings_label">設定</string>
+    <string name="search_placeholder">検索</string>
+    <string name="search_clear">クリア</string>
+    <string name="search_no_results">検索結果はありません</string>
+    <string name="search_options">検索オプション</string>
+    <string name="search_options_close">検索オプションを閉じる</string>
+    <string name="search_names_toggle">人名</string>
+    <string name="search_filters_names_on">人名：オン</string>
+    <string name="search_filters_default">通常の検索</string>
+    <string name="coach_search_field">ここをタップして検索、または検索タブをもう一度タップ！</string>
+    <string name="coach_search_filters">検索の設定を変更</string>
+    <string name="coach_favourites">保存した単語はここから</string>
+    <string name="name_type_surname">姓</string>
+    <string name="name_type_given">名</string>
+    <string name="name_type_fem">女性名</string>
+    <string name="name_type_masc">男性名</string>
+    <string name="search_result_open">項目を開く</string>
+    <string name="search_results_fallback">完全に一致する結果はありません。近い項目を表示しています</string>
+    <string name="search_error">現在、検索を利用できません。入力を続けると再試行します。</string>
+    <string name="paging_more_failed">続きを読み込めませんでした</string>
+    <string name="paging_more_loading">続きを読み込み中</string>
+    <string name="paging_retry">再試行</string>
+    <string name="entry_back">戻る</string>
+    <string name="entry_tab_word">単語</string>
+    <string name="entry_tab_kanji">漢字</string>
+    <string name="entry_tab_forms">活用</string>
+    <string name="entry_tab_phrases">例文</string>
+    <string name="entry_section_reading">読み</string>
+    <string name="entry_section_english">意味</string>
+    <string name="entry_alternate_forms">別表記：%1$s</string>
+    <string name="entry_restriction">%1$sの場合のみ</string>
+    <string name="entry_error">この項目を読み込めませんでした</string>
+    <string name="entry_retry">再試行</string>
+    <string name="entry_save">単語を保存</string>
+    <string name="entry_saved">保存済み</string>
+    <string name="entry_unsaved">未保存</string>
+    <string name="entry_kanji_section_on">音読み</string>
+    <string name="entry_kanji_section_kun">訓読み</string>
+    <string name="entry_kanji_section_name">名乗り</string>
+    <string name="entry_kanji_section_meanings">意味</string>
+    <string name="entry_kanji_section_radical">部首</string>
+    <string name="entry_kanji_detail_open">%1$sの詳細を表示</string>
+    <string name="entry_kanji_detail_title">%1$sの詳細</string>
+    <string name="entry_kanji_detail_close">%1$sの詳細を閉じる</string>
+    <string name="entry_kanji_radical_search">%1$sを検索</string>
+    <!-- The stored number as it stands, with no 級 and no N-level: see
+         the note in values/strings.xml. -->
+    <string name="entry_kanji_jlpt">JLPT %1$d</string>
+    <string name="entry_kanji_grade">学年 %1$d</string>
+    <string name="entry_kanji_frequency">頻度 %1$d位</string>
+    <string name="list_card_copy">コピー</string>
+    <string name="entry_kanji_stroke_order">書き順</string>
+    <string name="entry_kanji_stroke_order_play">書き順をもう一度再生</string>
+    <string name="entry_kanji_stroke_order_of">%1$sの書き順</string>
+    <string name="entry_kanji_no_data">この漢字の文字データはありません</string>
+    <string name="entry_kanji_none">この単語には表示できる漢字がありません。</string>
+    <string name="entry_kanji_error">この単語の漢字を読み込めませんでした</string>
+    <plurals name="entry_kanji_strokes">
+        <item quantity="other">%1$d画</item>
+    </plurals>
+    <string name="entry_forms_affirmative">肯定</string>
+    <string name="entry_forms_negative">否定</string>
+    <string name="entry_forms_row_non_past">現在形</string>
+    <string name="entry_forms_row_non_past_polite">現在形（丁寧）</string>
+    <string name="entry_forms_row_past">過去形</string>
+    <string name="entry_forms_row_past_polite">過去形（丁寧）</string>
+    <string name="entry_forms_row_te">て形</string>
+    <string name="entry_forms_row_potential">可能形</string>
+    <string name="entry_forms_row_passive">受身形</string>
+    <string name="entry_forms_row_causative">使役形</string>
+    <string name="entry_forms_row_causative_passive">使役受身形</string>
+    <string name="entry_forms_row_imperative">命令形</string>
+    <string name="entry_forms_row_volitional">意向形</string>
+    <string name="entry_forms_row_conditional_ba">ば形</string>
+    <string name="entry_forms_row_conditional_tara">たら形</string>
+    <string name="entry_forms_row_desiderative">たい形</string>
+    <string name="entry_forms_no_form">該当なし</string>
+    <string name="entry_forms_row_description">%1$s。肯定：%2$s。否定：%3$s。</string>
+    <string name="entry_forms_none">この単語には活用がありません。</string>
+    <string name="entry_forms_suru">この名詞は「する」を付けると動詞になります。活用を見るには「する」を調べてください。</string>
+    <string name="entry_forms_error">この単語の活用を読み込めませんでした</string>
+    <string name="entry_phrases_empty">この単語の例文はまだありません。</string>
+    <string name="entry_phrases_error">この単語の例文を読み込めませんでした</string>
+    <string name="favourites_title">お気に入り</string>
+    <string name="favourites_empty">まだ何も保存されていません。単語を調べてハートをタップすると、ここに保存されます。</string>
+    <string name="favourites_error">保存した単語を読み込めませんでした</string>
+    <string name="favourites_retry">再試行</string>
+    <string name="favourites_options">お気に入りのオプション</string>
+    <string name="favourites_export">リストをエクスポート</string>
+    <string name="favourites_import">リストをインポート</string>
+    <string name="favourites_import_replace_title">%1$sを置き換えますか？</string>
+    <string name="favourites_import_replace_message">インポートすると、%1$sの内容がすべてこのファイルの単語に置き換えられます。この操作は元に戻せません。</string>
+    <string name="favourites_import_replace_confirm">置き換え</string>
+    <string name="favourites_import_replace_cancel">キャンセル</string>
+    <string name="favourites_import_unreadable_title">ファイルを読み込めませんでした</string>
+    <string name="favourites_import_unreadable_message">このバージョンのokonomiで読み込める単語ファイルではありません。%1$sは変更されていません。</string>
+    <string name="favourites_import_unreadable_dismiss">OK</string>
+    <string name="history_title">履歴</string>
+    <string name="history_empty">履歴はまだありません。検索結果から開いた単語がここに表示されます。</string>
+    <string name="favourites_switch_list">リストを切り替える</string>
+    <string name="favourites_remove">%1$sから削除</string>
+    <string name="favourites_clear">リストを消去</string>
+    <string name="favourites_clear_title">%1$sを消去しますか？</string>
+    <string name="favourites_clear_message">%1$sの単語がすべて削除されます。この操作は元に戻せません。</string>
+    <string name="favourites_clear_confirm">消去</string>
+    <string name="favourites_clear_cancel">キャンセル</string>
+    <!-- "AnkiDroid" is the app's name and stays untranslated, as do the
+         deck names substituted in below. -->
+    <string name="favourites_send_to_anki">Ankiに送信</string>
+    <string name="anki_sent_title">AnkiDroidに送信しました</string>
+    <plurals name="anki_sent_words">
+        <item quantity="other">%1$d語をデッキ「%2$s」に送信しました。</item>
+    </plurals>
+    <plurals name="anki_sent_new_words">
+        <item quantity="other">新しい単語%1$d語をデッキ「%2$s」に送信しました。</item>
+    </plurals>
+    <plurals name="anki_sent_already_there">
+        <item quantity="other">%1$d語はすでにAnkiDroidにありました。</item>
+    </plurals>
+    <string name="anki_nothing_new_title">新しく送信する単語はありません</string>
+    <string name="anki_nothing_new_message">お気に入りの単語はすべてAnkiDroidに追加済みです。</string>
+    <string name="anki_unavailable_title">AnkiDroidを利用できません</string>
+    <string name="anki_unavailable_message">お気に入りを送信するには、AnkiDroidをインストールしてください。インストール済みの場合は、AnkiDroidの「設定 › 高度な設定 › AnkiDroid API を有効にする」をオンにしてから、もう一度お試しください。</string>
+    <string name="anki_permission_title">AnkiDroidへのアクセス許可が必要です</string>
+    <string name="anki_permission_message">okonomiがAnkiDroidにカードを追加するには、アクセスの許可が必要です。何も送信されていません。</string>
+    <string name="anki_permission_permanent_message">okonomiがAnkiDroidにカードを追加するにはアクセスの許可が必要ですが、Androidからは今後確認されません。okonomiのアプリ設定から許可できます。何も送信されていません。</string>
+    <string name="anki_open_settings">設定を開く</string>
+    <string name="anki_no_collection_title">先にAnkiDroidを開いてください</string>
+    <string name="anki_no_collection_message">この端末ではAnkiDroidの初期設定がまだ完了していません。一度AnkiDroidを開いてから、もう一度お試しください。何も送信されていません。</string>
+    <string name="anki_failed_title">AnkiDroidに送信できませんでした</string>
+    <string name="anki_failed_message">問題が発生したため、何も送信されませんでした。</string>
+    <plurals name="anki_failed_partly_message">
+        <item quantity="other">問題が発生しました。%2$d語のうち%1$d語をデッキ「%3$s」に送信したところで停止しました。</item>
+    </plurals>
+    <string name="anki_dismiss">OK</string>
+    <string name="anki_card_link">Okonomiで詳しく見る</string>
+    <string name="settings_title">設定</string>
+    <string name="settings_appearance_title">外観</string>
+    <string name="settings_appearance_description">表示言語、メインタブのヒント、ふりがな</string>
+    <string name="settings_dictionary_category_title">辞書</string>
+    <string name="settings_dictionary_category_description">学習中の言語</string>
+    <string name="settings_about_title">このアプリについて</string>
+    <string name="settings_about_description">辞書、クレジット、ライセンス</string>
+    <string name="about_title">このアプリについて</string>
+    <string name="about_back">戻る</string>
+    <string name="appearance_title">外観</string>
+    <string name="appearance_back">戻る</string>
+    <string name="appearance_language">表示言語</string>
+    <string name="appearance_language_system">システムのデフォルト</string>
+    <string name="appearance_show_hints">メインタブにヒントを表示</string>
+    <string name="appearance_per_kanji_furigana">漢字ごとのふりがな</string>
+    <string name="appearance_per_kanji_furigana_hidden">日本語を学習中の場合のみ利用できます</string>
+    <string name="dictionary_settings_title">辞書</string>
+    <string name="dictionary_settings_back">戻る</string>
+    <string name="dictionary_settings_learning">学習言語</string>
+    <!-- Each language in its own language, in every UI language. -->
+    <string name="language_name_japanese">日本語</string>
+    <string name="language_name_english">English</string>
+    <string name="settings_dictionary_label">辞書</string>
+    <string name="settings_dictionary_value">JMdict %1$s · %2$s項目</string>
+    <string name="settings_credits_title">クレジット</string>
+    <!-- Attribution and licence wording stays in English in every UI
+         language; a label that only names a licence is translated. -->
+    <string name="settings_credits_edrdg_statement">The JMdict, JMnedict, KANJIDIC2 and RADKFILE files are the property of the Electronic Dictionary Research and Development Group, and are used in conformance with the Group's licence.</string>
+    <string name="settings_credits_edrdg_licence_link">EDRDGライセンス</string>
+    <string name="settings_credits_open_licence">ライセンスページを開く</string>
+    <string name="settings_credit_open_project">プロジェクトページを開く</string>
+    <string name="settings_credit_usage_jmdict">和英辞書の項目</string>
+    <string name="settings_credit_usage_jmnedict">日本語の固有名詞の項目</string>
+    <string name="settings_credit_usage_kanjidic">漢字の読みと意味</string>
+    <string name="settings_credit_usage_radkfile">漢字の部首分解データ</string>
+    <string name="settings_credit_usage_yomitan">活用解析エンジンとルールデータ</string>
+    <string name="settings_credit_usage_tatoeba">例文とその翻訳</string>
+    <string name="settings_credit_usage_furiganable">ふりがなの描画</string>
+    <string name="settings_credit_usage_kanjivg">漢字の書き順図</string>
+    <string name="settings_libraries_open">ライブラリ一覧を開く</string>
+    <string name="libraries_title">オープンソースライブラリ</string>
+    <string name="libraries_back">戻る</string>
+    <string name="libraries_empty">ライブラリが見つかりませんでした</string>
+    <string name="libraries_error">ライブラリ一覧を読み込めませんでした</string>
+    <string name="radical_title">%1$sを含む漢字</string>
+    <string name="radical_kanji_search">%1$sを検索</string>
+    <string name="radical_back">戻る</string>
+    <string name="radical_empty">この部首を含む漢字はありません</string>
+    <string name="radical_error">この部首の漢字を読み込めませんでした</string>
+    <string name="radical_retry">再試行</string>
+</resources>

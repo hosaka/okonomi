@@ -25,9 +25,9 @@ import cc.hosaka.okonomi.ui.toolbar.util.ToolbarBehavior
 import okonomi.shared.generated.resources.Res
 import okonomi.shared.generated.resources.dictionary_settings_back
 import okonomi.shared.generated.resources.dictionary_settings_learning
-import okonomi.shared.generated.resources.dictionary_settings_learning_english
-import okonomi.shared.generated.resources.dictionary_settings_learning_japanese
 import okonomi.shared.generated.resources.dictionary_settings_title
+import okonomi.shared.generated.resources.language_name_english
+import okonomi.shared.generated.resources.language_name_japanese
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -126,8 +126,9 @@ private fun LearningLanguageRow(
     }
 }
 
+/** The same names Appearance's Language menu gives these languages. */
 @Composable
 private fun languageName(language: LearningLanguage): String = when (language) {
-    LearningLanguage.Japanese -> stringResource(Res.string.dictionary_settings_learning_japanese)
-    LearningLanguage.English -> stringResource(Res.string.dictionary_settings_learning_english)
+    LearningLanguage.Japanese -> stringResource(Res.string.language_name_japanese)
+    LearningLanguage.English -> stringResource(Res.string.language_name_english)
 }

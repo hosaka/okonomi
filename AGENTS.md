@@ -29,7 +29,7 @@
 - Theme (`ui/theme/`): `OkonomiTheme` wraps `MaterialExpressiveTheme` and follows the system light/dark mode. `appDynamicLightColorScheme()/appDynamicDarkColorScheme()` are `expect` functions: Android 12+ uses dynamic color, older Android and iOS use the default Material schemes. `Dimen`/`Dimens` hold shared spacing values.
 - Shared chrome (`ui/`): `ScaffoldColumn`/`ScaffoldLazyColumn` (Material `Scaffold` wrappers that forward inner padding to the content), `toolbar/LargeToolbar` (`LargeFlexibleTopAppBar`) with `toolbar/util/ToolbarBehavior`/`ToolbarColors`, and `SearchTextField` (pill shaped search box with clear action).
 - Screen state (`feature/navigation/state/ProduceScreenState.kt`): `produceScreenState(key, initial) { ... }` runs a producer inside a `ScreenStateScope` (`navigation: NavigationController`, `mutablePersistedFlow(key, initial)`) and shares the resulting flow through a `ViewModel` scoped to the back stack entry (in-memory only, no disk persistence).
-- Features live in `shared/src/commonMain/kotlin/cc/hosaka/okonomi/feature/*`; user-visible strings live in `shared/src/commonMain/composeResources/values/strings.xml` and are read via `Res.string.*`.
+- Features live in `shared/src/commonMain/kotlin/cc/hosaka/okonomi/feature/*`; user-visible strings live in `shared/src/commonMain/composeResources/values/strings.xml` and are read via `Res.string.*`. Every string also needs its Japanese twin in `values-ja/strings.xml`: `TranslationCompletenessTest` fails when a name is missing from either file, when placeholders differ, or when a translation reads the same as the English outside its short allowlist. Licence and attribution wording is the allowlisted exception and stays English. A new UI language is a `values-xx` folder plus one `AppLanguage` entry (`lang/AppLanguage.kt`).
 - Two databases, and the split is load-bearing. `shared/src/commonMain/sqldelight/dictionary/` is the bundled read-only dictionary (`okonomi.db`), regenerated wholesale by `:tools:dictgen` and never migrated. `shared/src/commonMain/sqldelight/user/` is the reader's own data (`user.db`: lists and their entries), which can never be regenerated and therefore carries real `.sqm` migrations with verification on. Each database names its own `srcDirs`; putting a `.sq` file in the wrong one compiles it into the wrong database and moves `DICTIONARY_SCHEMA_FINGERPRINT`. `user.db` sits beside the dictionary copy in the same directory, which is only safe because provisioning deletes the dictionary **by name** — never by clearing the directory. `cc.hosaka.okonomi.user.FavouritesStore` is the seam screens use over it.
 
 Besides Favourites, `user.db` holds one other built-in list, History: words
@@ -102,6 +102,13 @@ whether furigana is drawn, must pass `deviceLanguage = "en"`. Otherwise it
 runs whatever the machine's language makes it: until a reader chooses, a
 Japanese-language device is assumed to be learning English, and that hides
 furigana throughout.
+
+Settings → Appearance → Language overrides the locale of the whole process
+(`LocaleList.setDefault` on Android, the app-domain `AppleLanguages` on iOS),
+because Compose Multiplatform resources have no per-composition locale. A test
+that applies a UI language must undo it, the way `ProvideAppLanguageUiTest`
+does with `snapshotPhoneLanguage()` and `forgetAppliedAppLanguage()`. Otherwise
+every later test in the same JVM reads its strings in the wrong language.
 
 `:tools:dictgen` is part of the check, not an optional extra: it owns the dictionary's
 shape and its ranking rules, so a regression there changes search results while every

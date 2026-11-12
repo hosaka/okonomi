@@ -6,7 +6,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.text.intl.Locale
 import cc.hosaka.okonomi.prefs.PreferenceStore
 import cc.hosaka.okonomi.ui.furigana.LocalFuriganaShown
 import kotlinx.coroutines.flow.Flow
@@ -54,16 +53,23 @@ private const val NOTHING_STORED = ""
 
 /**
  * The language a reader who never chose is assumed to be learning, from
- * the device's language code ([Locale.language], so `ja` and not
- * `ja-JP`): a device set to Japanese belongs to a Japanese speaker, who is
- * learning English; any other device to someone learning Japanese, which
- * is what the app has always assumed.
+ * the device's language code (`ja` and not `ja-JP`): a device set to
+ * Japanese belongs to a Japanese speaker, who is learning English; any
+ * other device to someone learning Japanese, which is what the app has
+ * always assumed.
  */
 fun defaultLearningLanguage(deviceLanguage: String): LearningLanguage =
     if (deviceLanguage.equals("ja", ignoreCase = true)) LearningLanguage.English else LearningLanguage.Japanese
 
-/** The device's language code, as [defaultLearningLanguage] takes it. */
-internal fun currentDeviceLanguage(): String = Locale.current.language
+/**
+ * The phone's own language code, as [defaultLearningLanguage] takes it.
+ *
+ * Read from the platform's record of the phone's language, never from
+ * `Locale.current`: Appearance's "Language" ([AppLanguage]) overrides
+ * the process locale, and a reader who only changed the language of the
+ * menus must not find the language they are learning changed with it.
+ */
+internal expect fun currentDeviceLanguage(): String
 
 /**
  * The language the reader is learning: what they chose, or the device

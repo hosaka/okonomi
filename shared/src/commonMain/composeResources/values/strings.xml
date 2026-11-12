@@ -281,7 +281,7 @@
     <string name="anki_card_link">More in Okonomi</string>
     <string name="settings_title">Settings</string>
     <string name="settings_appearance_title">Appearance</string>
-    <string name="settings_appearance_description">Main tab hints and furigana</string>
+    <string name="settings_appearance_description">Language, main tab hints and furigana</string>
     <string name="settings_dictionary_category_title">Dictionary</string>
     <string name="settings_dictionary_category_description">The language you are learning</string>
     <string name="settings_about_title">About</string>
@@ -290,6 +290,11 @@
     <string name="about_back">Back</string>
     <string name="appearance_title">Appearance</string>
     <string name="appearance_back">Back</string>
+    <!-- The language okonomi's own text is drawn in. The options are
+         the phone's language, then each translation by its own name
+         (language_name_*); see cc.hosaka.okonomi.lang.AppLanguage. -->
+    <string name="appearance_language">Language</string>
+    <string name="appearance_language_system">System default</string>
     <string name="appearance_show_hints">Show hints on main tab</string>
     <string name="appearance_per_kanji_furigana">Furigana over each kanji</string>
     <!-- Under the per-kanji switch, which is off and disabled while the
@@ -299,12 +304,13 @@
     <string name="dictionary_settings_title">Dictionary</string>
     <string name="dictionary_settings_back">Back</string>
     <string name="dictionary_settings_learning">Learning</string>
-    <!-- The two choices of language to learn, each written in its own
-         language. Never translated: they read the same in every locale,
-         so a reader finds their language by the name it calls itself
-         whatever language the rest of the app is in. -->
-    <string name="dictionary_settings_learning_japanese">日本語</string>
-    <string name="dictionary_settings_learning_english">English</string>
+    <!-- Each language written in its own language, shared by the
+         Learning choice and Appearance's Language menu. Never
+         translated: they read the same in every locale, so a reader
+         finds their language by the name it calls itself whatever
+         language the rest of the app is in. -->
+    <string name="language_name_japanese">日本語</string>
+    <string name="language_name_english">English</string>
     <string name="settings_dictionary_label">Dictionary</string>
     <string name="settings_dictionary_value">JMdict %1$s · %2$s entries</string>
     <string name="settings_credits_title">Credits</string>

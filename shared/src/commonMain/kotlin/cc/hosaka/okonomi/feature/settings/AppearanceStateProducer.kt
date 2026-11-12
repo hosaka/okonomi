@@ -4,8 +4,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import cc.hosaka.okonomi.feature.navigation.state.ScreenStateScope
 import cc.hosaka.okonomi.feature.navigation.state.produceScreenState
+import cc.hosaka.okonomi.lang.AppLanguage
+import cc.hosaka.okonomi.lang.appLanguageFlow
 import cc.hosaka.okonomi.lang.currentDeviceLanguage
 import cc.hosaka.okonomi.lang.learningLanguageFlow
+import cc.hosaka.okonomi.lang.setAppLanguage
 import cc.hosaka.okonomi.prefs.PreferenceStore
 import cc.hosaka.okonomi.prefs.appPreferences
 import cc.hosaka.okonomi.ui.coach.COACH_MARKS_ENABLED_DEFAULT
@@ -24,9 +27,9 @@ fun produceAppearanceScreenState(): State<AppearanceState> = produceScreenState(
 }
 
 /**
- * The switches reflect only what the store says: a tap writes, and the new
- * value comes back through [PreferenceStore.booleanFlow]. A write that
- * fails therefore leaves the switch showing what is actually stored.
+ * The switches and the language reflect only what the store says: a tap
+ * writes, and the new value comes back through the store. A write that
+ * fails therefore leaves the row showing what is actually stored.
  * Nothing is emitted before the store answers, so the state stays at its
  * unknown initial value rather than guessing the default.
  *
@@ -47,13 +50,19 @@ suspend fun ScreenStateScope.appearanceScreenStateProducer(
     val onPerKanjiFuriganaChange: (Boolean) -> Unit = { enabled ->
         preferences.setBoolean(PER_KANJI_FURIGANA_PREFERENCE, enabled)
     }
+    val onAppLanguageChange: (AppLanguage) -> Unit = { language ->
+        preferences.setAppLanguage(language)
+    }
     return combine(
+        preferences.appLanguageFlow(),
         preferences.booleanFlow(COACH_MARKS_ENABLED_PREFERENCE, COACH_MARKS_ENABLED_DEFAULT),
         preferences.booleanFlow(PER_KANJI_FURIGANA_PREFERENCE, PER_KANJI_FURIGANA_DEFAULT),
         preferences.learningLanguageFlow(deviceLanguage),
-    ) { showHints, perKanjiFurigana, learningLanguage ->
+    ) { appLanguage, showHints, perKanjiFurigana, learningLanguage ->
         val furiganaShown = learningLanguage.showsFurigana
         AppearanceState(
+            appLanguage = appLanguage,
+            onAppLanguageChange = onAppLanguageChange,
             showHints = showHints,
             onShowHintsChange = onShowHintsChange,
             perKanjiFurigana = perKanjiFurigana && furiganaShown,

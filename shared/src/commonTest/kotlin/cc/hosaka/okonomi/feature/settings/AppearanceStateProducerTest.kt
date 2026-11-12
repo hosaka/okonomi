@@ -2,6 +2,8 @@ package cc.hosaka.okonomi.feature.settings
 
 import cc.hosaka.okonomi.feature.navigation.state.FakeScreenStateScope
 import cc.hosaka.okonomi.feature.navigation.state.ScreenStateViewModel
+import cc.hosaka.okonomi.lang.APP_LANGUAGE_PREFERENCE
+import cc.hosaka.okonomi.lang.AppLanguage
 import cc.hosaka.okonomi.lang.LEARNING_LANGUAGE_PREFERENCE
 import cc.hosaka.okonomi.lang.LearningLanguage
 import cc.hosaka.okonomi.lang.setLearningLanguage
@@ -185,6 +187,42 @@ class AppearanceStateProducerTest {
             preferences.writes,
             "only the language was written; the switch never was",
         )
+    }
+
+    @Test
+    fun `the language callback writes its key and the state follows the store`() = runTest(dispatcher) {
+        val preferences = FakePreferenceStore()
+        val states = FakeScreenStateScope()
+            .appearanceScreenStateProducer(preferences = preferences, deviceLanguage = ENGLISH_DEVICE)
+
+        val onChange = assertNotNull(states.first().onAppLanguageChange)
+        onChange(AppLanguage.Japanese)
+
+        assertEquals(listOf<Pair<String, Any>>(APP_LANGUAGE_PREFERENCE to "ja"), preferences.writes)
+        assertEquals(AppLanguage.Japanese, states.first().appLanguage)
+    }
+
+    /**
+     * One collection across a recognised value and an unrecognised one,
+     * so the fallback is seen to come from the stored value rather than
+     * from a state that never read it.
+     */
+    @Test
+    fun `an unrecognised stored language reads as system default`() = runTest(dispatcher) {
+        val preferences = FakePreferenceStore(strings = mapOf(APP_LANGUAGE_PREFERENCE to "ja"))
+        val states = mutableListOf<AppearanceState>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            FakeScreenStateScope()
+                .appearanceScreenStateProducer(preferences = preferences, deviceLanguage = ENGLISH_DEVICE)
+                .collect { states += it }
+        }
+        runCurrent()
+        assertEquals(AppLanguage.Japanese, states.last().appLanguage)
+
+        preferences.setString(APP_LANGUAGE_PREFERENCE, "xx")
+        runCurrent()
+
+        assertEquals(AppLanguage.System, states.last().appLanguage)
     }
 
     /** A reader who never chose, on a Japanese device, is learning English. */
