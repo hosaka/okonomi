@@ -1,5 +1,6 @@
 package cc.hosaka.okonomi.ui.test
 
+import cc.hosaka.okonomi.db.DictionaryTag
 import cc.hosaka.okonomi.db.EntryDetail
 import cc.hosaka.okonomi.db.EntryForm
 import cc.hosaka.okonomi.db.EntryReading
@@ -39,7 +40,7 @@ internal fun entryDetail(
 
 internal fun entrySense(
     posCodes: List<String> = listOf("n"),
-    tags: List<String> = listOf("noun"),
+    tags: List<DictionaryTag> = listOf(DictionaryTag(code = "n", label = "noun (common) (futsuumeishi)")),
     glosses: List<String> = listOf("book"),
     info: String? = null,
     restrictions: List<String> = emptyList(),

@@ -95,12 +95,12 @@ class EntryDetailTest {
         assertEquals(
             listOf(
                 // Source casing survives: lowercasing is the screen's job.
-                "Ichidan verb",
-                "transitive verb",
+                DictionaryTag("v1", "Ichidan verb"),
+                DictionaryTag("vt", "transitive verb"),
                 // Unknown codes fall back to themselves rather than vanishing.
-                "unheard-of",
-                "food, cooking",
-                "Kansai-ben",
+                DictionaryTag("unheard-of", "unheard-of"),
+                DictionaryTag("food", "food, cooking"),
+                DictionaryTag("ksb", "Kansai-ben"),
             ),
             first.tags,
         )
@@ -108,12 +108,12 @@ class EntryDetailTest {
         assertEquals("colloquial", first.info)
         assertEquals(listOf("食べる", "喰べる"), first.restrictions)
 
-        // The codes survive beside their labels: the Forms tab
-        // classifies by code, which no label can be parsed back into.
+        // The part-of-speech codes are kept on their own as well: the
+        // Forms tab classifies by them.
         assertEquals(listOf("v1", "vt"), first.posCodes)
 
         val second = entry.senses[1]
-        assertEquals(listOf("Ichidan verb"), second.tags)
+        assertEquals(listOf(DictionaryTag("v1", "Ichidan verb")), second.tags)
         assertNull(second.info)
         assertEquals(emptyList(), second.restrictions)
         assertEquals(listOf("v1", "vt"), entry.posCodes, "repeats across senses collapse, in sense order")
@@ -139,7 +139,7 @@ class EntryDetailTest {
         assertEquals("ラーメン", entry.readings.single().text)
         assertFalse(entry.isCommon)
         assertEquals(
-            listOf("n", "word usually written using kana alone"),
+            listOf(DictionaryTag("n", "n"), DictionaryTag("uk", "word usually written using kana alone")),
             entry.senses.single().tags,
         )
     }
@@ -155,7 +155,7 @@ class EntryDetailTest {
 
         requireNotNull(entry)
         assertEquals(
-            listOf("v1", "vt", "unheard-of", "food", "ksb"),
+            listOf("v1", "vt", "unheard-of", "food", "ksb").map { DictionaryTag(it, it) },
             entry.senses.first().tags,
             "a dictionary generated without tag_label must still render chips",
         )

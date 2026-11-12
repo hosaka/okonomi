@@ -5,13 +5,15 @@ import cc.hosaka.okonomi.lang.FormId
 import cc.hosaka.okonomi.ui.furigana.FuriganaSegment
 
 /**
- * One table: the class name as the reader sees it, and its rows.
- * [className] is the `tag_label` text for the JMdict code, or the code
- * itself until — or unless — that label arrives.
+ * One table: its class's JMdict code (`v1`, `v5k`), and its rows. The
+ * code, not a name: the screen heads the table with the app's own name
+ * for the code in the UI language (see
+ * `cc.hosaka.okonomi.ui.labels.tagLabel`), and a name resolved here
+ * would keep the language it was resolved in.
  */
 @Immutable
 data class ConjugationTable(
-    val className: String,
+    val classCode: String,
     val rows: List<ConjugationRow>,
 )
 
@@ -41,11 +43,9 @@ data class FormsTabState(
  * The body of the entry view's Forms tab. There is no loading state and
  * no error state here, and that is the point: every cell is computed
  * from the entry the screen already holds, so the table can be drawn
- * the instant the tab is composed. The only thing this tab reads from
- * the dictionary is the class name at the top of each table, which is
- * cosmetic — it upgrades in place when it arrives, and its absence
- * leaves the JMdict code standing in for it rather than replacing a
- * correct table with a full-screen failure.
+ * the instant the tab is composed. Nothing here is read from the
+ * dictionary, the class heading included: that is the app's own name
+ * for the class's code.
  */
 @Immutable
 sealed interface FormsTabContentState {

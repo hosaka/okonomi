@@ -1,5 +1,6 @@
 package cc.hosaka.okonomi.feature.word
 
+import cc.hosaka.okonomi.db.DictionaryTag
 import cc.hosaka.okonomi.db.EntryDetail
 import cc.hosaka.okonomi.db.EntryForm
 import cc.hosaka.okonomi.db.EntryReading
@@ -36,7 +37,7 @@ class EntryStateProducerTest {
         senses = listOf(
             EntrySense(
                 posCodes = listOf("v1"),
-                tags = listOf("Ichidan verb"),
+                tags = listOf(DictionaryTag(code = "v1", label = "Ichidan verb")),
                 glosses = listOf("to eat"),
                 info = null,
                 restrictions = emptyList(),
@@ -338,14 +339,14 @@ class EntryStateProducerTest {
         senses = listOf(
             EntrySense(
                 posCodes = listOf("v5u"),
-                tags = listOf("Godan verb"),
+                tags = listOf(DictionaryTag(code = "v5u", label = "Godan verb with 'u' ending")),
                 glosses = listOf("to perform", "to do"),
                 info = null,
                 restrictions = emptyList(),
             ),
             EntrySense(
                 posCodes = listOf("v5u"),
-                tags = listOf("Godan verb"),
+                tags = listOf(DictionaryTag(code = "v5u", label = "Godan verb with 'u' ending")),
                 glosses = listOf("to carry out"),
                 info = null,
                 restrictions = emptyList(),

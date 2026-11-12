@@ -52,20 +52,36 @@ fun readingAppliesTo(form: String?, restrictions: List<String>, noKanji: Boolean
 }
 
 /**
- * One sense of an entry: its display labels (pos, misc, field and dial
- * codes resolved through `tag_label` in the source's own casing,
- * unknown codes kept verbatim), its English glosses, the editorial note
- * from `s_inf`, and the forms or readings the sense is restricted to
- * (`stagk`/`stagr`).
+ * One dictionary tag as it leaves the database: the JMdict [code]
+ * (`v5k`, `uk`, `ksb`) and the dictionary's own English [label] for it
+ * from `tag_label`, in the source's casing — or the code itself when the
+ * label table does not know it.
  *
- * [posCodes] keeps the part-of-speech codes unresolved beside their
- * labels: the Forms tab classifies the entry by code (`v5k`, `adj-ix`),
- * which no label can be parsed back into.
+ * Not the text a screen shows. The screen resolves [code] to the app's
+ * own string in the UI language, in composition so that it follows a
+ * language switch (see `cc.hosaka.okonomi.ui.labels.tagLabel`), and
+ * falls back to [label] only for a code the app has no string for.
+ */
+@Immutable
+data class DictionaryTag(
+    val code: String,
+    val label: String,
+)
+
+/**
+ * One sense of an entry: its tags (pos, misc, field and dial codes, in
+ * that order, each with the dictionary's label), its English glosses,
+ * the editorial note from `s_inf`, and the forms or readings the sense
+ * is restricted to (`stagk`/`stagr`).
+ *
+ * [posCodes] keeps the part-of-speech codes on their own as well: the
+ * Forms tab classifies the entry by code (`v5k`, `adj-ix`), and only
+ * part of speech says anything about how a word conjugates.
  */
 @Immutable
 data class EntrySense(
     val posCodes: List<String>,
-    val tags: List<String>,
+    val tags: List<DictionaryTag>,
     val glosses: List<String>,
     val info: String?,
     val restrictions: List<String>,
@@ -205,10 +221,11 @@ suspend fun DictionaryDatabase.loadEntryDetail(entryId: Long): EntryDetail? {
                 posCodes = StoredValues.codes(row.pos),
                 tags = tagCodesOf(row.pos, row.misc, row.field_, row.dial)
                     .distinct()
-                    // A code the label table does not know is shown as
-                    // itself: an unlabelled chip would be worse than a
-                    // cryptic one, and a missing chip worse still.
-                    .map { code -> labels[code] ?: code },
+                    // A code the label table does not know carries
+                    // itself as its label: an unlabelled chip would be
+                    // worse than a cryptic one, and a missing chip worse
+                    // still.
+                    .map { code -> DictionaryTag(code = code, label = labels[code] ?: code) },
                 // The query orders glosses by (sense, ord) already.
                 glosses = glosses[row.id].orEmpty().map { it.text },
                 info = row.info,
@@ -254,23 +271,10 @@ private fun tagCodesOf(
     StoredValues.codes(dial)
 
 /**
- * Reads the `tag_label` rows for [codes] off the shared app-lifetime
- * dictionary. The Forms tab heads each table with the class's own label
- * rather than a second hard-coded code-to-name map; a code the table
- * does not know is simply absent from the result, and the caller shows
- * the code itself.
+ * The `tag_label` rows for [codes]: each code the label table knows,
+ * with its label. A code it does not know is simply absent, and the
+ * caller uses the code itself.
  */
-suspend fun loadTagLabels(codes: List<String>): Map<String, String> {
-    if (codes.isEmpty()) return emptyMap()
-    val database = dictionary()
-    // Same reasoning as loadEntryDetail: no common IO dispatcher exists
-    // here and the query is short-lived, so Default keeps the
-    // synchronous SQLite work off the main thread.
-    return withContext(Dispatchers.Default) {
-        database.labelsFor(codes)
-    }
-}
-
 private suspend fun DictionaryDatabase.labelsFor(codes: List<String>): Map<String, String> {
     val distinct = codes.distinct()
     if (distinct.isEmpty()) return emptyMap()

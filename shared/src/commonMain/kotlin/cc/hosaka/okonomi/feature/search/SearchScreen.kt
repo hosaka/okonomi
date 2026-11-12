@@ -68,6 +68,7 @@ import cc.hosaka.okonomi.ui.coach.coachMarksWanted
 import cc.hosaka.okonomi.ui.furigana.FuriganaText
 import cc.hosaka.okonomi.ui.furigana.LocalFuriganaShown
 import cc.hosaka.okonomi.ui.furigana.LocalKanjiReadings
+import cc.hosaka.okonomi.ui.labels.ruleLabel
 import cc.hosaka.okonomi.ui.pagingFooterItem
 import cc.hosaka.okonomi.ui.scrollIndicator
 import cc.hosaka.okonomi.ui.theme.Dimens
@@ -490,7 +491,8 @@ internal fun SearchResultRow(
 
 /**
  * The muted `‹ rule, rule` beside the Japanese of a deinflected hit, or
- * nothing for a direct match.
+ * nothing for a direct match. [traceLabels] are the deinflector's rule
+ * names, drawn in the UI language here (see [ruleLabel]).
  *
  * Its own text beside the title rather than a second colour inside it:
  * the title is furigana, whose runs are laid out against the reading
@@ -505,7 +507,7 @@ private fun RowScope.TraceBreadcrumb(traceLabels: List<String>) {
             .width(ROW_GAP),
     )
     Text(
-        text = TRACE_MARKER + traceLabels.joinToString(", "),
+        text = TRACE_MARKER + traceLabels.map { ruleLabel(it) }.joinToString(", "),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         maxLines = 1,

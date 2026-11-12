@@ -77,7 +77,8 @@ data class TitleSegment(
 /**
  * One search result row: the title segments (primary kanji form, then
  * the matched reading; reading only when the entry has no kanji form),
- * the human-readable deinflection trace (empty for direct matches), up
+ * the deinflection trace as the deinflector's rule names, which the
+ * screen draws in the UI language (empty for direct matches), up
  * to three sense lines (glosses joined ", ", the last suffixed "…" when
  * more senses exist), and whether any of the entry's forms carries a
  * first-tier priority tag (jisho's "common word" badge).

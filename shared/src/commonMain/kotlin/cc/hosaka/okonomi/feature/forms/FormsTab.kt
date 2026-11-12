@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import cc.hosaka.okonomi.db.DictionaryTag
 import cc.hosaka.okonomi.db.EntryDetail
 import cc.hosaka.okonomi.ui.CenteredMessage
 import cc.hosaka.okonomi.ui.furigana.FuriganaSegment
@@ -35,6 +36,7 @@ import cc.hosaka.okonomi.ui.furigana.FuriganaText
 import cc.hosaka.okonomi.ui.furigana.plainText
 import cc.hosaka.okonomi.ui.ListCard
 import cc.hosaka.okonomi.ui.furigana.LocalKanjiReadings
+import cc.hosaka.okonomi.ui.labels.tagLabel
 import cc.hosaka.okonomi.ui.theme.Dimens
 import cc.hosaka.okonomi.ui.theme.horizontalPaddingHalf
 import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
@@ -138,10 +140,13 @@ private fun ConjugationTables(
         ) {
             tables.forEachIndexed { index, table ->
                 item(key = "heading-$index") {
-                    // Lowercase is this screen's presentation choice, as
-                    // on the Word tab's chips; the database keeps the
-                    // source's own casing.
-                    TableHeading(table.className.lowercase())
+                    // A class with no name of its own is headed by its
+                    // code: an unlabelled table would be worse than a
+                    // cryptic one. Lowercase is this screen's
+                    // presentation choice, as on the Word tab's chips;
+                    // the strings keep the source's own casing.
+                    val classTag = DictionaryTag(code = table.classCode, label = table.classCode)
+                    TableHeading(tagLabel(classTag).lowercase())
                 }
                 item(key = "table-$index") {
                     ConjugationGrid(table.rows)

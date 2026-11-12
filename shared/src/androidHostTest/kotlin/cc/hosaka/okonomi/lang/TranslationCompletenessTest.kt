@@ -1,11 +1,9 @@
 package cc.hosaka.okonomi.lang
 
 import java.io.File
-import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import org.w3c.dom.Element
 
 /**
  * Every translation the Language menu offers has every string the
@@ -19,13 +17,17 @@ import org.w3c.dom.Element
  * or renumbered fails only when that string is formatted, on whichever
  * screen and in whichever language reaches it. So the files themselves
  * are compared, in this host test.
+ *
+ * A folder is every string file in it, `strings.xml` and `tags.xml`
+ * alike, read as one (see [readStringResourceFolder]): a name may live
+ * in either file, and each is held to the same checks.
  */
 class TranslationCompletenessTest {
 
-    private val english = readResources(File(RESOURCES_DIRECTORY, "values/strings.xml"))
+    private val english = readStringResourceFolder("values")
 
-    private val translations: Map<AppLanguage, Resources> = translatedLanguages()
-        .associateWith { language -> readResources(File(RESOURCES_DIRECTORY, "values-${language.tag}/strings.xml")) }
+    private val translations: Map<AppLanguage, StringResourceSet> = translatedLanguages()
+        .associateWith { language -> readStringResourceFolder("values-${language.tag}") }
 
     @Test
     fun `the menu offers at least one translation to check`() {
@@ -119,12 +121,6 @@ class TranslationCompletenessTest {
     }
 }
 
-/**
- * The resources directory, relative to the module, which is where Gradle
- * runs host tests from (as `UserDbSchemaTest` relies on too).
- */
-private const val RESOURCES_DIRECTORY = "src/commonMain/composeResources"
-
 private const val TRANSLATION_PREFIX = "values-"
 
 private const val OTHER = "other"
@@ -148,27 +144,6 @@ private val SAME_IN_EVERY_LANGUAGE = listOf(
 /** The menu's languages with a folder of their own; English is `values` itself. */
 private fun translatedLanguages(): List<AppLanguage> =
     AppLanguage.entries.filter { it.tag != null && it != AppLanguage.English }
-
-private class Resources(
-    val strings: Map<String, String>,
-    val plurals: Map<String, Map<String, String>>,
-)
-
-private fun readResources(file: File): Resources {
-    assertTrue(file.isFile, "${file.path} does not exist")
-    val root = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(file).documentElement
-    val strings = root.children("string").associate { it.getAttribute("name") to it.textContent }
-    val plurals = root.children("plurals").associate { plural ->
-        val forms = plural.children("item").associate { it.getAttribute("quantity") to it.textContent }
-        plural.getAttribute("name") to forms
-    }
-    return Resources(strings, plurals)
-}
-
-private fun Element.children(tag: String): List<Element> {
-    val nodes = getElementsByTagName(tag)
-    return (0 until nodes.length).map { nodes.item(it) as Element }.filter { it.parentNode == this }
-}
 
 /**
  * The format specifiers in [text], ordered by argument number: a

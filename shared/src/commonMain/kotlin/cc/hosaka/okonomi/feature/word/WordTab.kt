@@ -32,6 +32,7 @@ import cc.hosaka.okonomi.ui.furigana.LocalFuriganaShown
 import cc.hosaka.okonomi.ui.furigana.LocalKanjiReadings
 import cc.hosaka.okonomi.ui.furigana.alignReading
 import cc.hosaka.okonomi.ui.furigana.withRoomForRuby
+import cc.hosaka.okonomi.ui.labels.tagLabel
 import cc.hosaka.okonomi.ui.theme.Dimens
 import cc.hosaka.okonomi.ui.theme.horizontalPaddingFourth
 import cc.hosaka.okonomi.ui.theme.verticalPaddingHalf
@@ -273,8 +274,8 @@ private fun SenseBlock(
                     }
                     sense.tags.forEach { tag ->
                         // Lowercase is this screen's presentation choice;
-                        // the database keeps the source's own casing.
-                        TagChip(text = tag.lowercase())
+                        // the strings keep the source's own casing.
+                        TagChip(text = tagLabel(tag).lowercase())
                     }
                 }
             }

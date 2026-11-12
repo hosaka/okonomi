@@ -29,8 +29,8 @@
     <!-- Chips on a name row. JMnedict's own DTD expansions ("family or
          surname", "given name or forename, gender not specified") are
          sentences rather than labels, so the four person-name codes get
-         short forms of their own here; the sense chips elsewhere still
-         resolve through tag_label.
+         short forms of their own here; the sense chips elsewhere
+         resolve through tags.xml, which keeps those expansions.
          All four are noun phrases on purpose. The spec named these
          chips "surname / given name / fem / masc", but shipping two
          English words beside two raw JMnedict codes reads as an
@@ -42,6 +42,27 @@
     <string name="name_type_given">given name</string>
     <string name="name_type_fem">female name</string>
     <string name="name_type_masc">male name</string>
+    <!-- The deinflection rules in the muted "‹ rule, rule" note beside a
+         deinflected search result, for the rules the deinflector names
+         in words. The English is the rule's own name. A new rule named
+         in words needs a string here and a branch in
+         ui/labels/DictionaryLabels.kt, which maps each name to its
+         string. The other rules are named by their suffix (-た, -ます)
+         and show as they are in every language, so they have no
+         string. -->
+    <string name="deinflection_rule_causative">causative</string>
+    <string name="deinflection_rule_short_causative">short causative</string>
+    <string name="deinflection_rule_imperative">imperative</string>
+    <string name="deinflection_rule_continuative">continuative</string>
+    <string name="deinflection_rule_negative">negative</string>
+    <string name="deinflection_rule_passive">passive</string>
+    <string name="deinflection_rule_potential">potential</string>
+    <string name="deinflection_rule_potential_or_passive">potential or passive</string>
+    <string name="deinflection_rule_volitional">volitional</string>
+    <string name="deinflection_rule_volitional_slang">volitional slang</string>
+    <string name="deinflection_rule_n_slang">n-slang</string>
+    <string name="deinflection_rule_imperative_negative_slang">imperative negative slang</string>
+    <string name="deinflection_rule_kansai_ben">kansai-ben</string>
     <!-- The tap label on a search result row, also used by the
          Favourites and History lists, which draw the same row. Without
          it the row is announced as a bare button. A verb, because it is
