@@ -34,6 +34,7 @@
 - Send you favourites straight to an **Anki** deck and keep in sync for further memorization.
 - Remember you search **History**, swipe a word to remove it from the list.
 - Open straight from your **Selected Text** via the context menu to avoid copy pasting.
+- Switch the app **Language** between English and Japanese as you please.
 - Requires **No Internet** connection, everything is in **Local** storage on your device.
 
 > [!NOTE]
