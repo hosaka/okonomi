@@ -1,0 +1,4 @@
+- Look up text selected in other apps: pick Okonomi in the text selection menu
+- Learning English: a Learning setting under Settings → Dictionary turns the app around for Japanese speakers, with English words heading search results, Favourites, History and Phrases
+- Okonomi in Japanese: the app follows the phone language, or pick one under Settings → Appearance → Language
+- Kanji keep their Japanese shapes on phones not set to Japanese, instead of showing their Chinese forms
